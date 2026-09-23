@@ -27,7 +27,7 @@ import { computeEmployeePayroll } from '../utils/payrollCalculations';
 const AppContext = createContext(null);
 
 
-const SCHEMA_VERSION = 'v4_excel_masterlist_clean_zero_salary';
+const SCHEMA_VERSION = 'v5_carl_patagnan_it_admin';
 if (typeof window !== 'undefined') {
   if (localStorage.getItem('nkb_schema_version') !== SCHEMA_VERSION) {
     [
@@ -393,8 +393,10 @@ export function AppProvider({ children }) {
     if (role === 'ceo') {
       sample = staffList.find(s => s.role === 'ceo') || staffList[0];
     } else if (role === 'it_admin') {
-      sample = staffList.find(s => s.role === 'it_admin') || staffList[1];
-    } else if (role === 'admin' || role === 'hr') {
+      sample = staffList.find(s => s.role === 'it_admin' || s.employeeId === 'NKB092026-0048');
+    } else if (role === 'admin') {
+      sample = staffList.find(s => s.role === 'admin' && s.role !== 'it_admin') || staffList[1];
+    } else if (role === 'hr') {
       sample = staffList.find(s => s.role === 'hr') || staffList.find(s => s.departmentName && s.departmentName.includes('HR'));
     } else if (role === 'finance' || role === 'accounting') {
       sample = staffList.find(s => s.role === 'accounting') || staffList.find(s => s.departmentName && s.departmentName.includes('Accounting'));
@@ -407,7 +409,8 @@ export function AppProvider({ children }) {
     const resolvedRole = 
       role === 'ceo' ? 'ceo' :
       role === 'it_admin' ? 'it_admin' :
-      (role === 'admin' || role === 'hr') ? 'hr' :
+      role === 'admin' ? 'admin' :
+      role === 'hr' ? 'hr' :
       (role === 'finance' || role === 'accounting') ? 'accounting' :
       role === 'canteen' ? 'canteen' : 'employee';
 
@@ -426,12 +429,13 @@ export function AppProvider({ children }) {
       setActiveTab('canteenHub');
     } else if (resolvedRole === 'accounting') {
       setActiveTab('payroll');
-    } else if (resolvedRole === 'hr') {
+    } else if (resolvedRole === 'hr' || resolvedRole === 'it_admin' || resolvedRole === 'admin' || resolvedRole === 'ceo') {
       setActiveTab('staff');
     }
     const roleLabel = 
       resolvedRole === 'ceo' ? `CEO (${userObj.name})` :
-      (resolvedRole === 'admin' || resolvedRole === 'it_admin') ? `COO (${userObj.name})` :
+      resolvedRole === 'it_admin' ? `IT Admin (${userObj.name})` :
+      resolvedRole === 'admin' ? `COO (${userObj.name})` :
       resolvedRole === 'hr' ? `HR Manager (${userObj.name})` :
       resolvedRole === 'accounting' ? `Accounting & Finance (${userObj.name})` :
       resolvedRole === 'canteen' ? `Canteen Hub (${userObj.name})` :

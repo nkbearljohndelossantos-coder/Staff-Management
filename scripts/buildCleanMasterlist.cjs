@@ -1,4 +1,4 @@
-﻿const xlsx = require('xlsx');
+const xlsx = require('xlsx');
 const fs = require('fs');
 
 const wb = xlsx.readFile('./src/data/Employee Masterlist.xlsx');
@@ -27,7 +27,8 @@ const deptMap = {
   'Logistics': { id: 'dept-log', name: 'Fleet & Dispatch Logistics', code: 'LOG', manager: 'Jonnel GACIA' },
   'QC': { id: 'dept-qc', name: 'Quality Control (QC)', code: 'QC', manager: 'Marilou FABIO' },
   'Silkscreen': { id: 'dept-silk', name: 'Silkscreen & Packaging Line', code: 'SILK', manager: 'Leo MIRAMBIL' },
-  'Canteen': { id: 'dept-cant', name: 'Canteen & Food Services', code: 'CANT', manager: 'Earl John DELOS SANTOS' }
+  'Canteen': { id: 'dept-cant', name: 'Canteen & Food Services', code: 'CANT', manager: 'Earl John DELOS SANTOS' },
+  'IT': { id: 'dept-it', name: 'Information Technology (IT)', code: 'IT', manager: 'Carl Laurence B. PATAGNAN' }
 };
 
 const departments = Object.values(deptMap);
@@ -49,6 +50,7 @@ function makeEmail(first, last, empId) {
 }
 
 function determineRole(dept, empId, name) {
+  if (empId === 'NKB092026-0048' || name.toLowerCase().includes('patagnan')) return 'it_admin';
   if (dept === 'CEO' || empId === 'NKB052026-0001') return 'ceo';
   if (dept === 'COO' || empId === 'NKB052026-0002') return 'admin';
   if (dept === 'HR' || empId === 'NKB052026-0019') return 'hr';
@@ -62,8 +64,10 @@ const staff = rows.map((r, idx) => {
   const { first, last } = parseName(r.name);
   const empId = (r.employee_id || ('EMP-2026-' + String(idx + 1).padStart(4, '0'))).trim();
   const rawDept = r.department ? r.department.trim() : (empId === 'NKBCANTEEN' ? 'Canteen' : 'Accounting');
-  const deptMeta = deptMap[rawDept] || deptMap['Production'];
-  const role = determineRole(rawDept, empId, r.name || '');
+  const isCarl = empId === 'NKB092026-0048' || (r.name && r.name.toLowerCase().includes('patagnan'));
+  const effectiveDept = isCarl ? 'IT' : rawDept;
+  const deptMeta = deptMap[effectiveDept] || deptMap['Production'];
+  const role = determineRole(effectiveDept, empId, r.name || '');
 
   return {
     id: 'emp-' + empId.toLowerCase().replace(/[^a-z0-9]/g, '-'),
@@ -76,7 +80,8 @@ const staff = rows.map((r, idx) => {
     email: makeEmail(first, last, empId),
     phone: '+63 9' + String(100000000 + idx).slice(1),
     positionId: 'pos-' + deptMeta.code.toLowerCase(),
-    positionTitle: rawDept === 'CEO' ? 'Chief Executive Officer (CEO)' :
+    positionTitle: isCarl ? 'IT Systems Administrator' :
+                   rawDept === 'CEO' ? 'Chief Executive Officer (CEO)' :
                    rawDept === 'COO' ? 'Chief Operating Officer (COO)' :
                    rawDept === 'HR' ? 'HR Manager' :
                    rawDept === 'Accounting' ? 'Accounting & Finance Officer' :

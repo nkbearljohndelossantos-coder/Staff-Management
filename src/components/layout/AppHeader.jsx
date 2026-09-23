@@ -10,6 +10,7 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
       case 'ceo':
         return { label: `CEO · ${currentUser?.name || 'Katherine A. BELLA'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
       case 'it_admin':
+        return { label: `IT Admin · ${currentUser?.name || 'Carl Laurence B. PATAGNAN'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
       case 'admin':
         return { label: `COO · ${currentUser?.name || 'Norvin L. BELLA'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
       case 'hr':
@@ -92,6 +93,18 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
                 }`}
               >
                 CEO
+              </button>
+              <button
+                type="button"
+                onClick={() => switchDemoRole('it_admin')}
+                title="Assume IT Admin Account (Carl Laurence B. PATAGNAN)"
+                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                  currentUser?.role === 'it_admin'
+                    ? 'bg-white text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                IT Admin
               </button>
               <button
                 type="button"

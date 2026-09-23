@@ -131,6 +131,12 @@
       "name": "Canteen & Food Services",
       "code": "CANT",
       "manager": "Earl John DELOS SANTOS"
+    },
+    {
+      "id": "dept-it",
+      "name": "Information Technology (IT)",
+      "code": "IT",
+      "manager": "Carl Laurence B. PATAGNAN"
     }
   ],
   "staff": [
@@ -1366,11 +1372,11 @@
       "rawName": "PATAGNAN, Carl Laurence B.",
       "email": "carllaurenceb.patagnan@nkb.com",
       "phone": "+63 900000047",
-      "positionId": "pos-wh",
-      "positionTitle": "Inventory & Warehouse Logistics Specialist",
-      "departmentId": "dept-wh",
-      "departmentName": "Inventory & Warehouse Logistics",
-      "role": "employee",
+      "positionId": "pos-it",
+      "positionTitle": "IT Systems Administrator",
+      "departmentId": "dept-it",
+      "departmentName": "Information Technology (IT)",
+      "role": "it_admin",
       "hireDate": "2026-05-01",
       "baseSalary": 0,
       "payFrequency": "semi-monthly",

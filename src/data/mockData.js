@@ -26,7 +26,8 @@ export const INITIAL_POSITIONS = [
   { id: 'pos-log', title: 'Logistics Specialist', departmentId: 'dept-log' },
   { id: 'pos-qc', title: 'Quality Control Specialist', departmentId: 'dept-qc' },
   { id: 'pos-silk', title: 'Silkscreen Specialist', departmentId: 'dept-silk' },
-  { id: 'pos-cant', title: 'Canteen & Food Services Specialist', departmentId: 'dept-cant' }
+  { id: 'pos-cant', title: 'Canteen & Food Services Specialist', departmentId: 'dept-cant' },
+  { id: 'pos-it', title: 'IT Systems Administrator', departmentId: 'dept-it' }
 ];
 
 // Registered Personnel from Employee Masterlist.xlsx (all salaries = 0, no demo accounts)
