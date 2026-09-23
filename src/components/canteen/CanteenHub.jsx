@@ -25,7 +25,9 @@ import {
   Sparkles,
   FileSpreadsheet,
   Printer,
-  CheckCircle2
+  CheckCircle2,
+  Filter,
+  X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CardVoidModal from './CardVoidModal';
@@ -112,6 +114,9 @@ export const KNOWN_INBOUND_CATALOG = {
 export default function CanteenHub() {
   const { 
     canteenInventory, 
+    canteenCategories,
+    addCanteenCategory,
+    deleteCanteenCategory,
     addSupplyItem, 
     deleteSupplyItem,
     clearAllCanteenInventory,
@@ -145,13 +150,39 @@ export default function CanteenHub() {
   // Inbound Inventory Scanner State
   const [inboundScanQuery, setInboundScanQuery] = useState('');
 
+  // Category management & filtering state
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [categoryModalInput, setCategoryModalInput] = useState('');
+  const [showInlineAddCategory, setShowInlineAddCategory] = useState(false);
+  const [inlineCategoryInput, setInlineCategoryInput] = useState('');
+
+  const handleSaveInlineCategory = () => {
+    const clean = inlineCategoryInput.trim();
+    if (!clean) return;
+    const res = addCanteenCategory(clean);
+    if (res && res.category) {
+      setNewItemCategory(res.category);
+    }
+    setInlineCategoryInput('');
+    setShowInlineAddCategory(false);
+  };
+
+  const handleSaveModalCategory = (e) => {
+    e.preventDefault();
+    const clean = categoryModalInput.trim();
+    if (!clean) return;
+    addCanteenCategory(clean);
+    setCategoryModalInput('');
+  };
+
   // New Supply Item State (with Size, Company, Brand, Expiry, Prices, and Late Encoding)
   const [showAddModal, setShowAddModal] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemBarcode, setNewItemBarcode] = useState('');
   const [newItemCompany, setNewItemCompany] = useState('');
   const [newItemBrand, setNewItemBrand] = useState('');
-  const [newItemCategory, setNewItemCategory] = useState('Beverages & Dairy');
+  const [newItemCategory, setNewItemCategory] = useState(canteenCategories?.[0] || 'Beverages & Dairy');
   const [newItemCost, setNewItemCost] = useState('');
   const [newItemPrice, setNewItemPrice] = useState('');
   const [newItemQty, setNewItemQty] = useState('');
@@ -326,7 +357,7 @@ export default function CanteenHub() {
     setNewItemBarcode('');
     setNewItemCompany('');
     setNewItemBrand('');
-    setNewItemCategory('Beverages & Dairy');
+    setNewItemCategory(canteenCategories?.[0] || 'Beverages & Dairy');
     setNewItemCost('');
     setNewItemPrice('');
     setNewItemQty('');
@@ -336,17 +367,22 @@ export default function CanteenHub() {
     setIsLateEncoded(false);
     setLateReason('');
     setLateCustomDate('');
+    setShowInlineAddCategory(false);
+    setInlineCategoryInput('');
   };
 
   const filteredInventory = canteenInventory.filter(item => {
     const q = inventorySearch.toLowerCase();
-    return (
+    const matchesSearch = (
       item.name.toLowerCase().includes(q) ||
       item.barcode.includes(q) ||
       (item.company && item.company.toLowerCase().includes(q)) ||
       (item.brand && item.brand.toLowerCase().includes(q)) ||
-      item.category.toLowerCase().includes(q)
+      (item.category && item.category.toLowerCase().includes(q))
     );
+    const matchesCategory = selectedCategoryFilter === 'ALL' || 
+      (item.category && item.category.toLowerCase() === selectedCategoryFilter.toLowerCase());
+    return matchesSearch && matchesCategory;
   });
 
   return (
@@ -522,20 +558,54 @@ export default function CanteenHub() {
           </div>
 
           {/* Inventory Control Bar */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
             
-            <div className="relative w-full sm:w-80">
-              <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                value={inventorySearch}
-                onChange={(e) => setInventorySearch(e.target.value)}
-                placeholder="Search company, brand, barcode, SKU, size..."
-                className="w-full h-9 pl-10 pr-4 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 transition"
-              />
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={inventorySearch}
+                  onChange={(e) => setInventorySearch(e.target.value)}
+                  placeholder="Search company, brand, barcode, SKU, size..."
+                  className="w-full h-9 pl-10 pr-4 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 transition"
+                />
+              </div>
+
+              {/* Category Filter Dropdown */}
+              <div className="flex items-center gap-1.5">
+                <Filter className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <select
+                  value={selectedCategoryFilter}
+                  onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                  className="h-9 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
+                  title="Filter inventory by supply category"
+                >
+                  <option value="ALL">All Categories ({canteenInventory.length})</option>
+                  {(canteenCategories || []).map(cat => {
+                    const count = canteenInventory.filter(it => (it.category || '').toLowerCase() === cat.toLowerCase()).length;
+                    return (
+                      <option key={cat} value={cat}>
+                        {cat} ({count})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div className="flex flex-wrap items-center gap-2 justify-end">
+              {/* Manage / Add Categories Button */}
+              <button
+                type="button"
+                onClick={() => setShowCategoryModal(true)}
+                className="h-9 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                title="Add or manage supply categories"
+              >
+                <Tag className="h-3.5 w-3.5 text-slate-600" />
+                <span>Categories ({(canteenCategories || []).length})</span>
+              </button>
+
               {canteenInventory.length > 0 && (
                 <button
                   type="button"
@@ -550,6 +620,7 @@ export default function CanteenHub() {
                   Clear All Supplies
                 </button>
               )}
+
               <button
                 type="button"
                 onClick={() => setShowAddModal(true)}
@@ -1229,21 +1300,86 @@ export default function CanteenHub() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Category
-                  </label>
-                  <select
-                    value={newItemCategory}
-                    onChange={(e) => setNewItemCategory(e.target.value)}
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
-                  >
-                    <option value="Beverages & Dairy">Beverages &amp; Dairy</option>
-                    <option value="Instant Meals">Instant Meals</option>
-                    <option value="Bakery & Bread">Bakery &amp; Bread</option>
-                    <option value="Canned Goods">Canned Goods</option>
-                    <option value="Snacks & Confectionery">Snacks &amp; Confectionery</option>
-                    <option value="General Supplies">General Supplies</option>
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                      <span>Category</span>
+                      <span className="text-slate-400">*</span>
+                    </label>
+                    {!showInlineAddCategory ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowInlineAddCategory(true)}
+                        className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 transition cursor-pointer"
+                        title="Add a new custom supply category"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <span>Add Category</span>
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {showInlineAddCategory ? (
+                    <div className="space-y-1.5 p-2 rounded-xl bg-emerald-50 border border-emerald-200 animate-in fade-in">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={inlineCategoryInput}
+                          onChange={(e) => setInlineCategoryInput(e.target.value)}
+                          placeholder="Type new category name..."
+                          className="flex-1 h-9 px-3 rounded-lg border border-emerald-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-medium"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSaveInlineCategory();
+                            } else if (e.key === 'Escape') {
+                              setShowInlineAddCategory(false);
+                              setInlineCategoryInput('');
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveInlineCategory}
+                          className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition cursor-pointer"
+                        >
+                          Add
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowInlineAddCategory(false);
+                            setInlineCategoryInput('');
+                          }}
+                          className="h-9 px-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs transition cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-emerald-700 font-medium">
+                        Type category &amp; press Enter to add &amp; auto-select.
+                      </p>
+                    </div>
+                  ) : (
+                    <select
+                      value={newItemCategory}
+                      onChange={(e) => {
+                        if (e.target.value === '__ADD_NEW__') {
+                          setShowInlineAddCategory(true);
+                        } else {
+                          setNewItemCategory(e.target.value);
+                        }
+                      }}
+                      className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer bg-white"
+                    >
+                      {(canteenCategories || []).map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                      <option value="__ADD_NEW__" className="font-bold text-emerald-600">
+                        + Add New Category...
+                      </option>
+                    </select>
+                  )}
                 </div>
 
                 <div>
@@ -1393,6 +1529,112 @@ export default function CanteenHub() {
               </div>
 
             </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* Manage Supply Categories Modal */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-slate-900 text-white">
+                  <Tag className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Canteen Supply Categories
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Add new categories and organize inventory classification
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCategoryModal(false);
+                  setCategoryModalInput('');
+                }}
+                className="p-1.5 rounded-xl hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Add New Category Form */}
+              <form onSubmit={handleSaveModalCategory} className="flex gap-2">
+                <input
+                  type="text"
+                  value={categoryModalInput}
+                  onChange={(e) => setCategoryModalInput(e.target.value)}
+                  placeholder="Enter new category name (e.g. Health & Wellness)..."
+                  className="flex-1 h-10 px-3.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-slate-50 focus:bg-white transition"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className="h-10 px-4 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0 shadow-sm"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Add Category</span>
+                </button>
+              </form>
+
+              {/* Existing Categories List */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 block">
+                  Active Categories ({(canteenCategories || []).length})
+                </label>
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-white">
+                  {(canteenCategories || []).map(cat => {
+                    const itemCount = canteenInventory.filter(it => (it.category || '').toLowerCase() === cat.toLowerCase()).length;
+                    return (
+                      <div key={cat} className="p-3 flex items-center justify-between hover:bg-slate-50/80 transition">
+                        <div className="flex items-center gap-2.5">
+                          <Tag className="h-3.5 w-3.5 text-slate-400" />
+                          <span className="text-xs font-bold text-slate-800">{cat}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[10px] font-mono font-medium text-slate-500">
+                            {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                          </span>
+                        </div>
+                        {itemCount === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete category "${cat}"?`)) {
+                                deleteCanteenCategory(cat);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            title={`Remove "${cat}"`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCategoryModal(false);
+                  setCategoryModalInput('');
+                }}
+                className="px-5 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-bold transition cursor-pointer shadow-sm"
+              >
+                Done
+              </button>
+            </div>
 
           </div>
         </div>

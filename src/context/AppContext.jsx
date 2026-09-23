@@ -13,6 +13,7 @@ import {
   INITIAL_CASH_ADVANCES,
   LOAN_CATEGORIES,
   INITIAL_CANTEEN_INVENTORY,
+  DEFAULT_CANTEEN_CATEGORIES,
   INITIAL_MANUFACTURING_PRODUCTS,
   INITIAL_PERSONAL_PURCHASE_ORDERS,
   INITIAL_CANTEEN_RECEIPTS,
@@ -134,6 +135,20 @@ export function AppProvider({ children }) {
   const [canteenInventory, setCanteenInventory] = useState(() => {
     const saved = localStorage.getItem('nkb_canteen_inventory');
     return saved ? JSON.parse(saved) : [...INITIAL_CANTEEN_INVENTORY];
+  });
+
+  // Canteen Supply Categories (Customizable, Add/Delete categories)
+  const [canteenCategories, setCanteenCategories] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_canteen_categories');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // fallback
+    }
+    return DEFAULT_CANTEEN_CATEGORIES;
   });
 
   // POS Dual Monitor Synchronization State
@@ -290,6 +305,10 @@ export function AppProvider({ children }) {
   useEffect(() => {
     localStorage.setItem('nkb_canteen_inventory', JSON.stringify(canteenInventory));
   }, [canteenInventory]);
+
+  useEffect(() => {
+    localStorage.setItem('nkb_canteen_categories', JSON.stringify(canteenCategories));
+  }, [canteenCategories]);
 
   useEffect(() => {
     localStorage.setItem('nkb_mfg_products', JSON.stringify(manufacturingProducts));
@@ -1258,6 +1277,34 @@ export function AppProvider({ children }) {
     return { success: true };
   };
 
+  const addCanteenCategory = (categoryName) => {
+    if (!categoryName || !categoryName.trim()) {
+      showToast('Category name cannot be blank.', 'error');
+      return { success: false, message: 'Category name cannot be blank.' };
+    }
+    const clean = categoryName.trim();
+    if (canteenCategories.some(c => c.toLowerCase() === clean.toLowerCase())) {
+      showToast(`Category "${clean}" already exists.`, 'info');
+      return { success: true, category: clean };
+    }
+    const updated = [...canteenCategories, clean];
+    setCanteenCategories(updated);
+    showToast(`Added category "${clean}" to canteen supplies.`, 'success');
+    return { success: true, category: clean };
+  };
+
+  const deleteCanteenCategory = (categoryName) => {
+    if (!categoryName) return { success: false };
+    const inUse = canteenInventory.some(it => (it.category || '').toLowerCase() === categoryName.toLowerCase());
+    if (inUse) {
+      showToast(`Cannot delete "${categoryName}" because existing supplies are assigned to it.`, 'error');
+      return { success: false, message: 'Category in use by supplies' };
+    }
+    setCanteenCategories(prev => prev.filter(c => c.toLowerCase() !== categoryName.toLowerCase()));
+    showToast(`Category "${categoryName}" removed from supply categories.`);
+    return { success: true };
+  };
+
   const verifySupervisorBarcode = (barcodeOrId) => {
     if (!barcodeOrId) return { valid: false, message: 'Barcode or Employee ID is required.' };
     const clean = barcodeOrId.trim().toUpperCase();
@@ -1999,10 +2046,13 @@ export function AppProvider({ children }) {
         replenishCanteenCash,
         // Canteen Hub & Inventory
         canteenInventory,
+        canteenCategories,
         addSupplyItem,
         updateSupplyItem,
         deleteSupplyItem,
         clearAllCanteenInventory,
+        addCanteenCategory,
+        deleteCanteenCategory,
         // Dual Monitor POS & Barcode Void Verification
         posDualDisplayState,
         broadcastPOSDisplayState,
