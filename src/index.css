@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased font-sans;
+  }
+
+  /* Remove number input spinners / stepper buttons (increase/decrease arrows) */
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type=number] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.8);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.6);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.8);
+}
+
+/* Light Theme Card & Surface Helpers */
+.card-light {
+  @apply bg-white border border-slate-200/90 rounded-2xl shadow-sm text-slate-800;
+}
+
+.input-light {
+  @apply bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition text-xs;
+}
+
+.btn-dark {
+  @apply bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white font-bold rounded-xl shadow-sm transition-all duration-150 cursor-pointer;
+}
+
+.btn-light {
+  @apply bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-700 border border-slate-300 font-bold rounded-xl shadow-sm transition-all duration-150 cursor-pointer;
+}
+
+/* Backward compatibility helpers */
+.glass-panel {
+  @apply rounded-3xl border border-slate-200 bg-white shadow-xl;
+}
+
+.glass-inner {
+  @apply rounded-2xl border border-slate-200 bg-slate-50 shadow-sm;
+}
+
+.btn-brand-glow {
+  @apply bg-slate-900 hover:bg-slate-800 text-white font-bold active:scale-[0.98] transition-all duration-200;
+}
+
+.btn-emerald-glow {
+  @apply bg-slate-800 hover:bg-slate-700 text-white font-bold active:scale-[0.98] transition-all duration-200;
+}
+
+.btn-amber-glow {
+  @apply bg-slate-900 hover:bg-slate-800 text-white font-bold active:scale-[0.98] transition-all duration-200;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-content, #printable-content * {
+    visibility: visible;
+  }
+  #printable-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white !important;
+    color: black !important;
+  }
+}

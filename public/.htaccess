@@ -1,0 +1,24 @@
+# Hostinger / LiteSpeed / Apache Web Server Configuration for NKB Smart Canteen
+DirectoryIndex index.html
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Serve existing static files directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Fallback to index.html for Single Page Application routes
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Enable CORS and proper security headers
+<IfModule mod_headers.c>
+  Header set Access-Control-Allow-Origin "*"
+  Header set X-Content-Type-Options "nosniff"
+</IfModule>
+
+# Disable directory browsing to protect sensitive files
+Options -Indexes +FollowSymLinks
