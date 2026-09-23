@@ -27,7 +27,7 @@ import { computeEmployeePayroll } from '../utils/payrollCalculations';
 const AppContext = createContext(null);
 
 
-const SCHEMA_VERSION = 'v6_nannette_canteen_admin';
+const SCHEMA_VERSION = 'v7_clean_canteen_inventory_dual_monitor';
 if (typeof window !== 'undefined') {
   if (localStorage.getItem('nkb_schema_version') !== SCHEMA_VERSION) {
     [
@@ -44,6 +44,8 @@ if (typeof window !== 'undefined') {
       'nkb_canteen_receipts',
       'nkb_canteen_gate_passes',
       'nkb_canteen_void_logs',
+      'nkb_canteen_inventory',
+      'nkb_canteen_pos_display_sync',
       'nkb_product_journeys',
       'nkb_hr_payruns',
       'nkb_hr_current_user',
@@ -128,20 +130,50 @@ export function AppProvider({ children }) {
     return saved ? JSON.parse(saved) : INITIAL_CASH_ADVANCES;
   });
 
-  // Canteen Inventory Supplies (With Size, Expiration, Company, Brand, Prices)
+  // Canteen Inventory Supplies (Clean - All supply items removed as requested)
   const [canteenInventory, setCanteenInventory] = useState(() => {
     const saved = localStorage.getItem('nkb_canteen_inventory');
-    let parsed = saved ? JSON.parse(saved) : [...INITIAL_CANTEEN_INVENTORY];
-    INITIAL_CANTEEN_INVENTORY.forEach(init => {
-      const idx = parsed.findIndex(i => i.id === init.id || i.barcode === init.barcode);
-      if (idx === -1) {
-        parsed.push(init);
-      } else {
-        parsed[idx] = { ...init, ...parsed[idx], size: parsed[idx].size || init.size };
-      }
-    });
-    return parsed;
+    return saved ? JSON.parse(saved) : [...INITIAL_CANTEEN_INVENTORY];
   });
+
+  // POS Dual Monitor Synchronization State
+  const [posDualDisplayState, setPosDualDisplayState] = useState(() => {
+    const saved = localStorage.getItem('nkb_canteen_pos_display_sync');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { }
+    }
+    return {
+      cart: [],
+      lastScannedItem: null,
+      orderType: 'Dine In',
+      paymentMethod: 'Cash',
+      customer: null,
+      grandTotal: 0,
+      timestamp: Date.now(),
+      status: 'IDLE' // 'IDLE' | 'SCANNING' | 'CHECKOUT' | 'COMPLETED' | 'VOIDED'
+    };
+  });
+
+  const broadcastPOSDisplayState = (partialState) => {
+    setPosDualDisplayState(prev => {
+      const updated = {
+        ...prev,
+        ...partialState,
+        timestamp: Date.now()
+      };
+      try {
+        localStorage.setItem('nkb_canteen_pos_display_sync', JSON.stringify(updated));
+        if (typeof window !== 'undefined' && window.BroadcastChannel) {
+          const bc = new BroadcastChannel('nkb_canteen_pos_channel');
+          bc.postMessage(updated);
+          bc.close();
+        }
+      } catch (e) {
+        console.warn('POS BroadcastChannel sync error:', e);
+      }
+      return updated;
+    });
+  };
 
   // NKB Manufacturing Products (Factory manufactured goods for employee personal purchase orders)
   const [manufacturingProducts, setManufacturingProducts] = useState(() => {
@@ -1205,6 +1237,183 @@ export function AppProvider({ children }) {
     return { success: true };
   };
 
+  const deleteSupplyItem = (id) => {
+    if (currentUser && !isCanteen) {
+      showToast('Access Denied: Only Canteen Management or Super Admin can remove supplies.', 'error');
+      return { success: false };
+    }
+    setCanteenInventory(prev => prev.filter(item => item.id !== id));
+    showToast('Supply item removed from canteen inventory.');
+    return { success: true };
+  };
+
+  const clearAllCanteenInventory = () => {
+    if (currentUser && !isCanteen) {
+      showToast('Access Denied: Only Canteen Management or Super Admin can clear inventory.', 'error');
+      return { success: false };
+    }
+    setCanteenInventory([]);
+    localStorage.removeItem('nkb_canteen_inventory');
+    showToast('All supply items cleared from canteen inventory.');
+    return { success: true };
+  };
+
+  const verifySupervisorBarcode = (barcodeOrId) => {
+    if (!barcodeOrId) return { valid: false, message: 'Barcode or Employee ID is required.' };
+    const clean = barcodeOrId.trim().toUpperCase();
+
+    // 1. Canteen Administrator (Nannette MANUEL / NKB052026-0024)
+    if (clean === 'NKB052026-0024' || clean === 'NKBCANTEEN' || clean.includes('MANUEL')) {
+      const supervisor = staffList.find(s => s.employeeId === 'NKB052026-0024') || {
+        firstName: 'Nannette',
+        lastName: 'MANUEL',
+        employeeId: 'NKB052026-0024',
+        positionTitle: 'Canteen Administrator & Manager'
+      };
+      return {
+        valid: true,
+        type: 'canteen_admin',
+        supervisorName: `${supervisor.firstName} ${supervisor.lastName}`,
+        badgeId: supervisor.employeeId,
+        title: supervisor.positionTitle || 'Canteen Administrator'
+      };
+    }
+
+    // 2. IT Admin (Carl Laurence B. PATAGNAN / NKB092026-0048)
+    if (clean === 'NKB092026-0048' || clean.includes('PATAGNAN')) {
+      const supervisor = staffList.find(s => s.employeeId === 'NKB092026-0048') || {
+        firstName: 'Carl Laurence B.',
+        lastName: 'PATAGNAN',
+        employeeId: 'NKB092026-0048',
+        positionTitle: 'IT Systems Administrator'
+      };
+      return {
+        valid: true,
+        type: 'it_admin',
+        supervisorName: `${supervisor.firstName} ${supervisor.lastName}`,
+        badgeId: supervisor.employeeId,
+        title: 'IT Systems Administrator (Super Admin)'
+      };
+    }
+
+    // 3. CEO (Katherine A. BELLA / NKB052026-0001)
+    if (clean === 'NKB052026-0001' || clean.includes('BELLA')) {
+      const supervisor = staffList.find(s => s.employeeId === 'NKB052026-0001') || {
+        firstName: 'Katherine A.',
+        lastName: 'BELLA',
+        employeeId: 'NKB052026-0001',
+        positionTitle: 'Chief Executive Officer (CEO)'
+      };
+      return {
+        valid: true,
+        type: 'ceo',
+        supervisorName: `${supervisor.firstName} ${supervisor.lastName}`,
+        badgeId: supervisor.employeeId,
+        title: 'Chief Executive Officer (CEO)'
+      };
+    }
+
+    // 4. Any staff with canteen or admin role matching barcode/ID
+    const found = staffList.find(
+      s => (s.barcodeValue && s.barcodeValue.toUpperCase() === clean) ||
+           (s.employeeId && s.employeeId.toUpperCase() === clean)
+    );
+    if (found && (found.role === 'canteen' || found.role === 'it_admin' || found.role === 'ceo' || found.role === 'admin')) {
+      return {
+        valid: true,
+        type: found.role,
+        supervisorName: `${found.firstName} ${found.lastName}`,
+        badgeId: found.employeeId,
+        title: found.positionTitle || 'Authorized Administrator'
+      };
+    }
+
+    return {
+      valid: false,
+      message: 'Access Denied: Scanned barcode does not belong to Canteen Admin (NKB052026-0024) or System Admin.'
+    };
+  };
+
+  const voidActiveCartItemWithBarcode = ({ item, supervisorBarcode, pin, reason = 'Item voided at register' }) => {
+    let supervisorInfo = null;
+    if (supervisorBarcode) {
+      const verification = verifySupervisorBarcode(supervisorBarcode);
+      if (!verification.valid) {
+        showToast(verification.message, 'error');
+        return verification;
+      }
+      supervisorInfo = verification;
+    } else if (pin === '12345678' && isCanteen) {
+      supervisorInfo = {
+        valid: true,
+        supervisorName: currentUser?.name || 'Nannette MANUEL',
+        badgeId: currentUser?.employeeId || 'NKB052026-0024',
+        title: 'Canteen Administrator'
+      };
+    } else {
+      showToast('Canteen Admin or IT Admin barcode scan required to authorize void.', 'error');
+      return { valid: false, message: 'Barcode authorization required' };
+    }
+
+    // Log to void audit ledger
+    const logEntry = {
+      id: `void-item-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      type: 'LINE_ITEM_VOID',
+      itemName: item.name,
+      itemBarcode: item.barcode,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      amount: item.unitPrice * item.quantity,
+      voidedBy: supervisorInfo.supervisorName,
+      supervisorBadgeId: supervisorInfo.badgeId,
+      reason: reason || 'Item voided at register'
+    };
+
+    setCanteenVoidLogs(prev => [logEntry, ...prev]);
+    showToast(`Void Authorized: ${item.name} removed by ${supervisorInfo.supervisorName}`);
+    return { success: true, supervisor: supervisorInfo, log: logEntry };
+  };
+
+  const voidActiveCartWithBarcode = ({ items, supervisorBarcode, pin, reason = 'Order cancelled at register' }) => {
+    let supervisorInfo = null;
+    if (supervisorBarcode) {
+      const verification = verifySupervisorBarcode(supervisorBarcode);
+      if (!verification.valid) {
+        showToast(verification.message, 'error');
+        return verification;
+      }
+      supervisorInfo = verification;
+    } else if (pin === '12345678' && isCanteen) {
+      supervisorInfo = {
+        valid: true,
+        supervisorName: currentUser?.name || 'Nannette MANUEL',
+        badgeId: currentUser?.employeeId || 'NKB052026-0024',
+        title: 'Canteen Administrator'
+      };
+    } else {
+      showToast('Canteen Admin or IT Admin barcode scan required to authorize void.', 'error');
+      return { valid: false, message: 'Barcode authorization required' };
+    }
+
+    const totalAmount = (items || []).reduce((acc, it) => acc + (it.unitPrice * it.quantity), 0);
+    const logEntry = {
+      id: `void-cart-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      type: 'FULL_TRANSACTION_VOID',
+      itemCount: items?.length || 0,
+      items: items || [],
+      amount: totalAmount,
+      voidedBy: supervisorInfo.supervisorName,
+      supervisorBadgeId: supervisorInfo.badgeId,
+      reason: reason || 'Full transaction voided by supervisor'
+    };
+
+    setCanteenVoidLogs(prev => [logEntry, ...prev]);
+    showToast(`Transaction Void Authorized by ${supervisorInfo.supervisorName}`);
+    return { success: true, supervisor: supervisorInfo, log: logEntry };
+  };
+
   const recordCanteenSale = ({
     customerName,
     customerType,
@@ -1792,6 +2001,14 @@ export function AppProvider({ children }) {
         canteenInventory,
         addSupplyItem,
         updateSupplyItem,
+        deleteSupplyItem,
+        clearAllCanteenInventory,
+        // Dual Monitor POS & Barcode Void Verification
+        posDualDisplayState,
+        broadcastPOSDisplayState,
+        verifySupervisorBarcode,
+        voidActiveCartItemWithBarcode,
+        voidActiveCartWithBarcode,
         // NKB Manufacturing Products & Personal Purchase Orders
         manufacturingProducts,
         setManufacturingProducts,

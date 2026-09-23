@@ -31,6 +31,7 @@ import { useApp } from '../../context/AppContext';
 import CardVoidModal from './CardVoidModal';
 import ProductTrackingMap from './ProductTrackingMap';
 import GatePassModal from './GatePassModal';
+import CanteenScannerTerminal from './CanteenScannerTerminal';
 
 // Known Catalog for Automatic Inbound Scan Pre-filling
 export const KNOWN_INBOUND_CATALOG = {
@@ -112,6 +113,8 @@ export default function CanteenHub() {
   const { 
     canteenInventory, 
     addSupplyItem, 
+    deleteSupplyItem,
+    clearAllCanteenInventory,
     personalPurchaseOrders, 
     fulfillPurchaseOrder, 
     canteenReceipts, 
@@ -415,333 +418,12 @@ export default function CanteenHub() {
         </div>
       </div>
 
-      {/* SUBTAB 1: BARCODE POS REGISTER */}
+      {/* SUBTAB 1: BARCODE POS REGISTER & DUAL-MONITOR SCANNER */}
       {activeSubtab === 'pos' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Left: Product Selector & Barcode Scanner */}
-          <div className="lg:col-span-7 space-y-4">
-            
-            {/* Barcode Scanner Input */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-              <form onSubmit={handleBarcodeSubmit} className="flex gap-2">
-                <div className="relative flex-1">
-                  <ScanBarcode className="absolute left-3.5 top-3 h-5 w-5 text-slate-400" />
-                  <input
-                    type="text"
-                    value={posBarcodeQuery}
-                    onChange={(e) => setPosBarcodeQuery(e.target.value)}
-                    placeholder="Scan product barcode or enter SKU / name..."
-                    className="w-full h-11 pl-11 pr-4 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 transition"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="h-11 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 transition cursor-pointer"
-                >
-                  Lookup
-                </button>
-              </form>
-            </div>
-
-            {/* Quick-Pick Product Catalog Grid */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Store className="h-4 w-4 text-slate-500" />
-                  Fast POS Catalog ({canteenInventory.length} Items Available)
-                </h3>
-                <span className="text-[11px] text-slate-500 font-medium">Click item to add to register</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                {canteenInventory.map(item => {
-                  const isOutOfStock = item.quantity <= 0;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      disabled={isOutOfStock}
-                      onClick={() => handleAddToCart(item)}
-                      className={`text-left p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
-                        isOutOfStock
-                          ? 'bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed'
-                          : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 shadow-sm'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center justify-between text-[10px] text-slate-500 mb-1">
-                          <span className="font-mono">{item.barcode}</span>
-                          <span className="font-semibold">{item.category}</span>
-                        </div>
-                        <h4 className="text-xs font-bold text-slate-900 line-clamp-2">
-                          {item.name}
-                        </h4>
-                        <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                          {item.brand} · {item.company}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-900">
-                          ₱{item.sellingPrice?.toFixed(2)}
-                        </span>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                          item.quantity < (item.reorderLevel || 15)
-                            ? 'bg-slate-100 text-slate-700'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}>
-                          {item.quantity} in stock
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-          </div>
-
-          {/* Right: Register Cart & Checkout */}
-          <div className="lg:col-span-5 space-y-4">
-            
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <ShoppingCart className="h-4 w-4 text-slate-600" />
-                  <h3 className="text-sm font-black text-slate-900">Active Register Cart</h3>
-                </div>
-                <span className="text-xs font-bold text-slate-500">
-                  {cart.length} unique {cart.length === 1 ? 'item' : 'items'}
-                </span>
-              </div>
-
-              {/* Cart Items List */}
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                {cart.length === 0 ? (
-                  <div className="py-10 text-center text-xs text-slate-400">
-                    <ScanBarcode className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                    Register is empty. Scan barcode or click items to begin transaction.
-                  </div>
-                ) : (
-                  cart.map(item => (
-                    <div 
-                      key={item.id} 
-                      className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <h4 className="font-bold text-slate-900 truncate">{item.name}</h4>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          ₱{item.unitPrice.toFixed(2)} each
-                        </div>
-                      </div>
-
-                      {/* Quantity Modifier */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => updateCartQuantity(item.id, -1)}
-                          className="w-7 h-7 rounded-lg bg-white border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 flex items-center justify-center cursor-pointer"
-                        >
-                          -
-                        </button>
-                        <span className="w-6 text-center font-bold text-slate-900">
-                          {item.quantity}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => updateCartQuantity(item.id, 1)}
-                          className="w-7 h-7 rounded-lg bg-white border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 flex items-center justify-center cursor-pointer"
-                        >
-                          +
-                        </button>
-                      </div>
-
-                      <div className="text-right shrink-0 min-w-[65px]">
-                        <span className="font-bold text-slate-900 block">
-                          ₱{(item.unitPrice * item.quantity).toFixed(2)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeFromCart(item.id)}
-                          className="text-[10px] text-slate-400 hover:text-slate-700 font-medium cursor-pointer"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Customer Association & Order Options */}
-              <div className="pt-3 border-t border-slate-100 space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                      Customer Type
-                    </label>
-                    <select
-                      value={customerType}
-                      onChange={(e) => {
-                        const newType = e.target.value;
-                        setCustomerType(newType);
-                        if (newType === 'Walk-in Guest' && paymentMethod === 'Salary Deduction') {
-                          setPaymentMethod('Cash');
-                        }
-                      }}
-                      className="w-full h-9 px-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
-                    >
-                      <option value="Staff Member">Staff Member</option>
-                      <option value="Walk-in Guest">Walk-in Guest</option>
-                    </select>
-                  </div>
-
-                  {/* Order Nature: Dine In vs Grocery */}
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                      Order Nature
-                    </label>
-                    <select
-                      value={orderType}
-                      onChange={(e) => setOrderType(e.target.value)}
-                      className="w-full h-9 px-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
-                    >
-                      <option value="Dine In">Dine In (Meal / Snack)</option>
-                      <option value="Grocery">Grocery (Outbound Gate Pass)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Payment Method: Cash vs Salary Deduction */}
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                    Payment Method
-                  </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => {
-                      const newMethod = e.target.value;
-                      setPaymentMethod(newMethod);
-                      if (newMethod === 'Salary Deduction') {
-                        setCustomerType('Staff Member');
-                      }
-                    }}
-                    className="w-full h-9 px-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
-                  >
-                    <option value="Cash">Cash (Immediate Payment)</option>
-                    <option value="Salary Deduction">Salary Deduction (Payroll · COOP Budget)</option>
-                  </select>
-                </div>
-
-                {/* Notice Badges */}
-                {orderType === 'Grocery' && (
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-700 flex items-start gap-2">
-                    <Package className="h-3.5 w-3.5 text-slate-500 mt-0.5 shrink-0" />
-                    <span>
-                      <strong>Gate Pass Enforced:</strong> Grocery orders generate an official <strong>Half-A4 Plant Gate Pass</strong> for plant perimeter security check.
-                    </span>
-                  </div>
-                )}
-
-                {paymentMethod === 'Salary Deduction' && (
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-700 flex items-start gap-2">
-                    <Building2 className="h-3.5 w-3.5 text-slate-500 mt-0.5 shrink-0" />
-                    <span>
-                      <strong>COOP Budget Reconciliation:</strong> Salary deduction will be deducted to employee's COOP budget once confirmed by HR with bank payroll.
-                    </span>
-                  </div>
-                )}
-
-                {/* Staff Member Selection */}
-                {customerType === 'Staff Member' && (
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                      Select Staff Member {paymentMethod === 'Salary Deduction' && <span className="text-slate-900 font-black">*</span>}
-                    </label>
-                    <select
-                      value={selectedStaffId}
-                      onChange={(e) => setSelectedStaffId(e.target.value)}
-                      className="w-full h-9 px-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
-                    >
-                      <option value="">Select Employee...</option>
-                      {staffList.map(st => (
-                        <option key={st.id} value={st.id}>
-                          {st.employeeId} · {st.firstName} {st.lastName}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              {/* Total & Checkout */}
-              <div className="pt-3 border-t border-slate-100 space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500 font-medium">Subtotal</span>
-                  <span className="font-bold text-slate-900">₱{cartTotal.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between text-base border-t border-slate-100 pt-2">
-                  <span className="font-black text-slate-900">Total Payable</span>
-                  <span className="text-lg font-black text-slate-900">₱{cartTotal.toFixed(2)}</span>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={cart.length === 0 || (paymentMethod === 'Salary Deduction' && !selectedStaffId)}
-                  onClick={handlePOSCheckout}
-                  className="w-full h-11 rounded-xl bg-slate-950 hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
-                >
-                  <Receipt className="h-4 w-4 text-white" />
-                  Complete Checkout {orderType === 'Grocery' ? '& Issue Gate Pass (Half A4)' : '& Generate Receipt'}
-                </button>
-              </div>
-
-            </div>
-
-            {/* Recently Generated Receipt Card */}
-            {lastReceipt && (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-slate-200 space-y-3 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400 flex items-center gap-1.5">
-                    <CheckCircle className="h-4 w-4 text-slate-300" />
-                    Latest Immutable Receipt
-                  </span>
-                  <span className="font-mono font-bold text-white">#{lastReceipt.receiptNo}</span>
-                </div>
-                <div className="text-xs text-slate-300 flex items-center justify-between">
-                  <span>
-                    Total: <strong className="text-white">₱{lastReceipt.total.toFixed(2)}</strong> via {lastReceipt.paymentMethod} ({lastReceipt.orderType || 'Dine In'})
-                  </span>
-                  {lastReceipt.salaryDeductionStatus && (
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
-                      {lastReceipt.salaryDeductionStatus}
-                    </span>
-                  )}
-                </div>
-
-                {lastGatePass && (
-                  <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Outbound Gate Pass</span>
-                      <span className="font-mono text-xs text-white font-bold">{lastGatePass.gatePassNo}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedGatePass(lastGatePass)}
-                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
-                    >
-                      <Printer className="h-3.5 w-3.5 text-slate-950" />
-                      Print Gate Pass (Half A4)
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-          </div>
-
-        </div>
+        <CanteenScannerTerminal 
+          onShowReceipt={(r) => { setLastReceipt(r); setSelectedReceipt(r); }}
+          onShowGatePass={(gp) => { setLastGatePass(gp); setSelectedGatePass(gp); }}
+        />
       )}
 
       {/* SUBTAB 2: SUPPLY INVENTORY WITH INBOUND SCANNING & LATE ENCODING */}
@@ -854,6 +536,20 @@ export default function CanteenHub() {
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              {canteenInventory.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Are you sure you want to remove ALL supplies from Canteen Inventory?')) {
+                      clearAllCanteenInventory();
+                    }
+                  }}
+                  className="h-9 px-3.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Clear All Supplies
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setShowAddModal(true)}
@@ -881,13 +577,20 @@ export default function CanteenHub() {
                     <th className="px-4 py-3.5 text-center">Stock Qty</th>
                     <th className="px-4 py-3.5">Expiration / Best Before</th>
                     <th className="px-4 py-3.5">Encoding Status</th>
+                    <th className="px-3 py-3.5 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredInventory.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="px-4 py-8 text-center text-slate-400 text-xs">
-                        No supply items found matching search query.
+                      <td colSpan="10" className="px-4 py-12 text-center text-slate-400 text-xs">
+                        <Boxes className="h-8 w-8 mx-auto text-slate-300 mb-2" />
+                        <p className="font-bold text-slate-600 text-sm">
+                          {inventorySearch ? 'No supply items match your search filter.' : 'All supply items have been removed from canteen inventory.'}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
+                          Canteen inventory is completely clean. Use the "Encode Supply Item" button above to intake and record new supplies.
+                        </p>
                       </td>
                     </tr>
                   ) : (
@@ -956,6 +659,17 @@ export default function CanteenHub() {
                               Regular Entry
                             </span>
                           )}
+                        </td>
+
+                        <td className="px-3 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => deleteSupplyItem(item.id)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            title="Remove supply item"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </td>
 
                       </tr>

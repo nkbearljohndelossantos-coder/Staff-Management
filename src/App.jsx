@@ -14,12 +14,19 @@ import EmployeePortalView from './components/payslip/EmployeePortalView';
 import CoopLoansManager from './components/coop/CoopLoansManager';
 import CanteenHub from './components/canteen/CanteenHub';
 import SystemConceptMapView from './components/concept/SystemConceptMapView';
+import CanteenCustomerDisplay from './components/canteen/CanteenCustomerDisplay';
 import { isTabAuthorized, getDefaultTabForRole, TAB_PERMISSIONS } from './utils/rolePermissions';
 
 export default function App() {
   const { currentUser, activeTab, setActiveTab, notification } = useApp();
   const [loginMode, setLoginMode] = useState('staff'); // 'staff' or 'barcode'
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Check if opened as 2nd Monitor Customer Display
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  if (urlParams?.get('view') === 'customer-display') {
+    return <CanteenCustomerDisplay />;
+  }
 
   // Automatically ensure the active tab is authorized for the current user
   useEffect(() => {
