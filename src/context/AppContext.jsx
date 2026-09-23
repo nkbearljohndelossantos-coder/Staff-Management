@@ -26,31 +26,46 @@ import { computeEmployeePayroll } from '../utils/payrollCalculations';
 
 const AppContext = createContext(null);
 
+
+const SCHEMA_VERSION = 'v4_excel_masterlist_clean_zero_salary';
+if (typeof window !== 'undefined') {
+  if (localStorage.getItem('nkb_schema_version') !== SCHEMA_VERSION) {
+    [
+      'nkb_hr_staff',
+      'nkb_hr_departments',
+      'nkb_hr_positions',
+      'nkb_hr_attendance',
+      'nkb_hr_coop_balances',
+      'nkb_hr_coop_ledger',
+      'nkb_hr_coop_withdrawals',
+      'nkb_hr_cash_loans',
+      'nkb_hr_canteen_drawer',
+      'nkb_hr_cash_advances',
+      'nkb_canteen_receipts',
+      'nkb_canteen_gate_passes',
+      'nkb_canteen_void_logs',
+      'nkb_product_journeys',
+      'nkb_hr_payruns',
+      'nkb_hr_current_user',
+      'nkb_canteen_pos'
+    ].forEach(key => localStorage.removeItem(key));
+    localStorage.setItem('nkb_schema_version', SCHEMA_VERSION);
+  }
+}
+
 export function AppProvider({ children }) {
   // Load from localStorage or fallback to initial mock data, ensuring all 92 Masterlist staff exist
   const [staffList, setStaffList] = useState(() => {
     const saved = localStorage.getItem('nkb_hr_staff');
-    let parsed = saved ? JSON.parse(saved) : [...INITIAL_STAFF];
-    // Guarantee all 92 registered Masterlist staff and system admins are present
-    INITIAL_STAFF.forEach(init => {
-      const idx = parsed.findIndex(s => 
-        s.id === init.id || 
-        s.employeeId === init.employeeId || 
-        (s.email && init.email && s.email.toLowerCase() === init.email.toLowerCase())
-      );
-      if (idx === -1) {
-        parsed.push(init);
-      } else {
-        // Sync role, position, department, and pin if not yet initialized
-        parsed[idx] = { 
-          ...init, 
-          ...parsed[idx], 
-          role: init.role || parsed[idx].role,
-          departmentId: init.departmentId || parsed[idx].departmentId
-        };
-      }
-    });
-    return parsed.map(s => (!s.pin || s.pin.length < 8) ? { ...s, pin: '12345678' } : s);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.length === INITIAL_STAFF.length && parsed.every(s => s.baseSalary === 0)) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    return [...INITIAL_STAFF];
   });
 
   const [departments, setDepartments] = useState(() => {
@@ -183,26 +198,7 @@ export function AppProvider({ children }) {
   const [payRuns, setPayRuns] = useState(() => {
     const saved = localStorage.getItem('nkb_hr_payruns');
     if (saved) return JSON.parse(saved);
-    
-    // Seed initial payrun items
-    const seeded = [...INITIAL_PAY_RUNS];
-    const run1Items = INITIAL_STAFF.map(s => {
-      const activeLoan = INITIAL_LOANS.find(l => l.staffId === s.id && l.status === 'Approved');
-      const activeCA = INITIAL_CASH_ADVANCES.find(ca => ca.staffId === s.id && ca.status === 'Active');
-      return {
-        staffId: s.id,
-        ...computeEmployeePayroll(
-          s,
-          { otHours: s.id === 'staff-3' ? 12 : 0, lateMinutes: s.id === 'staff-4' ? 35 : 0 },
-          {
-            loanDeduction: activeLoan ? activeLoan.cutoffDeduction : 0,
-            cashAdvanceDeduction: activeCA ? activeCA.cutoffDeduction : 0
-          }
-        )
-      };
-    });
-    seeded[0].items = run1Items;
-    return seeded;
+    return INITIAL_PAY_RUNS;
   });
 
   // Authentication State
@@ -316,9 +312,17 @@ export function AppProvider({ children }) {
   const isEmployee = currentUser?.role === 'employee';
 
   // Auth Methods
-  const loginStaff = (email, password) => {
-    const found = staffList.find(s => s.email.toLowerCase() === email.trim().toLowerCase());
+  const loginStaff = (emailOrId, password) => {
+    const clean = (emailOrId || '').trim().toLowerCase();
+    const found = staffList.find(s => 
+      (s.email && s.email.toLowerCase() === clean) ||
+      (s.employeeId && s.employeeId.toLowerCase() === clean) ||
+      (s.rawName && s.rawName.toLowerCase() === clean)
+    );
     if (found) {
+      if (password && found.pin && found.pin !== password) {
+        return { success: false, message: 'Invalid security PIN or password.' };
+      }
       const userObj = {
         staffId: found.id,
         name: `${found.firstName} ${found.lastName}`,
@@ -337,17 +341,10 @@ export function AppProvider({ children }) {
       } else {
         setActiveTab('staff');
       }
-      const roleDescription = 
-        found.role === 'ceo' ? 'Chief Executive Officer (CEO - Full Universal Access)' :
-        found.role === 'it_admin' ? 'IT Systems Administrator (Super Admin)' :
-        found.role === 'canteen' ? 'Canteen & Inventory Manager' :
-        (found.role === 'finance' || found.role === 'accounting') ? 'Accounting & Finance Officer' :
-        found.role === 'employee' ? 'Employee Self-Service' :
-        'HR Manager & Administrator';
-      showToast(`Welcome back, ${userObj.name}! Logged in as ${roleDescription}`);
+      showToast(`Welcome, ${userObj.name}! Logged in as ${found.positionTitle || found.role}`);
       return { success: true };
     }
-    return { success: false, message: 'Invalid credentials. Try canteen@nkb.com, ceo@nkb.com, it.admin@nkb.com, elena.vance@nkb.com or david.chen@nkb.com' };
+    return { success: false, message: 'Invalid credentials. Enter your registered work email or Employee ID (e.g. NKB052026-0001) and 8-digit PIN.' };
   };
 
   const loginBarcode = (barcodeOrId, pin) => {
@@ -398,13 +395,13 @@ export function AppProvider({ children }) {
     } else if (role === 'it_admin') {
       sample = staffList.find(s => s.role === 'it_admin') || staffList[1];
     } else if (role === 'admin' || role === 'hr') {
-      sample = staffList.find(s => s.id === 'staff-1') || staffList.find(s => s.role === 'hr' || s.role === 'admin');
+      sample = staffList.find(s => s.role === 'hr') || staffList.find(s => s.departmentName && s.departmentName.includes('HR'));
     } else if (role === 'finance' || role === 'accounting') {
-      sample = staffList.find(s => s.id === 'staff-2') || staffList.find(s => s.role === 'accounting' || s.role === 'finance');
+      sample = staffList.find(s => s.role === 'accounting') || staffList.find(s => s.departmentName && s.departmentName.includes('Accounting'));
     } else if (role === 'canteen') {
-      sample = staffList.find(s => s.role === 'canteen') || staffList.find(s => s.id === 'staff-canteen');
+      sample = staffList.find(s => s.role === 'canteen') || staffList.find(s => s.employeeId === 'NKBCANTEEN');
     } else {
-      sample = staffList.find(s => s.role === 'employee') || staffList.find(s => s.id === 'staff-3');
+      sample = staffList.find(s => s.role === 'employee') || staffList[2];
     }
 
     const resolvedRole = 
@@ -415,11 +412,11 @@ export function AppProvider({ children }) {
       role === 'canteen' ? 'canteen' : 'employee';
 
     const userObj = {
-      staffId: sample?.id || 'staff-ceo',
-      name: sample ? `${sample.firstName} ${sample.lastName}` : 'Roberto Sterling',
-      email: sample?.email || 'ceo@nkb.com',
+      staffId: sample?.id || 'emp-nkb052026-0001',
+      name: sample ? `${sample.firstName} ${sample.lastName}` : 'Katherine A. BELLA',
+      email: sample?.email || 'katherinea.bella@nkb.com',
       role: resolvedRole,
-      employeeId: sample?.employeeId || 'NKB-2026-0000',
+      employeeId: sample?.employeeId || 'NKB052026-0001',
       avatar: sample?.avatar
     };
     setCurrentUser(userObj);
@@ -433,12 +430,12 @@ export function AppProvider({ children }) {
       setActiveTab('staff');
     }
     const roleLabel = 
-      resolvedRole === 'ceo' ? 'CEO (Roberto Sterling)' :
-      resolvedRole === 'it_admin' ? 'IT Admin (Victor Stone)' :
-      resolvedRole === 'hr' ? 'HR Manager (Elena Vance)' :
-      resolvedRole === 'accounting' ? 'Accounting & Finance (David Chen)' :
-      resolvedRole === 'canteen' ? 'Canteen Lead (Maria Santos)' :
-      'Employee ESS (Alex Rivera)';
+      resolvedRole === 'ceo' ? `CEO (${userObj.name})` :
+      (resolvedRole === 'admin' || resolvedRole === 'it_admin') ? `COO (${userObj.name})` :
+      resolvedRole === 'hr' ? `HR Manager (${userObj.name})` :
+      resolvedRole === 'accounting' ? `Accounting & Finance (${userObj.name})` :
+      resolvedRole === 'canteen' ? `Canteen Hub (${userObj.name})` :
+      `Employee ESS (${userObj.name})`;
     showToast(`Switched active account to: ${roleLabel}`);
   };
 
@@ -668,7 +665,7 @@ export function AppProvider({ children }) {
 
   const accountingApproveWithdrawal = (withdrawalId) => {
     if (currentUser && !isAccounting) {
-      showToast('Only Accounting & Finance (David Chen) can authorize share capital withdrawals.', 'error');
+      showToast('Only Accounting & Finance can authorize share capital withdrawals.', 'error');
       return;
     }
     const req = coopWithdrawals.find(w => w.id === withdrawalId);
@@ -704,7 +701,7 @@ export function AppProvider({ children }) {
     setCoopWithdrawals(prev => prev.map(w => w.id === withdrawalId ? {
       ...w,
       status: 'Approved',
-      approvedBy: currentUser ? `${currentUser.name} (Accounting)` : 'David Chen (Accounting)',
+      approvedBy: currentUser ? `${currentUser.name} (Accounting)` : 'Finance & Accounting',
       approvedAt: new Date().toISOString()
     } : w));
 
@@ -713,14 +710,14 @@ export function AppProvider({ children }) {
 
   const accountingRejectWithdrawal = (withdrawalId, reason = '') => {
     if (currentUser && !isAccounting) {
-      showToast('Only Accounting & Finance (David Chen) can reject share capital withdrawals.', 'error');
+      showToast('Only Accounting & Finance can reject share capital withdrawals.', 'error');
       return;
     }
     setCoopWithdrawals(prev => prev.map(w => w.id === withdrawalId ? {
       ...w,
       status: 'Rejected',
       rejectReason: reason || 'Disapproved by Accounting',
-      approvedBy: currentUser ? `${currentUser.name} (Accounting)` : 'David Chen (Accounting)',
+      approvedBy: currentUser ? `${currentUser.name} (Accounting)` : 'Finance & Accounting',
       approvedAt: new Date().toISOString()
     } : w));
 
@@ -776,7 +773,7 @@ export function AppProvider({ children }) {
 
   const approveCashLoan = (loanId) => {
     if (currentUser && !isHR) {
-      showToast('Only HR (Elena Vance) can review and endorse loan applications.', 'error');
+      showToast('Only HR or Super Admin can review and endorse loan applications.', 'error');
       return;
     }
     const loan = cashLoans.find(l => l.id === loanId);
@@ -787,7 +784,7 @@ export function AppProvider({ children }) {
       ...l,
       status: 'Pending Accounting Approval',
       hrApprovedAt: new Date().toISOString(),
-      hrApprovedBy: currentUser ? `${currentUser.name} (HR)` : 'Elena Vance (HR)'
+      hrApprovedBy: currentUser ? `${currentUser.name} (HR)` : 'HR Management'
     } : l));
 
     showToast(`HR endorsed ₱${loan.principal.toLocaleString()} loan. Forwarded to Accounting for fund withdrawal & disbursement.`);
@@ -796,7 +793,7 @@ export function AppProvider({ children }) {
   // Step 2: Accounting approves and withdraws from Coop Shares
   const accountingApproveLoan = (loanId) => {
     if (currentUser && !isAccounting) {
-      showToast('Only Accounting & Finance (David Chen) can authorize fund disbursements from Coop Share Capital.', 'error');
+      showToast('Only Accounting & Finance can authorize fund disbursements from Coop Share Capital.', 'error');
       return;
     }
     const loan = cashLoans.find(l => l.id === loanId);
@@ -820,7 +817,7 @@ export function AppProvider({ children }) {
       ...l,
       status: 'Approved',
       approvedAt: new Date().toISOString(),
-      approvedBy: currentUser ? `${currentUser.name} (Accounting)` : 'David Chen (Accounting)'
+      approvedBy: currentUser ? `${currentUser.name} (Accounting)` : 'Finance & Accounting'
     } : l));
 
     showToast(`Accounting approved & disbursed ₱${loan.principal.toLocaleString()} loan. Funded via Coop Shares.`);
@@ -828,7 +825,7 @@ export function AppProvider({ children }) {
 
   const accountingRejectLoan = (loanId, reason = '') => {
     if (currentUser && !isAccounting) {
-      showToast('Only Accounting & Finance (David Chen) can decline loan disbursements.', 'error');
+      showToast('Only Accounting & Finance can decline loan disbursements.', 'error');
       return;
     }
     setCashLoans(prev => prev.map(l => l.id === loanId ? {
@@ -836,7 +833,7 @@ export function AppProvider({ children }) {
       status: 'Rejected by Accounting',
       rejectReason: reason || 'Declined by Accounting',
       accountingRejectedAt: new Date().toISOString(),
-      accountingRejectedBy: currentUser ? `${currentUser.name} (Accounting)` : 'David Chen (Accounting)'
+      accountingRejectedBy: currentUser ? `${currentUser.name} (Accounting)` : 'Finance & Accounting'
     } : l));
 
     showToast('Loan disbursement declined by Accounting.', 'info');
@@ -844,7 +841,7 @@ export function AppProvider({ children }) {
 
   const rejectCashLoan = (loanId, reason = '') => {
     if (currentUser && !isHR) {
-      showToast('Only HR (Elena Vance) can decline loan applications.', 'error');
+      showToast('Only HR or Super Admin can decline loan applications.', 'error');
       return;
     }
     setCashLoans(prev => prev.map(l => l.id === loanId ? {
@@ -852,7 +849,7 @@ export function AppProvider({ children }) {
       status: 'Rejected by HR',
       rejectReason: reason || 'Declined by HR',
       approvedAt: new Date().toISOString(),
-      approvedBy: currentUser ? `${currentUser.name} (HR)` : 'Elena Vance (HR)'
+      approvedBy: currentUser ? `${currentUser.name} (HR)` : 'HR Management'
     } : l));
 
     showToast('Loan application declined by HR.', 'info');
@@ -897,21 +894,21 @@ export function AppProvider({ children }) {
 
   const hrAcceptCashAdvance = (advanceId) => {
     if (currentUser && !isHR) {
-      showToast('Only HR (Elena Vance) can review and accept cash advance requests.', 'error');
+      showToast('Only HR or Super Admin can review and accept cash advance requests.', 'error');
       return;
     }
     setCashAdvances(prev => prev.map(ca => ca.id === advanceId ? {
       ...ca,
       status: 'Pending Canteen Claim',
       hrApprovedAt: new Date().toISOString(),
-      hrApprovedBy: currentUser ? `${currentUser.name} (HR)` : 'Elena Vance (HR)'
+      hrApprovedBy: currentUser ? `${currentUser.name} (HR)` : 'HR Management'
     } : ca));
     showToast('Cash advance approved by HR! Ready for payout claim at Canteen under HR authority.');
   };
 
   const hrDeclineCashAdvance = (advanceId, reason = '') => {
     if (currentUser && !isHR) {
-      showToast('Only HR (Elena Vance) can decline cash advance requests.', 'error');
+      showToast('Only HR or Super Admin can decline cash advance requests.', 'error');
       return;
     }
     setCashAdvances(prev => prev.map(ca => ca.id === advanceId ? {
@@ -919,7 +916,7 @@ export function AppProvider({ children }) {
       status: 'Declined by HR',
       declineReason: reason || 'Declined by HR',
       declinedAt: new Date().toISOString(),
-      declinedBy: currentUser ? `${currentUser.name} (HR)` : 'Elena Vance (HR)'
+      declinedBy: currentUser ? `${currentUser.name} (HR)` : 'HR Management'
     } : ca));
     showToast('Cash advance declined by HR.', 'info');
   };
@@ -1097,13 +1094,13 @@ export function AppProvider({ children }) {
 
   const approvePayRun = (payRunId) => {
     if (currentUser && !isAccounting) {
-      showToast('Only Accounting & Finance (David Chen) can sign off and approve pay runs.', 'error');
+      showToast('Only Accounting & Finance can sign off and approve pay runs.', 'error');
       return;
     }
     setPayRuns(prev => prev.map(r => r.id === payRunId ? {
       ...r,
       status: 'Approved',
-      approvedBy: currentUser ? `${currentUser.name} (Accounting)` : 'David Chen (Accounting)',
+      approvedBy: currentUser ? `${currentUser.name} (Accounting)` : 'Finance & Accounting',
       approvedAt: new Date().toISOString()
     } : r));
     showToast('Pay run batch signed off and approved by Accounting!', 'success');
@@ -1111,7 +1108,7 @@ export function AppProvider({ children }) {
 
   const disbursePayRun = (payRunId) => {
     if (currentUser && !isAccounting) {
-      showToast('Only Accounting & Finance (David Chen) can disburse pay runs and lock records.', 'error');
+      showToast('Only Accounting & Finance can disburse pay runs and lock records.', 'error');
       return;
     }
     const run = payRuns.find(r => r.id === payRunId);
@@ -1270,7 +1267,7 @@ export function AppProvider({ children }) {
         paymentMethod,
         orderType: 'Grocery',
         purpose: 'Canteen Grocery Pantry - Authorized Factory Gate Pass for Personal Household Supplies',
-        issuedBy: currentUser ? currentUser.name : 'Maria Santos (Canteen Lead)',
+        issuedBy: currentUser ? currentUser.name : 'Canteen Cashier',
         gateStatus: 'Issued - Awaiting Gate Exit',
         clearedAt: null,
         securityGuard: null
@@ -1281,7 +1278,7 @@ export function AppProvider({ children }) {
     const newReceipt = {
       receiptNo,
       date: new Date().toISOString(),
-      cashierName: currentUser ? currentUser.name : 'Maria Santos',
+      cashierName: currentUser ? currentUser.name : 'Canteen Cashier',
       customerType: customerType || 'Staff Member',
       customerName: staffObj ? `${staffObj.firstName} ${staffObj.lastName}` : (customerName || 'Walk-in Customer'),
       staffId: staffId || null,
@@ -1359,7 +1356,7 @@ export function AppProvider({ children }) {
       id: `void-${Date.now()}`,
       receiptNo,
       voidedAt: new Date().toISOString(),
-      voidedBy: supervisorName || (currentUser ? `${currentUser.name} (${currentUser.role.toUpperCase()})` : 'Maria Santos (Supervisor)'),
+      voidedBy: supervisorName || (currentUser ? `${currentUser.name} (${currentUser.role.toUpperCase()})` : 'Authorized Supervisor'),
       authRole: currentUser?.role || 'canteen',
       authMethod: authMethod || 'RFID Badge Tap',
       cardBadgeId: cardId,
@@ -1380,7 +1377,7 @@ export function AppProvider({ children }) {
   // Confirm Canteen Salary Deduction by HR (deducted to bank payroll, then charged to COOP budget)
   const confirmCanteenSalaryDeduction = (receiptNo) => {
     if (currentUser && !isHR) {
-      showToast('Access Denied: Only HR (Elena Vance) or Super Admin can confirm bank payroll deductions.', 'error');
+      showToast('Access Denied: Only HR or Super Admin or Super Admin can confirm bank payroll deductions.', 'error');
       return { success: false, message: 'Unauthorized' };
     }
 
@@ -1405,7 +1402,7 @@ export function AppProvider({ children }) {
       salaryDeductionStatus: 'Confirmed by HR - Deducted to Bank & COOP',
       isDeductedToCoop: true,
       hrConfirmedAt: new Date().toISOString(),
-      hrConfirmedBy: currentUser ? `${currentUser.name} (HR)` : 'Elena Vance (HR)'
+      hrConfirmedBy: currentUser ? `${currentUser.name} (HR)` : 'HR Management'
     } : r));
 
     // 2. Deduct from COOP budget / balance
@@ -1543,7 +1540,7 @@ export function AppProvider({ children }) {
       ...po,
       status: 'Fulfilled',
       fulfilledAt: new Date().toISOString(),
-      fulfilledBy: currentUser ? `${currentUser.name} (Canteen)` : 'Maria Santos (Canteen)'
+      fulfilledBy: currentUser ? `${currentUser.name} (Canteen)` : 'Canteen Staff'
     } : po));
     showToast('Purchase Order marked as Fulfilled and handed over to employee!');
   };
@@ -1580,7 +1577,7 @@ export function AppProvider({ children }) {
     } else if (isVoidStage) {
       procedureName = 'Voided Back to Inventory';
       const voidReason = extraInfo?.reason || journey.voidReason || 'Order voided/cancelled; product returned intact to active inventory';
-      const voidedBy = extraInfo?.voidedBy || 'Maria Santos (Canteen Supervisor)';
+      const voidedBy = extraInfo?.voidedBy || 'Authorized Supervisor';
       const voidBadge = extraInfo?.badgeId || 'MGR-CARD-001';
       statusText = `Voided Back to Inventory - Handled by ${voidedBy}`;
       milestoneNote = `Supervisor ${voidedBy} [${voidBadge}] approved void. Reason: ${voidReason}. Stock (+1) restored to active inventory.`;
@@ -1599,7 +1596,7 @@ export function AppProvider({ children }) {
           claimedByEmployeeId: isClaimedStage ? claimantId : j.claimedByEmployeeId,
           claimedByDepartment: isClaimedStage ? claimantDept : j.claimedByDepartment,
           claimedAt: isClaimedStage ? nowIso : j.claimedAt,
-          voidedBy: isVoidStage ? (extraInfo?.voidedBy || 'Maria Santos (Canteen Supervisor)') : j.voidedBy,
+          voidedBy: isVoidStage ? (extraInfo?.voidedBy || 'Authorized Supervisor') : j.voidedBy,
           voidCardBadgeId: isVoidStage ? (extraInfo?.badgeId || 'MGR-CARD-001') : j.voidCardBadgeId,
           voidReason: isVoidStage ? (extraInfo?.reason || 'Order voided and product returned') : j.voidReason,
           voidedAt: isVoidStage ? nowIso : j.voidedAt,
@@ -1636,7 +1633,7 @@ export function AppProvider({ children }) {
     const voidIdx = PRODUCT_JOURNEY_STAGES.findIndex(s => s.id === 'voided_back');
     const nowIso = new Date().toISOString();
     const voidReason = voidDetails?.reason || 'Employee shift reassigned / cancelled order; returned to stock';
-    const voidedBy = voidDetails?.voidedBy || (currentUser ? currentUser.name : 'Maria Santos (Canteen Supervisor)');
+    const voidedBy = voidDetails?.voidedBy || (currentUser ? currentUser.name : 'Authorized Supervisor');
     const voidBadge = voidDetails?.badgeId || 'MGR-CARD-001';
 
     setProductJourneys(prev => prev.map(j => {

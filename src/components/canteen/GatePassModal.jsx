@@ -204,7 +204,7 @@ export default function GatePassModal({ gatePass, onClose }) {
             <div className="grid grid-cols-3 gap-3 pt-3 border-t-2 border-slate-900 text-[9px] text-center">
               <div>
                 <div className="h-8 flex items-end justify-center font-serif text-[10px] italic text-slate-700 border-b border-slate-300 pb-0.5">
-                  {gatePass.issuedBy || 'Maria Santos'}
+                  {gatePass.issuedBy || 'Earl John DELOS SANTOS'}
                 </div>
                 <span className="font-bold text-slate-800 block mt-1 uppercase text-[8px]">
                   Authorized Issuer

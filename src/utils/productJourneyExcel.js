@@ -62,7 +62,7 @@ export function exportProductJourneyExcel(productJourneys = []) {
     'Quantity in Stock': j.quantity || 1,
     'Date Stocked in Inventory': j.lastProcedureDate ? new Date(j.lastProcedureDate).toLocaleString() : new Date(j.updatedAt || Date.now()).toLocaleString(),
     'Storage Location / Status': j.status || 'Canteen Pantry & Warehouse Shelves',
-    'Inspector': j.inspector || 'Maria Santos'
+    'Inspector': j.inspector || 'Earl John DELOS SANTOS'
   }));
 
   // 3. CATEGORY 2: CLAIMED BY EMPLOYEE (Whose employee)
@@ -104,7 +104,7 @@ export function exportProductJourneyExcel(productJourneys = []) {
     'Original Claimant': j.claimedBy || 'N/A',
     'Claimant ID & Dept': j.claimedByEmployeeId ? (j.claimedByEmployeeId + ' (' + (j.claimedByDepartment || 'N/A') + ')') : 'N/A',
     'Date & Time Voided': j.voidedAt ? new Date(j.voidedAt).toLocaleString() : new Date(j.lastProcedureDate || j.updatedAt || Date.now()).toLocaleString(),
-    'Void Authorized By (Supervisor)': j.voidedBy || 'Maria Santos (Canteen Supervisor)',
+    'Void Authorized By (Supervisor)': j.voidedBy || 'Earl John DELOS SANTOS (Canteen Supervisor)',
     'Supervisor Badge / Card ID': j.voidCardBadgeId || 'MGR-CARD-001',
     'Void Reason': j.voidReason || 'Order cancelled; items returned intact to inventory',
     'Stock Restored Status': j.stockRestored ? 'RESTOCKED (+1 Active Stock)' : 'Restored'

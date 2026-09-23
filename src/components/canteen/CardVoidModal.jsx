@@ -173,7 +173,7 @@ export default function CardVoidModal({ receipt, onClose }) {
                 onClick={() => handleSimulateScan('RFID-CANT-8890', 'rfid')}
                 className="text-left px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 transition cursor-pointer"
               >
-                <span className="font-bold text-white block">Maria Santos (Lead)</span>
+                <span className="font-bold text-white block">Canteen Supervisor</span>
                 <span className="text-[9px] text-slate-400 font-mono">RFID-CANT-8890</span>
               </button>
               <button

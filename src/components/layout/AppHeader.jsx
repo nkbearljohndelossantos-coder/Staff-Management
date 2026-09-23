@@ -8,19 +8,21 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
   const getRoleBadge = (role) => {
     switch (role) {
       case 'ceo':
-        return { label: 'CEO · Roberto Sterling', color: 'bg-slate-900 text-slate-200 border-slate-700' };
+        return { label: `CEO · ${currentUser?.name || 'Katherine A. BELLA'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
       case 'it_admin':
-        return { label: 'IT Admin · Victor Stone', color: 'bg-slate-900 text-slate-200 border-slate-700' };
       case 'admin':
+        return { label: `COO · ${currentUser?.name || 'Norvin L. BELLA'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
       case 'hr':
-        return { label: 'HR Admin · Elena Vance', color: 'bg-slate-900 text-slate-200 border-slate-700' };
+        return { label: `HR Admin · ${currentUser?.name || 'Genevieve Anne A. JURADO'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
       case 'finance':
       case 'accounting':
-        return { label: 'Accounting · David Chen', color: 'bg-slate-900 text-slate-200 border-slate-700' };
+        return { label: `Accounting · ${currentUser?.name || 'Dorina NABONG'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
       case 'canteen':
-        return { label: 'Canteen · Maria Santos', color: 'bg-slate-900 text-slate-200 border-slate-700' };
+        return { label: `Canteen · ${currentUser?.name || 'Earl John DELOS SANTOS'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
+      case 'security':
+        return { label: `Security · ${currentUser?.name || 'Marvin G. ATAYDE'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
       default:
-        return { label: 'Employee ESS', color: 'bg-slate-900 text-slate-200 border-slate-700' };
+        return { label: `Staff · ${currentUser?.name || 'Employee ESS'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
     }
   };
 
@@ -82,7 +84,7 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
               <button
                 type="button"
                 onClick={() => switchDemoRole('ceo')}
-                title="Assume CEO Account (Roberto Sterling)"
+                title="Assume CEO Account (Katherine A. BELLA)"
                 className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
                   currentUser?.role === 'ceo'
                     ? 'bg-white text-slate-950 font-black shadow-sm'
@@ -93,22 +95,22 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
               </button>
               <button
                 type="button"
-                onClick={() => switchDemoRole('it_admin')}
-                title="Assume IT Admin Account (Victor Stone)"
+                onClick={() => switchDemoRole('admin')}
+                title="Assume COO Account (Norvin L. BELLA)"
                 className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                  currentUser?.role === 'it_admin'
+                  currentUser?.role === 'admin'
                     ? 'bg-white text-slate-950 font-black shadow-sm'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800'
                 }`}
               >
-                IT Admin
+                COO
               </button>
               <button
                 type="button"
                 onClick={() => switchDemoRole('hr')}
-                title="Assume HR Manager Account (Elena Vance)"
+                title="Assume HR Manager Account (Genevieve Anne A. JURADO)"
                 className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                  currentUser?.role === 'hr' || currentUser?.role === 'admin'
+                  currentUser?.role === 'hr'
                     ? 'bg-white text-slate-950 font-bold shadow-sm'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800'
                 }`}
@@ -118,7 +120,7 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
               <button
                 type="button"
                 onClick={() => switchDemoRole('accounting')}
-                title="Assume Accounting Officer Account (David Chen)"
+                title="Assume Accounting Officer Account (Dorina NABONG)"
                 className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
                   currentUser?.role === 'accounting' || currentUser?.role === 'finance'
                     ? 'bg-white text-slate-950 font-bold shadow-sm'
@@ -130,7 +132,7 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
               <button
                 type="button"
                 onClick={() => switchDemoRole('canteen')}
-                title="Assume Canteen Lead Account (Maria Santos)"
+                title="Assume Canteen Hub Account"
                 className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
                   currentUser?.role === 'canteen'
                     ? 'bg-white text-slate-950 font-bold shadow-sm'
@@ -142,7 +144,7 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
               <button
                 type="button"
                 onClick={() => switchDemoRole('employee')}
-                title="Assume Employee ESS Account (Alex Rivera)"
+                title="Assume Employee ESS Account (Merry Jean I. ALONZO)"
                 className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
                   currentUser?.role === 'employee'
                     ? 'bg-white text-slate-950 font-bold shadow-sm'

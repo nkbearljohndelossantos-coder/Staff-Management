@@ -111,7 +111,7 @@ export default function PayRunDetails({ payRunId, onBack }) {
           ) : (
             <div className="px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-medium flex items-center gap-1.5">
               <Shield className="h-3.5 w-3.5 text-slate-500" />
-              <span>Approval Authority: Accounting (David Chen) or Super Admin</span>
+              <span>Approval Authority: Finance &amp; Accounting or Super Admin</span>
             </div>
           )}
 

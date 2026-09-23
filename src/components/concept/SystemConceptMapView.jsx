@@ -172,7 +172,7 @@ export default function SystemConceptMapView() {
       clusterId: 'hr_ops',
       title: 'Staff Masterfiles & Automated ID Generation',
       code: 'HR-STAFF',
-      owner: 'HR Director (Elena Vance)',
+      owner: 'HR Department (Genevieve Anne A. JURADO)',
       roles: ['ceo', 'it_admin', 'hr', 'admin'],
       summary: 'Central employee directory maintaining personal data, employment status, compensation baselines, and unique barcodes.',
       inputs: ['New hire onboarding forms', 'Department / position mappings'],
@@ -186,7 +186,7 @@ export default function SystemConceptMapView() {
       clusterId: 'hr_ops',
       title: 'Department Hierarchy & Position Taxonomy',
       code: 'HR-ORG',
-      owner: 'HR Director (Elena Vance)',
+      owner: 'HR Department (Genevieve Anne A. JURADO)',
       roles: ['ceo', 'it_admin', 'hr', 'admin'],
       summary: 'Defines factory organizational structure, operational departments (Mfg, QA, Logistics, Canteen, etc.), and salary grades.',
       inputs: ['Organizational restructuring memos', 'Job position benchmarks'],
@@ -232,7 +232,7 @@ export default function SystemConceptMapView() {
       clusterId: 'payroll',
       title: 'Gross-to-Net Payroll Calculation Engine',
       code: 'PAY-CALC',
-      owner: 'Senior Payroll Officer (David Chen)',
+      owner: 'Finance & Accounting (Dorina NABONG)',
       roles: ['ceo', 'it_admin', 'accounting', 'finance'],
       summary: 'Executes mathematical computation of gross compensation, statutory social insurance deductions, loan amortizations, and take-home pay.',
       inputs: ['Staff base pay rates', 'HR verified attendance hours', 'Active loan amortization schedules', 'Canteen advances'],
@@ -304,7 +304,7 @@ export default function SystemConceptMapView() {
       clusterId: 'coop',
       title: 'Canteen Salary Deduction & COOP Budget Reconciliation',
       code: 'COOP-CANTEEN-RECON',
-      owner: 'HR Director (Elena Vance) & Accounting',
+      owner: 'HR Department & Finance / Accounting',
       roles: ['ceo', 'it_admin', 'hr', 'accounting', 'admin'],
       summary: 'Validates that Canteen transactions charged to Salary Deduction have been deducted in the bank payroll before debiting the employee COOP budget.',
       inputs: ['Canteen receipts marked "Salary Deduction"', 'Bank payroll disbursement confirmation'],
@@ -320,7 +320,7 @@ export default function SystemConceptMapView() {
       clusterId: 'canteen',
       title: 'Barcode POS Register & Dual-Nature Checkout',
       code: 'POS-CHECKOUT',
-      owner: 'Canteen Manager & Cashier (Rosa Morales)',
+      owner: 'Canteen Operations & Inventory (Earl John DELOS SANTOS)',
       roles: ['ceo', 'it_admin', 'canteen'],
       summary: 'High-speed retail barcode scanner register. Distinguishes Dine-In vs Grocery and Cash vs Salary Deduction.',
       inputs: ['Barcode scan of pantry items / meals', 'Order Nature (Dine In / Grocery)', 'Payment Method (Cash / Salary Deduction)'],
@@ -438,7 +438,7 @@ export default function SystemConceptMapView() {
       clusterId: 'ess',
       title: 'Employee Self-Service (ESS) Personal Portal',
       code: 'ESS-PORTAL',
-      owner: 'All Staff Personnel (Alex Rivera)',
+      owner: 'All Staff Personnel',
       roles: ['ceo', 'it_admin', 'hr', 'accounting', 'canteen', 'employee'],
       summary: 'Self-service dashboard where staff view payslips, print digital ID badges, inspect attendance logs, and track loans.',
       inputs: ['Employee login credentials or Barcode scan'],
@@ -452,7 +452,7 @@ export default function SystemConceptMapView() {
       clusterId: 'ess',
       title: 'Request Order Button & Gate Pass Download Center',
       code: 'ESS-REQUEST-CENTER',
-      owner: 'All Staff Personnel (Alex Rivera)',
+      owner: 'All Staff Personnel',
       roles: ['ceo', 'it_admin', 'hr', 'accounting', 'canteen', 'employee'],
       summary: 'Prominent "Request Order" interface for manufactured products and 1-click access to print Half-A4 grocery Gate Passes.',
       inputs: ['Employee order request trigger', 'Gate pass history'],
@@ -475,9 +475,9 @@ export default function SystemConceptMapView() {
       steps: [
         {
           step: 1,
-          role: 'Canteen Cashier (Rosa Morales)',
+          role: 'Canteen Cashier',
           title: 'Register Barcode Scan & Order Selection',
-          detail: 'Cashier scans groceries/food. Selects Order Nature: "Grocery" and Payment Method: "Salary Deduction". Selects staff bearer (Alex Rivera).',
+          detail: 'Cashier scans groceries/food. Selects Order Nature: "Grocery" and Payment Method: "Salary Deduction". Selects staff bearer.',
           icon: Utensils,
           nodeId: 'cant-1'
         },
@@ -499,7 +499,7 @@ export default function SystemConceptMapView() {
         },
         {
           step: 4,
-          role: 'Payroll Officer (David Chen)',
+          role: 'Finance & Accounting (Dorina NABONG)',
           title: 'Semi-Monthly Payroll Deduction Inclusion',
           detail: 'During pay run computation, the Canteen Salary Deduction is deducted from the employee net pay and included in the bank transmittal schedule.',
           icon: Calculator,
@@ -507,7 +507,7 @@ export default function SystemConceptMapView() {
         },
         {
           step: 5,
-          role: 'HR Director (Elena Vance)',
+          role: 'HR Department (Genevieve Anne A. JURADO)',
           title: 'HR Bank Payroll Deduction Confirmation',
           detail: 'HR accesses the Cooperative & Loans Manager. Verifies bank confirmed the payroll deduction. Clicks "Confirm Bank Deduction & Deduct to COOP".',
           icon: Landmark,
@@ -531,7 +531,7 @@ export default function SystemConceptMapView() {
       steps: [
         {
           step: 1,
-          role: 'Staff Employee (Alex Rivera)',
+          role: 'Staff Employee',
           title: 'ESS Loan Application Submission',
           detail: 'Employee selects loan category (Cash/Medical/Motor 2%, Gadget/Education 3%, Appliance 5%), principal amount, and repayment term (3-12 mos).',
           icon: Users,
@@ -539,7 +539,7 @@ export default function SystemConceptMapView() {
         },
         {
           step: 2,
-          role: 'HR Director (Elena Vance)',
+          role: 'HR Department (Genevieve Anne A. JURADO)',
           title: 'Stage 1: HR Eligibility Endorsement',
           detail: 'HR reviews employee tenure, performance standing, and debt-to-income ratio. Endorses application and forwards it to Accounting.',
           icon: Shield,
@@ -547,7 +547,7 @@ export default function SystemConceptMapView() {
         },
         {
           step: 3,
-          role: 'Senior Payroll Officer (David Chen)',
+          role: 'Finance & Accounting (Dorina NABONG)',
           title: 'Stage 2: Accounting Approval & Fund Release',
           detail: 'Accounting validates Cooperative Capital Pool liquidity. Approves voucher and disburses cash/check from the COOP pool.',
           icon: Calculator,
@@ -571,7 +571,7 @@ export default function SystemConceptMapView() {
       steps: [
         {
           step: 1,
-          role: 'Staff Employee (Alex Rivera)',
+          role: 'Staff Employee',
           title: 'Click "Request Order" in Employee Portal',
           detail: 'Employee selects NKB manufactured products (e.g. Inverter Arc Welder 200A, Electric Motor, Tool Chest) with factory discount pricing.',
           icon: Package,

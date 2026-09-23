@@ -337,8 +337,8 @@ export default function CoopLoansManager() {
                         {isSuperAdmin
                           ? `Super Admin: ${currentUser?.name} (${currentUser?.role?.toUpperCase()})`
                           : isAccounting
-                          ? 'Authorized: David Chen (Accounting)'
-                          : 'View-Only for HR (Elena Vance)'}
+                          ? 'Authorized: Finance & Accounting'
+                          : 'View-Only for HR'}
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-0.5">
@@ -346,7 +346,7 @@ export default function CoopLoansManager() {
                         ? 'Super Admin clearance: Universal authority to endorse loans, disburse funds, and approve share withdrawals.'
                         : isAccounting
                         ? 'You have sole authority to release Coop Share Capital and approve withdrawal disbursements.'
-                        : 'Elena Vance (HR) requested these disbursements. Sign in with an Accounting or Super Admin account to authorize release.'}
+                        : 'HR endorsed these disbursements. Sign in with an Accounting or Super Admin account to authorize release.'}
                     </p>
                   </div>
                 </div>
@@ -409,7 +409,7 @@ export default function CoopLoansManager() {
                         ) : (
                           <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-medium flex items-center gap-1.5 shrink-0">
                             <Clock className="h-3.5 w-3.5 text-slate-500" />
-                            <span>Awaiting Accounting Sign-off (David Chen)</span>
+                            <span>Awaiting Accounting Sign-off</span>
                           </div>
                         )}
                       </div>
@@ -471,7 +471,7 @@ export default function CoopLoansManager() {
                         ) : (
                           <div className="px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-medium flex items-center gap-1.5 shrink-0">
                             <Clock className="h-3.5 w-3.5 text-slate-500" />
-                            <span>Awaiting Accounting Sign-off (David Chen)</span>
+                            <span>Awaiting Accounting Sign-off</span>
                           </div>
                         )}
                       </div>

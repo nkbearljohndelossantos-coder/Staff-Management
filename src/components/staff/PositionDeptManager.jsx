@@ -437,7 +437,7 @@ export default function PositionDeptManager() {
                     type="text"
                     value={deptForm.manager}
                     onChange={(e) => setDeptForm({ ...deptForm, manager: e.target.value })}
-                    placeholder="e.g. Maria Santos"
+                    placeholder="e.g. Department Head"
                     className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 outline-none focus:ring-2 focus:ring-slate-900"
                   />
                 </div>

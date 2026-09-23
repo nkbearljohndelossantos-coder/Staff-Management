@@ -54,7 +54,7 @@ export default function ProductTrackingMap() {
   // Form states
   const [selectedStaffId, setSelectedStaffId] = useState('');
   const [voidReasonInput, setVoidReasonInput] = useState('Employee emergency shift call-out; order cancelled and items returned intact to inventory');
-  const [voidSupervisorInput, setVoidSupervisorInput] = useState(currentUser?.name ? `${currentUser.name} (Supervisor)` : 'Maria Santos (Canteen Supervisor)');
+  const [voidSupervisorInput, setVoidSupervisorInput] = useState(currentUser?.name ? `${currentUser.name} (Supervisor)` : 'Authorized Supervisor');
   const [voidCardBadgeInput, setVoidCardBadgeInput] = useState('MGR-CARD-001');
 
   const activeJourney = productJourneys.find(j => j.id === selectedJourneyId) || productJourneys[0];
@@ -153,6 +153,48 @@ export default function ProductTrackingMap() {
     j.currentStageIndex === 4 ||
     j.stockRestored === true
   );
+
+  if (!activeJourney) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-md text-slate-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-white">
+                <Compass className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-black text-white tracking-wide">
+                  Live Product Journey &amp; Systematic Route Map
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Ordered → Receiving Dock → Inventory → Employee Claimed → Voided Back to Inventory.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => exportProductJourneyExcel(productJourneys)}
+                className="h-10 px-3.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-sm"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-white" />
+                <span>Export Printable Excel</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-12 text-center shadow-md">
+          <Package className="h-12 w-12 text-slate-600 mx-auto mb-3" />
+          <h4 className="text-base font-bold text-white mb-1">No Active Product Journey Records</h4>
+          <p className="text-xs text-slate-400 max-w-md mx-auto">
+            All demo product journeys have been cleared. As inbound inventory supplies are scanned and received in the Canteen Hub, live product journeys will be tracked here.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -1260,7 +1302,7 @@ export default function ProductTrackingMap() {
               <div className="pt-8 border-t border-slate-300 grid grid-cols-3 gap-8 text-center text-xs">
                 <div>
                   <div className="border-b border-slate-400 pb-8 mb-1"></div>
-                  <span className="font-bold text-slate-900 block">Maria Santos</span>
+                  <span className="font-bold text-slate-900 block">Earl John DELOS SANTOS</span>
                   <span className="text-[10px] text-slate-500">Canteen &amp; Inventory Lead</span>
                 </div>
                 <div>

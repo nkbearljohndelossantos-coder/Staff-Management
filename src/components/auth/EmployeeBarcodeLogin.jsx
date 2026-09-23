@@ -4,8 +4,8 @@ import { useApp } from '../../context/AppContext';
 
 export default function EmployeeBarcodeLogin({ onBackToStaffLogin }) {
   const { loginBarcode, staffList } = useApp();
-  const [barcodeInput, setBarcodeInput] = useState('NKB-2026-0003');
-  const [pin, setPin] = useState('12345678');
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,12 +24,6 @@ export default function EmployeeBarcodeLogin({ onBackToStaffLogin }) {
     }, 400);
   };
 
-  const handleQuickSelect = (staff) => {
-    setBarcodeInput(staff.barcodeValue);
-    setPin(staff.pin || '12345678');
-    setError('');
-  };
-
   return (
     <div className="relative min-h-[480px]">
       <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/10">
@@ -39,7 +33,7 @@ export default function EmployeeBarcodeLogin({ onBackToStaffLogin }) {
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-300 transition cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4 text-slate-400" />
-          Back to HR Terminal
+          Back to Staff Terminal
         </button>
         <span className="text-[10px] uppercase font-mono font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
           Barcode / ESS Mode
@@ -60,7 +54,7 @@ export default function EmployeeBarcodeLogin({ onBackToStaffLogin }) {
           </div>
 
           <p className="text-xs text-slate-300 leading-relaxed">
-            Use your physical company badge barcode or enter your assigned Employee ID number (e.g. <span className="font-mono text-white font-bold">NKB-2026-0003</span> or <span className="font-mono text-white font-bold">PRJ-2026-0001</span>) and 8-digit security PIN.
+            Use your physical company badge barcode or enter your assigned Employee ID number (e.g. <span className="font-mono text-white font-bold">NKB052026-0001</span>) and 8-digit security PIN.
           </p>
 
           <div className="grid grid-cols-3 gap-2 text-center">
@@ -81,24 +75,10 @@ export default function EmployeeBarcodeLogin({ onBackToStaffLogin }) {
             </div>
           </div>
 
-          {/* Quick Select Employee Badges */}
-          <div className="pt-2 border-t border-white/10">
-            <p className="text-[10px] font-bold text-slate-400 mb-2 flex items-center gap-1">
-              <Sparkles className="h-3 w-3 text-slate-400" />
-              Sample Employee Badges:
+          <div className="pt-2 border-t border-white/10 text-xs text-slate-400">
+            <p className="text-[11px] font-medium leading-relaxed">
+              Self-service portal for personal attendance history, statutory contributions, approved gate passes, and printable payslips.
             </p>
-            <div className="flex flex-wrap gap-1.5">
-              {staffList.slice(2, 5).map(s => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => handleQuickSelect(s)}
-                  className="text-[10px] font-medium px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 transition cursor-pointer"
-                >
-                  {s.firstName} ({s.employeeId})
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 
@@ -126,7 +106,7 @@ export default function EmployeeBarcodeLogin({ onBackToStaffLogin }) {
                   required
                   value={barcodeInput}
                   onChange={(e) => setBarcodeInput(e.target.value.toUpperCase())}
-                  placeholder="NKB-2026-0003"
+                  placeholder="NKB052026-0001"
                   className="w-full h-11 px-3.5 rounded-xl bg-slate-950/80 border border-white/20 font-mono text-sm tracking-wider text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 transition uppercase"
                 />
               </div>
@@ -186,7 +166,7 @@ export default function EmployeeBarcodeLogin({ onBackToStaffLogin }) {
 
           <div className="mt-4 p-2.5 rounded-xl border border-white/15 bg-white/5 text-slate-300 text-[11px] flex items-start gap-2">
             <ShieldCheck className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
-            <span>Default demo PIN for all sample staff badges is <strong className="text-white font-mono">12345678</strong> (Enhanced 8-digit enterprise security).</span>
+            <span>Default enterprise security PIN is <strong className="text-white font-mono">12345678</strong>. Contact HR to request a credential update or PIN reset.</span>
           </div>
         </div>
       </div>

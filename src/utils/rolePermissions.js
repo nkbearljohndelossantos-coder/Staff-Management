@@ -3,19 +3,19 @@
  * 
  * Strict Authority Rules:
  * - Super Admins (CEO & IT Admin): Universal access to manage all accounts, tabs, and actions.
- * - HR Manager (Elena Vance / hr, admin):
+ * - HR Management (Genevieve Anne A. JURADO / hr, admin):
  *     Authorized: Staff & IDs, Positions & Depts, Barcode Clock-In, Coop Share Deposits, 
  *                 Requesting Share Withdrawals to Accounting, Stage 1 Loan Endorsement,
  *                 Canteen Cash Advance & Cash Drawer under HR Authority, Personal ESS.
  *     Unauthorized: Payroll Engine, Stage 2 Loan Disbursement, Authorizing Share Capital Release.
- * - Accounting Officer (David Chen / accounting, finance):
+ * - Accounting / Finance (Dorina NABONG / accounting, finance):
  *     Authorized: Payroll Engine (Create, Calculate, Approve, Disburse), 
  *                 Stage 2 Loan Disbursement (Debits Coop Shares), 
  *                 Authorizing & Disbursing Coop Share Withdrawals,
  *                 Coop Share Capital Ledger & Balances Audit, Personal ESS.
  *     Unauthorized: Staff & IDs, Positions & Depts, Barcode Clock-In, Stage 1 Loan Endorsement,
  *                   Coop Share Deposits, Requesting Withdrawals, Canteen Cash Drawer.
- * - Employee (Alex Rivera / employee):
+ * - Employee (employee):
  *     Authorized: My Payslips & Personal ESS (request personal loan, request cash advance, view balance).
  *     Unauthorized: All administrative modules.
  */

@@ -71,7 +71,7 @@ export default function EmployeePortalView() {
   const [poPurpose, setPoPurpose] = useState('');
 
   // Find the staff record for the current user
-  const currentStaff = staffList.find(s => s.id === currentUser?.staffId) || staffList[2]; // fallback to Alex Rivera
+  const currentStaff = staffList.find(s => s.id === currentUser?.staffId) || staffList[0] || null;
   const dept = departments.find(d => d.id === currentStaff?.departmentId);
   const pos = positions.find(p => p.id === currentStaff?.positionId);
 

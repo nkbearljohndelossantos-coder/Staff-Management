@@ -1,4 +1,6 @@
-import generatedStaffData from './generatedStaff.json';
+﻿const fs = require('fs');
+
+const content = `import generatedStaffData from './generatedStaff.json';
 
 export const INITIAL_DEPARTMENTS = [
   ...generatedStaffData.departments
@@ -227,7 +229,7 @@ export const INITIAL_MANUFACTURING_PRODUCTS = [
     quantity: 50,
     warranty: 'Lifetime Tool Replacement Guarantee',
     unit: 'Set',
-    specs: 'Chrome Vanadium Steel, 1/4" and 1/2" Ratchet Wrenches, Metric & SAE Sockets, Hard Blow-Mold Case',
+    specs: 'Chrome Vanadium Steel, 1/4\" and 1/2\" Ratchet Wrenches, Metric & SAE Sockets, Hard Blow-Mold Case',
     description: 'Precision forged mechanics set manufactured with industrial-grade hardening for automotive and maintenance personal use.'
   },
   {
@@ -303,3 +305,7 @@ export const PRODUCT_JOURNEY_STAGES = [
 
 // No demo product journeys
 export const INITIAL_PRODUCT_JOURNEYS = [];
+`;
+
+fs.writeFileSync('./src/data/mockData.js', content, 'utf8');
+console.log('src/data/mockData.js successfully generated without demo accounts or demo transactions!');

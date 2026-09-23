@@ -4,8 +4,8 @@ import { useApp } from '../../context/AppContext';
 
 export default function StaffLoginForm({ onSwitchToBarcode }) {
   const { loginStaff } = useApp();
-  const [email, setEmail] = useState('elena.vance@nkb.com');
-  const [password, setPassword] = useState('••••••••');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -21,11 +21,6 @@ export default function StaffLoginForm({ onSwitchToBarcode }) {
       }
       setLoading(false);
     }, 400);
-  };
-
-  const handleQuickFill = (presetEmail) => {
-    setEmail(presetEmail);
-    setError('');
   };
 
   return (
@@ -55,14 +50,14 @@ export default function StaffLoginForm({ onSwitchToBarcode }) {
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
                     <Mail className="h-3.5 w-3.5 text-slate-400" />
-                    Work Email / Account
+                    Work Email or Employee ID
                   </label>
                   <input
-                    type="email"
+                    type="text"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="user@nkb.com"
+                    placeholder="e.g. katherinea.bella@nkb.com or NKB052026-0001"
                     className="w-full h-11 px-3.5 rounded-xl bg-slate-950/70 border border-white/15 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 transition"
                   />
                 </div>
@@ -70,14 +65,14 @@ export default function StaffLoginForm({ onSwitchToBarcode }) {
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
                     <KeyRound className="h-3.5 w-3.5 text-slate-400" />
-                    Password
+                    Password / 8-Digit PIN
                   </label>
                   <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Enter password or 8-digit PIN"
                     className="w-full h-11 px-3.5 rounded-xl bg-slate-950/70 border border-white/15 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 transition"
                   />
                 </div>
@@ -92,113 +87,22 @@ export default function StaffLoginForm({ onSwitchToBarcode }) {
                   ) : (
                     <>
                       <LogIn className="h-4 w-4 text-slate-950" />
-                      Sign In to HR Terminal
+                      Sign In to Terminal
                     </>
                   )}
                 </button>
               </form>
 
-              {/* Quick Preset Selector for Easy Testing */}
-              <div className="mt-4 pt-3 border-t border-white/10 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-                    <Sparkles className="h-3.5 w-3.5 text-slate-400" />
-                    Demo Accounts by Authority Level:
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-normal">Click to fill</span>
-                </div>
-
-                {/* Super Admins: Can access all accounts & roles */}
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-slate-300 mb-1 flex items-center gap-1">
-                    <span>👑 Super Admins (Can access all accounts &amp; roles)</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleQuickFill('ceo@nkb.com')}
-                      className="text-left p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 transition cursor-pointer"
-                    >
-                      <div className="text-[11px] font-bold flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                        Roberto Sterling (CEO)
-                      </div>
-                      <div className="text-[9px] text-slate-400 mt-0.5">
-                        Executive Super Admin · Universal Override
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleQuickFill('it.admin@nkb.com')}
-                      className="text-left p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 transition cursor-pointer"
-                    >
-                      <div className="text-[11px] font-bold flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                        Victor Stone (IT Admin)
-                      </div>
-                      <div className="text-[9px] text-slate-400 mt-0.5">
-                        System Admin · Universal Role Switcher
-                      </div>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Isolated Department Accounts: Account-locked once opened */}
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 flex items-center gap-1">
-                    <span>🔒 Department Roles (Locked to single account)</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleQuickFill('elena.vance@nkb.com')}
-                      className="text-left p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 transition cursor-pointer"
-                    >
-                      <div className="text-[11px] font-bold flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                        Elena Vance (HR)
-                      </div>
-                      <div className="text-[9px] text-slate-400 mt-0.5">
-                        Staff, Loans &amp; Cash Advances
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleQuickFill('david.chen@nkb.com')}
-                      className="text-left p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 transition cursor-pointer"
-                    >
-                      <div className="text-[11px] font-bold flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                        David Chen (Accounting)
-                      </div>
-                      <div className="text-[9px] text-slate-400 mt-0.5">
-                        Disbursements &amp; Payroll
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleQuickFill('canteen@nkb.com')}
-                      className="text-left p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 transition cursor-pointer"
-                    >
-                      <div className="text-[11px] font-bold flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                        Maria Santos (Canteen)
-                      </div>
-                      <div className="text-[9px] text-slate-400 mt-0.5">
-                        POS, POs, Stock &amp; Voids
-                      </div>
-                    </button>
-                  </div>
-                </div>
+              <div className="mt-4 pt-3 border-t border-white/10 text-xs text-slate-400">
+                <p className="text-[11px] font-medium leading-relaxed">
+                  Sign in using your registered Employee ID or company work email and assigned 8-digit security PIN.
+                </p>
               </div>
             </div>
 
             <div className="mt-4 pt-2 text-center text-[10px] text-slate-500 font-medium flex items-center justify-center gap-2">
               <span className="h-1.5 w-1.5 rounded-full bg-slate-400 animate-pulse" />
-              NKB Hierarchical Security Active
+              NKB Security Active
             </div>
           </section>
 
