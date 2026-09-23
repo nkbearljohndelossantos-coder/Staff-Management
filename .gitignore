@@ -1,6 +1,6 @@
 # Dependencies
 node_modules/
-dist/
+# dist/ (tracked for direct Hostinger deployment)
 dist-ssr/
 *.local
 
