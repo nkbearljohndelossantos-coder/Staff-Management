@@ -1211,7 +1211,7 @@ export default function CanteenHub() {
       {/* Add Supply Item Modal (with Late Encoding option) */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-white border border-slate-200 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden text-slate-800 animate-in fade-in zoom-in duration-200">
+          <div className="bg-white border border-slate-200 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden text-slate-800 animate-in fade-in zoom-in duration-200">
             
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1299,13 +1299,24 @@ export default function CanteenHub() {
                   />
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
                       <span>Category</span>
                       <span className="text-slate-400">*</span>
                     </label>
-                    {!showInlineAddCategory ? (
+                    {showInlineAddCategory ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowInlineAddCategory(false);
+                          setInlineCategoryInput('');
+                        }}
+                        className="text-[11px] font-medium text-slate-500 hover:text-slate-800 transition cursor-pointer"
+                      >
+                        Choose Existing
+                      </button>
+                    ) : (
                       <button
                         type="button"
                         onClick={() => setShowInlineAddCategory(true)}
@@ -1315,18 +1326,18 @@ export default function CanteenHub() {
                         <Plus className="h-3 w-3" />
                         <span>Add Category</span>
                       </button>
-                    ) : null}
+                    )}
                   </div>
 
                   {showInlineAddCategory ? (
-                    <div className="space-y-1.5 p-2 rounded-xl bg-emerald-50 border border-emerald-200 animate-in fade-in">
-                      <div className="flex items-center gap-1.5">
+                    <div>
+                      <div className="relative flex items-center w-full">
                         <input
                           type="text"
                           value={inlineCategoryInput}
                           onChange={(e) => setInlineCategoryInput(e.target.value)}
-                          placeholder="Type new category name..."
-                          className="flex-1 h-9 px-3 rounded-lg border border-emerald-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-medium"
+                          placeholder="Type new category..."
+                          className="w-full h-10 pl-3 pr-20 rounded-xl border-2 border-emerald-500 bg-emerald-50/40 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-medium transition"
                           autoFocus
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
@@ -1338,26 +1349,30 @@ export default function CanteenHub() {
                             }
                           }}
                         />
-                        <button
-                          type="button"
-                          onClick={handleSaveInlineCategory}
-                          className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition cursor-pointer"
-                        >
-                          Add
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowInlineAddCategory(false);
-                            setInlineCategoryInput('');
-                          }}
-                          className="h-9 px-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs transition cursor-pointer"
-                        >
-                          Cancel
-                        </button>
+                        <div className="absolute right-1.5 flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={handleSaveInlineCategory}
+                            className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition cursor-pointer shadow-xs"
+                            title="Add and select category"
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowInlineAddCategory(false);
+                              setInlineCategoryInput('');
+                            }}
+                            className="h-7 w-7 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
+                            title="Cancel"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-[10px] text-emerald-700 font-medium">
-                        Type category &amp; press Enter to add &amp; auto-select.
+                      <p className="text-[10px] text-emerald-700 mt-1 font-medium">
+                        Press Enter or click Add to save &amp; select.
                       </p>
                     </div>
                   ) : (
