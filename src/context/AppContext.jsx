@@ -1467,7 +1467,10 @@ export function AppProvider({ children }) {
     staffId,
     items,
     orderType = 'Dine In', // 'Dine In' | 'Grocery'
-    paymentMethod = 'Cash' // 'Cash' | 'Salary Deduction'
+    paymentMethod = 'Cash', // 'Cash' | 'Salary Deduction'
+    isLateEncoded = false,
+    claimedDate = null,
+    lateReason = null
   }) => {
     if (currentUser && !isCanteen) {
       showToast('Access Denied: Only Canteen Staff or Super Admin can process POS sales.', 'error');
@@ -1489,6 +1492,13 @@ export function AppProvider({ children }) {
     const tax = 0;
     const total = subtotal;
 
+    // Actual system recording time
+    const actualEncodedAt = new Date().toISOString();
+    // If late encoded, effective transaction date is the customer claimed date
+    const effectiveDate = (isLateEncoded && claimedDate)
+      ? new Date(`${claimedDate}T12:00:00`).toISOString()
+      : actualEncodedAt;
+
     // Deduct stock from inventory
     setCanteenInventory(prev => prev.map(inv => {
       const soldItem = items.find(it => it.barcode === inv.barcode || it.id === inv.id);
@@ -1509,7 +1519,11 @@ export function AppProvider({ children }) {
         id: `gp-${Date.now()}`,
         gatePassNo,
         receiptNo,
-        date: new Date().toISOString(),
+        date: effectiveDate,
+        actualEncodedAt,
+        isLateEncoded: !!isLateEncoded,
+        claimedDate: isLateEncoded && claimedDate ? claimedDate : null,
+        lateReason: isLateEncoded ? (lateReason || 'Delayed POS encoding of claimed groceries') : null,
         staffId: staffId || null,
         staffName: staffObj ? `${staffObj.firstName} ${staffObj.lastName}` : (customerName || 'Walk-in Guest'),
         employeeId: staffObj?.employeeId || 'WALK-IN',
@@ -1537,7 +1551,11 @@ export function AppProvider({ children }) {
 
     const newReceipt = {
       receiptNo,
-      date: new Date().toISOString(),
+      date: effectiveDate,
+      actualEncodedAt,
+      isLateEncoded: !!isLateEncoded,
+      claimedDate: isLateEncoded && claimedDate ? claimedDate : null,
+      lateReason: isLateEncoded ? (lateReason || 'Delayed POS encoding of customer claim') : null,
       cashierName: currentUser ? currentUser.name : 'Canteen Cashier',
       customerType: customerType || 'Staff Member',
       customerName: staffObj ? `${staffObj.firstName} ${staffObj.lastName}` : (customerName || 'Walk-in Customer'),

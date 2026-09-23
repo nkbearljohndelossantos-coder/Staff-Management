@@ -79,6 +79,11 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+
+  // Late Encoding option (Claimed on earlier date)
+  const [isLateEncoded, setIsLateEncoded] = useState(false);
+  const [claimedDate, setClaimedDate] = useState('');
+  const [lateReason, setLateReason] = useState('');
   
   // Void authorization modal
   const [showVoidModal, setShowVoidModal] = useState(false);
@@ -382,7 +387,10 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       staffId: selectedStaff.id,
       items: cart,
       orderType,
-      paymentMethod
+      paymentMethod,
+      isLateEncoded,
+      claimedDate: isLateEncoded ? claimedDate : null,
+      lateReason: isLateEncoded ? lateReason : null
     });
 
     if (res.success) {
@@ -400,6 +408,9 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       setCart([]);
       setLastScanned(null);
       setSelectedStaff(null);
+      setIsLateEncoded(false);
+      setClaimedDate('');
+      setLateReason('');
       setShowCustomerModal(false);
 
       if (onShowReceipt) onShowReceipt(res.receipt);
@@ -983,6 +994,62 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Late Encoding Checkbox & Customer Claimed Date */}
+              <div className="p-3.5 rounded-2xl border border-amber-200 bg-amber-50/60 space-y-2">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={isLateEncoded}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsLateEncoded(checked);
+                      if (checked && !claimedDate) {
+                        setClaimedDate(new Date().toISOString().slice(0, 10));
+                      }
+                    }}
+                    className="rounded text-amber-700 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 text-amber-600" />
+                      Late Encoded Transaction
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">
+                      Customer claimed the goods on an earlier date / previous shift
+                    </span>
+                  </div>
+                </label>
+
+                {isLateEncoded && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1.5 border-t border-amber-200/70 animate-in fade-in duration-150">
+                    <div>
+                      <label className="block text-[10px] font-extrabold uppercase tracking-wider text-amber-900 mb-1">
+                        Date Claimed by Customer *
+                      </label>
+                      <input
+                        type="date"
+                        required={isLateEncoded}
+                        value={claimedDate}
+                        onChange={(e) => setClaimedDate(e.target.value)}
+                        className="w-full h-8 px-2.5 rounded-lg border border-amber-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-extrabold uppercase tracking-wider text-amber-900 mb-1">
+                        Reason for Delayed Encoding
+                      </label>
+                      <input
+                        type="text"
+                        value={lateReason}
+                        onChange={(e) => setLateReason(e.target.value)}
+                        placeholder="e.g. Offline claim, register downtime"
+                        className="w-full h-8 px-2.5 rounded-lg border border-amber-300 text-xs text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder-slate-400"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}

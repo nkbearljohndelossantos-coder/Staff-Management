@@ -13,6 +13,7 @@ import {
   Package, 
   FileSpreadsheet, 
   Calendar, 
+  CalendarRange,
   Clock, 
   CheckCircle2, 
   X, 
@@ -21,7 +22,9 @@ import {
   Receipt,
   Store,
   Tag,
-  ArrowUpDown
+  ArrowUpDown,
+  RotateCcw,
+  Info
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -39,19 +42,33 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
   // Filters & State
   const [activeTabFilter, setActiveTabFilter] = useState('ALL'); // 'ALL' | 'SALES' | 'SALARY_DEDUCTION' | 'POS' | 'VOIDS' | 'GATE_PASSES' | 'DRAWER'
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('ALL'); // 'ALL' | 'TODAY' | 'WEEK' | 'MONTH'
+  const [datePreset, setDatePreset] = useState('ALL'); // 'ALL' | 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'CUSTOM'
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [selectedReceiptDetail, setSelectedReceiptDetail] = useState(null);
 
-  // Compute unified transactions array
+  // Compute unified transactions array with Effective Claimed Date support
   const unifiedTransactions = useMemo(() => {
     const list = [];
 
     // 1. POS Receipts
     canteenReceipts.forEach(r => {
       const isSalaryDed = r.paymentMethod === 'Salary Deduction';
+      const isLate = !!r.isLateEncoded;
+      // Core requirement: When it is late encoded, use the date when it was claimed by customer, not actual encoding time
+      const claimed = r.claimedDate || r.claimedAt || (isLate ? r.date : null);
+      const effectiveDate = isLate && claimed 
+        ? claimed 
+        : (r.date || r.actualEncodedAt || new Date().toISOString());
+
       list.push({
         id: r.receiptNo,
-        timestamp: r.date,
+        timestamp: r.date || r.actualEncodedAt || new Date().toISOString(),
+        effectiveDate,
+        isLateEncoded: isLate,
+        claimedDate: claimed,
+        actualEncodedAt: r.actualEncodedAt || r.date,
+        lateReason: r.lateReason || null,
         type: isSalaryDed ? 'Salary Deduction (Coop Auto)' : 'POS Cash Sale',
         category: 'SALE',
         reference: r.receiptNo,
@@ -71,9 +88,18 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
 
     // 2. Personal Purchase Orders (Manufactured Goods)
     personalPurchaseOrders.forEach(po => {
+      const isLate = !!po.isLateEncoded;
+      const claimed = po.claimedDate || po.claimedAt;
+      const effectiveDate = (isLate && claimed) ? claimed : (po.orderDate || new Date().toISOString());
+
       list.push({
         id: po.id,
         timestamp: po.orderDate || new Date().toISOString(),
+        effectiveDate,
+        isLateEncoded: isLate,
+        claimedDate: claimed || null,
+        actualEncodedAt: po.orderDate,
+        lateReason: po.lateReason || null,
         type: 'Personal Purchase Order (Mfg)',
         category: 'PO',
         reference: po.poNumber,
@@ -95,6 +121,11 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
       list.push({
         id: v.id,
         timestamp: v.timestamp,
+        effectiveDate: v.timestamp,
+        isLateEncoded: false,
+        claimedDate: null,
+        actualEncodedAt: v.timestamp,
+        lateReason: null,
         type: v.type === 'FULL_TRANSACTION_VOID' ? 'Full Order Void' : 'Line Item Void',
         category: 'VOID',
         reference: v.id.slice(-10),
@@ -113,9 +144,18 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
 
     // 4. Gate Passes
     canteenGatePasses.forEach(gp => {
+      const isLate = !!gp.isLateEncoded;
+      const claimed = gp.claimedDate;
+      const effectiveDate = (isLate && claimed) ? claimed : gp.date;
+
       list.push({
         id: gp.id,
         timestamp: gp.date,
+        effectiveDate,
+        isLateEncoded: isLate,
+        claimedDate: claimed || null,
+        actualEncodedAt: gp.actualEncodedAt || gp.date,
+        lateReason: gp.lateReason || null,
         type: 'Grocery Gate Pass',
         category: 'GATE_PASS',
         reference: gp.gatePassNo,
@@ -132,33 +172,54 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
       });
     });
 
-    // Sort by timestamp descending
-    return list.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    // Sort by effective claimed date descending
+    return list.sort((a, b) => new Date(b.effectiveDate || b.timestamp) - new Date(a.effectiveDate || a.timestamp));
   }, [canteenReceipts, personalPurchaseOrders, canteenVoidLogs, canteenGatePasses]);
 
-  // Aggregate Metrics
-  const metrics = useMemo(() => {
-    const validSales = canteenReceipts.filter(r => r.status !== 'VOIDED');
-    const totalSales = validSales.reduce((acc, r) => acc + (r.total || 0), 0);
-    const cashSales = validSales.filter(r => r.paymentMethod === 'Cash').reduce((acc, r) => acc + (r.total || 0), 0);
-    const salaryDeductions = validSales.filter(r => r.paymentMethod === 'Salary Deduction').reduce((acc, r) => acc + (r.total || 0), 0);
-    const totalItems = validSales.reduce((acc, r) => acc + (r.items?.reduce((sum, it) => sum + (it.quantity || 1), 0) || 0), 0);
-    const totalVoids = canteenVoidLogs.reduce((acc, v) => acc + (v.amount || 0), 0);
-    const activeGatePassesCount = canteenGatePasses.length;
+  // Date range preset handlers
+  const handleApplyPreset = (preset) => {
+    setDatePreset(preset);
+    const now = new Date();
+    if (preset === 'ALL') {
+      setStartDate('');
+      setEndDate('');
+    } else if (preset === 'TODAY') {
+      const todayStr = now.toISOString().slice(0, 10);
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === 'YESTERDAY') {
+      const yest = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const yestStr = yest.toISOString().slice(0, 10);
+      setStartDate(yestStr);
+      setEndDate(yestStr);
+    } else if (preset === 'WEEK') {
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      setStartDate(sevenDaysAgo.toISOString().slice(0, 10));
+      setEndDate(now.toISOString().slice(0, 10));
+    } else if (preset === 'MONTH') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      setStartDate(firstDay.toISOString().slice(0, 10));
+      setEndDate(now.toISOString().slice(0, 10));
+    }
+  };
 
-    return {
-      totalSales,
-      cashSales,
-      salaryDeductions,
-      totalTransactions: validSales.length,
-      totalItems,
-      totalVoids,
-      voidsCount: canteenVoidLogs.length,
-      activeGatePassesCount
-    };
-  }, [canteenReceipts, canteenVoidLogs, canteenGatePasses]);
+  const handleCustomStartDateChange = (val) => {
+    setStartDate(val);
+    setDatePreset('CUSTOM');
+  };
 
-  // Filtered List
+  const handleCustomEndDateChange = (val) => {
+    setEndDate(val);
+    setDatePreset('CUSTOM');
+  };
+
+  const handleClearDateRange = () => {
+    setDatePreset('ALL');
+    setStartDate('');
+    setEndDate('');
+  };
+
+  // Filtered List based on Tabs, Date Range (Effective Claim Date), and Search Query
   const filteredList = useMemo(() => {
     return unifiedTransactions.filter(item => {
       // 1. Tab filter
@@ -168,18 +229,17 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
       if (activeTabFilter === 'VOIDS' && item.category !== 'VOID') return false;
       if (activeTabFilter === 'GATE_PASSES' && item.category !== 'GATE_PASS') return false;
 
-      // 2. Date filter
-      if (dateFilter !== 'ALL') {
-        const itemDate = new Date(item.timestamp);
-        const now = new Date();
-        if (dateFilter === 'TODAY') {
-          if (itemDate.toDateString() !== now.toDateString()) return false;
-        } else if (dateFilter === 'WEEK') {
-          const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          if (itemDate < sevenDaysAgo) return false;
-        } else if (dateFilter === 'MONTH') {
-          if (itemDate.getMonth() !== now.getMonth() || itemDate.getFullYear() !== now.getFullYear()) return false;
-        }
+      // 2. Date Range Filter:
+      // Uses the customer claimed date when late encoded, otherwise standard transaction date
+      const effectiveTime = new Date(item.effectiveDate || item.timestamp);
+      
+      if (startDate) {
+        const start = new Date(`${startDate}T00:00:00`);
+        if (!isNaN(start.getTime()) && effectiveTime < start) return false;
+      }
+      if (endDate) {
+        const end = new Date(`${endDate}T23:59:59.999`);
+        if (!isNaN(end.getTime()) && effectiveTime > end) return false;
       }
 
       // 3. Search query
@@ -190,18 +250,60 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
         const matchesCashier = item.cashier?.toLowerCase().includes(q);
         const matchesItems = item.itemsSummary?.toLowerCase().includes(q);
         const matchesType = item.type?.toLowerCase().includes(q);
-        return matchesRef || matchesCust || matchesCashier || matchesItems || matchesType;
+        const matchesReason = item.lateReason?.toLowerCase().includes(q);
+        return matchesRef || matchesCust || matchesCashier || matchesItems || matchesType || matchesReason;
       }
 
       return true;
     });
-  }, [unifiedTransactions, activeTabFilter, dateFilter, searchQuery]);
+  }, [unifiedTransactions, activeTabFilter, startDate, endDate, searchQuery]);
 
-  // Export to CSV
+  // Aggregate Metrics based on the active filtered transactions (responsive to Date Range)
+  const metrics = useMemo(() => {
+    const validSales = filteredList.filter(r => r.category === 'SALE' && r.status !== 'VOIDED');
+    const totalSales = validSales.reduce((acc, r) => acc + (r.amount || 0), 0);
+    const cashSales = validSales.filter(r => r.paymentMethod === 'Cash').reduce((acc, r) => acc + (r.amount || 0), 0);
+    const salaryDeductions = validSales.filter(r => r.paymentMethod === 'Salary Deduction').reduce((acc, r) => acc + (r.amount || 0), 0);
+    const totalItems = validSales.reduce((acc, r) => acc + (r.itemsCount || 0), 0);
+    const totalVoids = filteredList.filter(r => r.category === 'VOID').reduce((acc, v) => acc + Math.abs(v.amount || 0), 0);
+    const voidsCount = filteredList.filter(r => r.category === 'VOID').length;
+    const gatePassesCount = filteredList.filter(r => r.category === 'GATE_PASS').length;
+
+    return {
+      totalSales,
+      cashSales,
+      salaryDeductions,
+      totalTransactions: validSales.length,
+      totalItems,
+      totalVoids,
+      voidsCount,
+      gatePassesCount
+    };
+  }, [filteredList]);
+
+  // Export to CSV with full Effective Claim Date and Late Encoding metadata
   const handleExportCSV = () => {
-    const headers = ['Date & Time', 'Reference', 'Record Type', 'Customer Name', 'Items Summary', 'Payment Method', 'Order Nature', 'Total Amount (PHP)', 'Cashier / Supervisor', 'Status'];
+    const headers = [
+      'Effective Claim Date',
+      'Late Encoded?',
+      'Actual Encoding Time',
+      'Late Encoding Reason',
+      'Reference / No.',
+      'Record Type',
+      'Customer / Staff Name',
+      'Items Summary',
+      'Payment Method',
+      'Order Nature',
+      'Total Amount (PHP)',
+      'Cashier / Supervisor',
+      'Status'
+    ];
+
     const rows = filteredList.map(item => [
-      `"${new Date(item.timestamp).toLocaleString()}"`,
+      `"${new Date(item.effectiveDate || item.timestamp).toLocaleDateString()}"`,
+      `"${item.isLateEncoded ? 'YES' : 'NO'}"`,
+      `"${new Date(item.actualEncodedAt || item.timestamp).toLocaleString()}"`,
+      `"${(item.lateReason || '').replace(/"/g, '""')}"`,
       `"${item.reference || ''}"`,
       `"${item.type || ''}"`,
       `"${item.customerName || ''}"`,
@@ -217,7 +319,8 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `canteen_transaction_report_${new Date().toISOString().slice(0, 10)}.csv`);
+    const dateTag = startDate && endDate ? `${startDate}_to_${endDate}` : new Date().toISOString().slice(0, 10);
+    link.setAttribute('download', `canteen_transaction_report_${dateTag}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -425,41 +528,106 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
             </button>
           </div>
 
-          {/* Search Box & Date Dropdown */}
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search ref, customer, item, cashier..."
-                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-
-            <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="h-9 px-3 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
-            >
-              <option value="ALL">All Dates</option>
-              <option value="TODAY">Today</option>
-              <option value="WEEK">Last 7 Days</option>
-              <option value="MONTH">This Month</option>
-            </select>
+          {/* Search Box */}
+          <div className="relative flex-1 sm:w-72">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search ref, customer, item, cashier..."
+              className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
         </div>
+
+        {/* Row 2: Comprehensive Date Range Filter Bar (Effective Claim Date for Late-Encoded Items) */}
+        <div className="pt-3 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+          
+          {/* Quick Presets */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+              <CalendarRange className="h-3.5 w-3.5 text-slate-500" />
+              <span>Claim Date:</span>
+            </span>
+
+            {[
+              { id: 'ALL', label: 'All Dates' },
+              { id: 'TODAY', label: 'Today' },
+              { id: 'YESTERDAY', label: 'Yesterday' },
+              { id: 'WEEK', label: 'Last 7 Days' },
+              { id: 'MONTH', label: 'This Month' }
+            ].map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => handleApplyPreset(p.id)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  datePreset === p.id
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom Date Pickers: From & To */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+              <span className="text-[10px] font-extrabold uppercase text-slate-500">From</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => handleCustomStartDateChange(e.target.value)}
+                className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+              <span className="text-[10px] font-extrabold uppercase text-slate-500">To</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => handleCustomEndDateChange(e.target.value)}
+                className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
+              />
+            </div>
+
+            {(startDate || endDate) && (
+              <button
+                type="button"
+                onClick={handleClearDateRange}
+                className="h-8 px-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                title="Reset Date Range Filter"
+              >
+                <RotateCcw className="h-3 w-3" />
+                <span>Reset</span>
+              </button>
+            )}
+          </div>
+
+        </div>
+
+        {/* Rule Explanation Banner */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-[11px]">
+          <Info className="h-3.5 w-3.5 text-amber-700 shrink-0" />
+          <span>
+            <strong>Date Range Rule:</strong> Transactions are identified and filtered by the <strong>Customer Claimed Date</strong>. When transactions are late-encoded, the date the customer claimed the goods is used rather than the actual system encoding timestamp.
+          </span>
+        </div>
+
       </div>
 
       {/* Main Ledger Table */}
@@ -472,7 +640,7 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
             </h3>
           </div>
           <span className="text-[11px] text-slate-400 font-mono">
-            Immutable Audit Trail
+            Immutable Audit Trail · Grouped by Customer Claim Date
           </span>
         </div>
 
@@ -480,7 +648,7 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
           <table className="w-full text-left text-xs text-slate-700">
             <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-4 py-3.5">Date &amp; Time</th>
+                <th className="px-4 py-3.5">Date (Claimed / Effective)</th>
                 <th className="px-4 py-3.5">Reference / No.</th>
                 <th className="px-4 py-3.5">Record Type</th>
                 <th className="px-4 py-3.5">Customer / Staff</th>
@@ -499,7 +667,7 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
                     <FileText className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                     <p className="font-bold text-slate-600 text-sm">No transaction records found</p>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {searchQuery ? 'Try clearing your search query or adjusting your filters.' : 'Transactions recorded in the Canteen POS register will appear here automatically.'}
+                      {searchQuery || startDate || endDate ? 'Try adjusting your date range or clearing your search query.' : 'Transactions recorded in the Canteen POS register will appear here automatically.'}
                     </p>
                   </td>
                 </tr>
@@ -511,10 +679,35 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
                   return (
                     <tr key={`${item.id}-${idx}`} className={`transition ${isVoid ? 'bg-rose-50/30' : 'hover:bg-slate-50/80'}`}>
                       
-                      {/* Date & Time */}
-                      <td className="px-4 py-3 whitespace-nowrap text-slate-600 font-mono text-[11px]">
-                        <div>{new Date(item.timestamp).toLocaleDateString()}</div>
-                        <div className="text-[10px] text-slate-400">{new Date(item.timestamp).toLocaleTimeString()}</div>
+                      {/* Date & Time (Claimed Date vs System Timestamp) */}
+                      <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                          <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                          <span>{new Date(item.effectiveDate || item.timestamp).toLocaleDateString()}</span>
+                        </div>
+                        {item.isLateEncoded ? (
+                          <div className="mt-1 space-y-0.5">
+                            <span 
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold" 
+                              title={item.lateReason ? `Late Reason: ${item.lateReason}` : 'Claimed earlier by customer'}
+                            >
+                              <Clock className="h-3 w-3 text-amber-700" />
+                              Late Encoded (Claimed)
+                            </span>
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              Actual entry: {new Date(item.actualEncodedAt || item.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                            </div>
+                            {item.lateReason && (
+                              <div className="text-[10px] text-amber-800 italic truncate max-w-[180px]" title={item.lateReason}>
+                                "{item.lateReason}"
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        )}
                       </td>
 
                       {/* Reference */}
