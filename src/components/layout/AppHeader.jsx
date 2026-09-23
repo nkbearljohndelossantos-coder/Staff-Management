@@ -19,7 +19,7 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
       case 'accounting':
         return { label: `Accounting · ${currentUser?.name || 'Dorina NABONG'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
       case 'canteen':
-        return { label: `Canteen · ${currentUser?.name || 'Earl John DELOS SANTOS'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
+        return { label: `Canteen Admin · ${currentUser?.name || 'Nannette MANUEL'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
       case 'security':
         return { label: `Security · ${currentUser?.name || 'Marvin G. ATAYDE'}`, color: 'bg-slate-900 text-slate-200 border-slate-700' };
       default:
@@ -145,7 +145,7 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
               <button
                 type="button"
                 onClick={() => switchDemoRole('canteen')}
-                title="Assume Canteen Hub Account"
+                title="Assume Canteen Admin Account (Nannette MANUEL)"
                 className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
                   currentUser?.role === 'canteen'
                     ? 'bg-white text-slate-950 font-bold shadow-sm'

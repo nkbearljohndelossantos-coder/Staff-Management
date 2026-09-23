@@ -27,7 +27,7 @@ const deptMap = {
   'Logistics': { id: 'dept-log', name: 'Fleet & Dispatch Logistics', code: 'LOG', manager: 'Jonnel GACIA' },
   'QC': { id: 'dept-qc', name: 'Quality Control (QC)', code: 'QC', manager: 'Marilou FABIO' },
   'Silkscreen': { id: 'dept-silk', name: 'Silkscreen & Packaging Line', code: 'SILK', manager: 'Leo MIRAMBIL' },
-  'Canteen': { id: 'dept-cant', name: 'Canteen & Food Services', code: 'CANT', manager: 'Earl John DELOS SANTOS' },
+  'Canteen': { id: 'dept-cant', name: 'Canteen & Food Services', code: 'CANT', manager: 'Nannette MANUEL' },
   'IT': { id: 'dept-it', name: 'Information Technology (IT)', code: 'IT', manager: 'Carl Laurence B. PATAGNAN' }
 };
 
@@ -51,6 +51,7 @@ function makeEmail(first, last, empId) {
 
 function determineRole(dept, empId, name) {
   if (empId === 'NKB092026-0048' || name.toLowerCase().includes('patagnan')) return 'it_admin';
+  if (empId === 'NKB052026-0024' || name.toLowerCase().includes('manuel')) return 'canteen';
   if (dept === 'CEO' || empId === 'NKB052026-0001') return 'ceo';
   if (dept === 'COO' || empId === 'NKB052026-0002') return 'admin';
   if (dept === 'HR' || empId === 'NKB052026-0019') return 'hr';
@@ -65,7 +66,8 @@ const staff = rows.map((r, idx) => {
   const empId = (r.employee_id || ('EMP-2026-' + String(idx + 1).padStart(4, '0'))).trim();
   const rawDept = r.department ? r.department.trim() : (empId === 'NKBCANTEEN' ? 'Canteen' : 'Accounting');
   const isCarl = empId === 'NKB092026-0048' || (r.name && r.name.toLowerCase().includes('patagnan'));
-  const effectiveDept = isCarl ? 'IT' : rawDept;
+  const isNannette = empId === 'NKB052026-0024' || (r.name && r.name.toLowerCase().includes('manuel'));
+  const effectiveDept = isCarl ? 'IT' : (isNannette ? 'Canteen' : rawDept);
   const deptMeta = deptMap[effectiveDept] || deptMap['Production'];
   const role = determineRole(effectiveDept, empId, r.name || '');
 
@@ -81,11 +83,12 @@ const staff = rows.map((r, idx) => {
     phone: '+63 9' + String(100000000 + idx).slice(1),
     positionId: 'pos-' + deptMeta.code.toLowerCase(),
     positionTitle: isCarl ? 'IT Systems Administrator' :
+                   isNannette ? 'Canteen Administrator & Manager' :
                    rawDept === 'CEO' ? 'Chief Executive Officer (CEO)' :
                    rawDept === 'COO' ? 'Chief Operating Officer (COO)' :
                    rawDept === 'HR' ? 'HR Manager' :
                    rawDept === 'Accounting' ? 'Accounting & Finance Officer' :
-                   empId === 'NKBCANTEEN' ? 'Canteen Hub Manager' :
+                   empId === 'NKBCANTEEN' ? 'Canteen POS Terminal' :
                    empId === 'NKBPETTYCASH' ? 'Petty Cash Custodian' :
                    deptMeta.name + ' Specialist',
     departmentId: deptMeta.id,

@@ -1302,8 +1302,8 @@ export default function ProductTrackingMap() {
               <div className="pt-8 border-t border-slate-300 grid grid-cols-3 gap-8 text-center text-xs">
                 <div>
                   <div className="border-b border-slate-400 pb-8 mb-1"></div>
-                  <span className="font-bold text-slate-900 block">Earl John DELOS SANTOS</span>
-                  <span className="text-[10px] text-slate-500">Canteen &amp; Inventory Lead</span>
+                  <span className="font-bold text-slate-900 block">Nannette MANUEL</span>
+                  <span className="text-[10px] text-slate-500">Canteen Administrator &amp; Manager</span>
                 </div>
                 <div>
                   <div className="border-b border-slate-400 pb-8 mb-1"></div>

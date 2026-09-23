@@ -320,7 +320,7 @@ export default function SystemConceptMapView() {
       clusterId: 'canteen',
       title: 'Barcode POS Register & Dual-Nature Checkout',
       code: 'POS-CHECKOUT',
-      owner: 'Canteen Operations & Inventory (Earl John DELOS SANTOS)',
+      owner: 'Canteen Operations & Inventory (Nannette MANUEL)',
       roles: ['ceo', 'it_admin', 'canteen'],
       summary: 'High-speed retail barcode scanner register. Distinguishes Dine-In vs Grocery and Cash vs Salary Deduction.',
       inputs: ['Barcode scan of pantry items / meals', 'Order Nature (Dine In / Grocery)', 'Payment Method (Cash / Salary Deduction)'],

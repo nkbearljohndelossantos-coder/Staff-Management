@@ -27,7 +27,7 @@ import { computeEmployeePayroll } from '../utils/payrollCalculations';
 const AppContext = createContext(null);
 
 
-const SCHEMA_VERSION = 'v5_carl_patagnan_it_admin';
+const SCHEMA_VERSION = 'v6_nannette_canteen_admin';
 if (typeof window !== 'undefined') {
   if (localStorage.getItem('nkb_schema_version') !== SCHEMA_VERSION) {
     [
@@ -401,7 +401,7 @@ export function AppProvider({ children }) {
     } else if (role === 'finance' || role === 'accounting') {
       sample = staffList.find(s => s.role === 'accounting') || staffList.find(s => s.departmentName && s.departmentName.includes('Accounting'));
     } else if (role === 'canteen') {
-      sample = staffList.find(s => s.role === 'canteen') || staffList.find(s => s.employeeId === 'NKBCANTEEN');
+      sample = staffList.find(s => s.employeeId === 'NKB052026-0024') || staffList.find(s => s.role === 'canteen');
     } else {
       sample = staffList.find(s => s.role === 'employee') || staffList[2];
     }
@@ -438,7 +438,7 @@ export function AppProvider({ children }) {
       resolvedRole === 'admin' ? `COO (${userObj.name})` :
       resolvedRole === 'hr' ? `HR Manager (${userObj.name})` :
       resolvedRole === 'accounting' ? `Accounting & Finance (${userObj.name})` :
-      resolvedRole === 'canteen' ? `Canteen Hub (${userObj.name})` :
+      resolvedRole === 'canteen' ? `Canteen Admin (${userObj.name})` :
       `Employee ESS (${userObj.name})`;
     showToast(`Switched active account to: ${roleLabel}`);
   };
