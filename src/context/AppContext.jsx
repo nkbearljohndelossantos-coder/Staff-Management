@@ -63,7 +63,7 @@ export function AppProvider({ children }) {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.length === INITIAL_STAFF.length && parsed.every(s => s.baseSalary === 0)) {
+        if (parsed.length === INITIAL_STAFF.length && parsed.some(s => s.employeeId === 'NKBCANTEEN') && parsed.every(s => s.baseSalary === 0)) {
           return parsed;
         }
       } catch (e) {}

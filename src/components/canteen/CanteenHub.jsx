@@ -27,13 +27,16 @@ import {
   Printer,
   CheckCircle2,
   Filter,
-  X
+  X,
+  BarChart3
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CardVoidModal from './CardVoidModal';
 import ProductTrackingMap from './ProductTrackingMap';
 import GatePassModal from './GatePassModal';
 import CanteenScannerTerminal from './CanteenScannerTerminal';
+import CanteenReportsSection from './CanteenReportsSection';
+import CanteenPassModal from './CanteenPassModal';
 
 // Known Catalog for Automatic Inbound Scan Pre-filling
 export const KNOWN_INBOUND_CATALOG = {
@@ -134,7 +137,8 @@ export default function CanteenHub() {
     isSuperAdmin
   } = useApp();
 
-  const [activeSubtab, setActiveSubtab] = useState('pos'); // 'pos', 'inventory', 'orders', 'tracking'
+  const [activeSubtab, setActiveSubtab] = useState('pos'); // 'pos', 'inventory', 'orders', 'tracking', 'reports'
+  const [showCanteenPassModal, setShowCanteenPassModal] = useState(false);
   
   // POS Register State
   const [posBarcodeQuery, setPosBarcodeQuery] = useState('');
@@ -444,11 +448,36 @@ export default function CanteenHub() {
               <Compass className="h-4 w-4" />
               <span>Live Product Tracking Agent</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubtab('reports')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                activeSubtab === 'reports'
+                  ? 'bg-white text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              <span>Transaction Reports &amp; Records</span>
+            </button>
           </div>
 
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 font-mono">
-            <Lock className="h-3 w-3 text-slate-400" />
-            <span>Immutable Records Enforced · Card Void Only</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowCanteenPassModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-bold transition cursor-pointer shadow-sm"
+              title="Print & View Official Canteen Barcode Pass (NKBCANTEEN)"
+            >
+              <Store className="h-3.5 w-3.5 text-amber-400" />
+              <span>🪪 Canteen Barcode Pass</span>
+            </button>
+
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 font-mono">
+              <Lock className="h-3 w-3 text-slate-400" />
+              <span>Immutable Records Enforced</span>
+            </div>
           </div>
 
         </div>
@@ -457,7 +486,7 @@ export default function CanteenHub() {
       {/* SUBTAB 1: BARCODE POS REGISTER & DUAL-MONITOR SCANNER */}
       {activeSubtab === 'pos' && (
         <CanteenScannerTerminal 
-          onShowReceipt={(r) => { setLastReceipt(r); setSelectedReceipt(r); }}
+          onShowReceipt={(r) => { setLastReceipt(r); }}
           onShowGatePass={(gp) => { setLastGatePass(gp); setSelectedGatePass(gp); }}
         />
       )}
@@ -1200,6 +1229,15 @@ export default function CanteenHub() {
         <ProductTrackingMap />
       )}
 
+      {/* SUBTAB 5: COMPREHENSIVE TRANSACTION REPORTS & AUDIT RECORDS */}
+      {activeSubtab === 'reports' && (
+        <CanteenReportsSection 
+          onShowReceipt={(r) => { setLastReceipt(r); }}
+          onShowGatePass={(gp) => { setLastGatePass(gp); setSelectedGatePass(gp); }}
+          onShowCanteenPass={() => setShowCanteenPassModal(true)}
+        />
+      )}
+
       {/* Card Void Modal Popup */}
       {selectedVoidReceipt && (
         <CardVoidModal
@@ -1660,6 +1698,13 @@ export default function CanteenHub() {
         <GatePassModal
           gatePass={selectedGatePass}
           onClose={() => setSelectedGatePass(null)}
+        />
+      )}
+
+      {/* Official Canteen Barcode Pass Modal */}
+      {showCanteenPassModal && (
+        <CanteenPassModal
+          onClose={() => setShowCanteenPassModal(false)}
         />
       )}
 

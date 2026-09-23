@@ -70,7 +70,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   const [barcodeQuery, setBarcodeQuery] = useState('');
   const [cart, setCart] = useState([]);
   const [orderType, setOrderType] = useState('Dine In'); // 'Dine In' | 'Grocery'
-  const [paymentMethod, setPaymentMethod] = useState('Cash'); // 'Cash' | 'Salary Deduction' | 'Coop Credit'
+  const [paymentMethod, setPaymentMethod] = useState('Cash'); // 'Cash' | 'Salary Deduction' (Auto-Settled via Coop)
   
   // Scanned item feedback banner
   const [lastScanned, setLastScanned] = useState(null);
@@ -693,44 +693,36 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                 </label>
                 <span className="text-[11px] text-slate-500 font-medium">Select tender</span>
               </div>
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('Cash')}
-                  className={`p-3 rounded-xl border-2 flex items-center justify-center gap-2 transition cursor-pointer text-xs font-bold ${
+                  className={`p-3.5 rounded-xl border-2 flex items-center justify-center gap-2.5 transition cursor-pointer text-xs font-bold ${
                     paymentMethod === 'Cash'
                       ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
                       : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   <Banknote className="h-4 w-4" />
-                  <span>Cash</span>
+                  <span>Cash Payment</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('Salary Deduction')}
-                  className={`p-3 rounded-xl border-2 flex items-center justify-center gap-2 transition cursor-pointer text-xs font-bold ${
+                  className={`p-3.5 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition cursor-pointer text-xs font-bold ${
                     paymentMethod === 'Salary Deduction'
                       ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
                       : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <CreditCard className="h-4 w-4" />
-                  <span>Salary Deduction</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('Coop Credit')}
-                  className={`p-3 rounded-xl border-2 flex items-center justify-center gap-2 transition cursor-pointer text-xs font-bold ${
-                    paymentMethod === 'Coop Credit'
-                      ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <Wallet className="h-4 w-4" />
-                  <span>Coop Credit</span>
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="h-4 w-4" />
+                    <span>Salary Deduction</span>
+                  </div>
+                  <span className={`text-[10px] font-normal ${paymentMethod === 'Salary Deduction' ? 'text-slate-300' : 'text-slate-500'}`}>
+                    Auto-Paid via Coop
+                  </span>
                 </button>
               </div>
             </div>

@@ -428,15 +428,9 @@ export default function CanteenCustomerDisplay() {
                       <span>Salary Deduction</span>
                     </>
                   )}
-                  {paymentMethod === 'Coop Credit' && (
-                    <>
-                      <Wallet className="h-5 w-5 text-white" />
-                      <span>Coop Credit</span>
-                    </>
-                  )}
                 </div>
                 <p className="text-[10px] text-slate-500 mt-1 font-medium">
-                  {paymentMethod === 'Salary Deduction' ? 'Deducted on next payroll disbursement.' : paymentMethod === 'Cash' ? 'Paid at canteen cash register.' : 'Charged to Coop share capital line.'}
+                  {paymentMethod === 'Salary Deduction' ? 'Auto-settled via Coop on payroll disbursement.' : 'Paid at canteen cash register.'}
                 </p>
               </div>
 
