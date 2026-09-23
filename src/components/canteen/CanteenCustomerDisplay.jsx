@@ -50,6 +50,23 @@ export default function CanteenCustomerDisplay() {
 
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [screenRes, setScreenRes] = useState(() => {
+    if (typeof window !== 'undefined' && window.screen) {
+      return `${window.screen.width}×${window.screen.height}`;
+    }
+    return '1920×1080';
+  });
+
+  // Track Display Resize & Resolution
+  useEffect(() => {
+    const updateRes = () => {
+      if (typeof window !== 'undefined' && window.screen) {
+        setScreenRes(`${window.screen.width}×${window.screen.height}`);
+      }
+    };
+    window.addEventListener('resize', updateRes);
+    return () => window.removeEventListener('resize', updateRes);
+  }, []);
 
   // Live Clock
   useEffect(() => {
@@ -142,7 +159,7 @@ export default function CanteenCustomerDisplay() {
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300">
             <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Second Monitor Active</span>
+            <span>HDMI 2nd Monitor ({screenRes}) Active</span>
           </div>
 
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-slate-400">

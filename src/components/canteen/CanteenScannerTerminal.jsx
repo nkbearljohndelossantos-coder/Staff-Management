@@ -22,9 +22,11 @@ import {
   FileText,
   KeyRound,
   ShieldCheck,
-  Check
+  Check,
+  Zap
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useMultiScreenManager } from '../../utils/useMultiScreenManager';
 
 // Standard fallback catalog for barcode gun recognition
 const STANDARD_SUPPLIES_CATALOG = {
@@ -49,6 +51,21 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     broadcastPOSDisplayState,
     currentUser
   } = useApp();
+
+  const {
+    isMultiScreen,
+    screenCount,
+    secondaryScreen,
+    isAutoLaunchEnabled,
+    toggleAutoLaunch,
+    isWindowOpen,
+    openCustomerDisplay,
+    closeCustomerDisplay,
+    hdmiStatusText,
+    autoLaunchBlocked,
+    dismissBlockedPrompt,
+    lastEventMsg
+  } = useMultiScreenManager();
 
   const [barcodeQuery, setBarcodeQuery] = useState('');
   const [cart, setCart] = useState([]);
@@ -126,19 +143,9 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     });
   }, [cart, orderType, paymentMethod, selectedStaff, lastScanned]);
 
-  // Launch Customer Display on Second Monitor
+  // Launch / Focus Customer Display on Second Monitor
   const handleOpenSecondMonitor = () => {
-    const url = `${window.location.origin}${window.location.pathname}?view=customer-display`;
-    // Attempt placing on second monitor (e.g. left = primary screen width)
-    const dualLeft = window.screen.availWidth || 1920;
-    const win = window.open(
-      url, 
-      'NKB_Canteen_Customer_Display', 
-      `width=1280,height=850,left=${dualLeft},top=0,menubar=no,toolbar=no,location=no,status=no`
-    );
-    if (win) {
-      win.focus();
-    }
+    openCustomerDisplay();
   };
 
   // Handle Barcode Scan
@@ -430,18 +437,103 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 w-full md:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          {/* HDMI Multi-Screen Status Badge */}
+          <div 
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-mono transition ${
+              isMultiScreen 
+                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 shadow-sm' 
+                : 'bg-slate-900 border-slate-800 text-slate-400'
+            }`}
+            title={isMultiScreen ? "External display detected via HDMI / Multi-Screen" : "Plug in an HDMI cable to connect external monitor"}
+          >
+            <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${isMultiScreen ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+            <span className="font-semibold">{hdmiStatusText}</span>
+          </div>
+
+          {/* Auto-Launch on HDMI Connect Toggle */}
+          <button
+            type="button"
+            onClick={() => toggleAutoLaunch()}
+            className={`h-11 px-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer select-none ${
+              isAutoLaunchEnabled
+                ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-200 hover:bg-emerald-500/30'
+                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+            title="Automatically opens Customer Display on second monitor whenever HDMI is connected"
+          >
+            <Zap className={`h-4 w-4 shrink-0 ${isAutoLaunchEnabled ? 'text-emerald-400 fill-emerald-400' : 'text-slate-500'}`} />
+            <span className="hidden sm:inline">Auto-Launch on HDMI:</span>
+            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-mono font-black ${
+              isAutoLaunchEnabled ? 'bg-emerald-400 text-slate-950 shadow-sm' : 'bg-slate-800 text-slate-400'
+            }`}>
+              {isAutoLaunchEnabled ? 'ON' : 'OFF'}
+            </span>
+          </button>
+
+          {/* Open / Focus 2nd Monitor Display Button */}
           <button
             type="button"
             onClick={handleOpenSecondMonitor}
-            className="flex-1 md:flex-initial h-11 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-950 text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-md"
-            title="Open customer display on second monitor"
+            className={`flex-1 md:flex-initial h-11 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-md select-none ${
+              isWindowOpen
+                ? 'bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold ring-2 ring-emerald-400/30'
+                : 'bg-white hover:bg-slate-100 text-slate-950'
+            }`}
+            title={isWindowOpen ? "Customer display is open. Click to bring to front / focus." : "Open customer display on second monitor"}
           >
-            <Tv className="h-4 w-4 text-slate-950" />
-            <span>Open 2nd Monitor Display</span>
+            <Tv className="h-4 w-4 shrink-0" />
+            <span>{isWindowOpen ? '2nd Monitor Active (Focus)' : 'Open 2nd Monitor Display'}</span>
           </button>
         </div>
       </div>
+
+      {/* Pop-up Blocked Recovery Banner */}
+      {autoLaunchBlocked && (
+        <div className="bg-amber-500/15 border-2 border-amber-500/40 text-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg animate-in fade-in">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/25 text-amber-300 shrink-0">
+              <AlertCircle className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider">
+                HDMI Monitor Detected · Browser Pop-up Prompt
+              </h4>
+              <p className="text-[11px] text-amber-200/90 mt-0.5 font-medium">
+                The browser paused the automatic pop-up window. Click <strong>Launch Customer Display</strong> below to project to the 2nd monitor and allow permanent auto-placement.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleOpenSecondMonitor}
+              className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition cursor-pointer shadow-md"
+            >
+              Launch Customer Display Now
+            </button>
+            <button
+              type="button"
+              onClick={dismissBlockedPrompt}
+              className="p-2 rounded-xl hover:bg-amber-500/20 text-amber-300 transition cursor-pointer"
+              title="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Connection Event Banner */}
+      {lastEventMsg && (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-4 py-2 text-[11px] font-mono text-slate-300 flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            {lastEventMsg}
+          </span>
+          <span className="text-[10px] text-slate-400">HDMI Multi-Screen Auto-Sync</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
