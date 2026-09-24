@@ -389,6 +389,8 @@ export function AppProvider({ children }) {
         setActiveTab('canteenHub');
       } else if (found.role === 'finance' || found.role === 'accounting') {
         setActiveTab('payroll');
+      } else if (found.role === 'it_admin') {
+        setActiveTab('itAdminHub');
       } else {
         setActiveTab('staff');
       }
@@ -480,7 +482,9 @@ export function AppProvider({ children }) {
       setActiveTab('canteenHub');
     } else if (resolvedRole === 'accounting') {
       setActiveTab('payroll');
-    } else if (resolvedRole === 'hr' || resolvedRole === 'it_admin' || resolvedRole === 'admin' || resolvedRole === 'ceo') {
+    } else if (resolvedRole === 'it_admin') {
+      setActiveTab('itAdminHub');
+    } else if (resolvedRole === 'hr' || resolvedRole === 'admin' || resolvedRole === 'ceo') {
       setActiveTab('staff');
     }
     const roleLabel = 
@@ -2003,6 +2007,214 @@ export function AppProvider({ children }) {
     showToast('Product Journey reset to Stage 1: Ordered!');
   };
 
+  // ==========================================
+  // IT ADMIN MASTER RECORD CONTROLS
+  // Universal administrative edit/delete/restore overrides
+  // ==========================================
+
+  // 1. Canteen Receipts
+  const updateCanteenReceipt = (receiptNo, updatedFields) => {
+    setCanteenReceipts(prev => prev.map(r => {
+      if (r.receiptNo === receiptNo || r.id === receiptNo) {
+        return { ...r, ...updatedFields };
+      }
+      return r;
+    }));
+    showToast(`Receipt #${receiptNo} updated by IT Administrator.`);
+    return { success: true };
+  };
+
+  const deleteCanteenReceipt = (receiptNo) => {
+    setCanteenReceipts(prev => prev.filter(r => r.receiptNo !== receiptNo && r.id !== receiptNo));
+    showToast(`Receipt #${receiptNo} permanently deleted.`);
+    return { success: true };
+  };
+
+  // 2. Personal Purchase Orders
+  const updatePersonalPurchaseOrder = (orderId, updatedFields) => {
+    setPersonalPurchaseOrders(prev => prev.map(po => {
+      if (po.id === orderId || po.poNumber === orderId) {
+        return { ...po, ...updatedFields };
+      }
+      return po;
+    }));
+    showToast(`Purchase Order record updated.`);
+    return { success: true };
+  };
+
+  const deletePersonalPurchaseOrder = (orderId) => {
+    setPersonalPurchaseOrders(prev => prev.filter(po => po.id !== orderId && po.poNumber !== orderId));
+    showToast(`Purchase Order deleted.`);
+    return { success: true };
+  };
+
+  // 3. Grocery Gate Passes
+  const updateGatePass = (gatePassNo, updatedFields) => {
+    setCanteenGatePasses(prev => prev.map(gp => {
+      if (gp.gatePassNo === gatePassNo || gp.id === gatePassNo) {
+        return { ...gp, ...updatedFields };
+      }
+      return gp;
+    }));
+    showToast(`Gate Pass #${gatePassNo} updated.`);
+    return { success: true };
+  };
+
+  const deleteGatePass = (gatePassNo) => {
+    setCanteenGatePasses(prev => prev.filter(gp => gp.gatePassNo !== gatePassNo && gp.id !== gatePassNo));
+    showToast(`Gate Pass #${gatePassNo} deleted.`);
+    return { success: true };
+  };
+
+  // 4. Void Logs
+  const updateVoidLog = (logId, updatedFields) => {
+    setCanteenVoidLogs(prev => prev.map(vl => {
+      if (vl.id === logId) {
+        return { ...vl, ...updatedFields };
+      }
+      return vl;
+    }));
+    showToast(`Void audit record updated.`);
+    return { success: true };
+  };
+
+  const deleteVoidLog = (logId) => {
+    setCanteenVoidLogs(prev => prev.filter(vl => vl.id !== logId));
+    showToast(`Void audit record deleted.`);
+    return { success: true };
+  };
+
+  // 5. Attendance Records
+  const updateAttendanceRecord = (recordId, updatedFields) => {
+    setAttendanceLogs(prev => prev.map(att => {
+      if (att.id === recordId) {
+        return { ...att, ...updatedFields };
+      }
+      return att;
+    }));
+    showToast(`Attendance shift log updated.`);
+    return { success: true };
+  };
+
+  const deleteAttendanceRecord = (recordId) => {
+    setAttendanceLogs(prev => prev.filter(att => att.id !== recordId));
+    showToast(`Attendance shift log deleted.`);
+    return { success: true };
+  };
+
+  // 6. Cash Loans & Coop Ledger
+  const updateCashLoan = (loanId, updatedFields) => {
+    setCashLoans(prev => prev.map(cl => {
+      if (cl.id === loanId || cl.loanCode === loanId) {
+        return { ...cl, ...updatedFields };
+      }
+      return cl;
+    }));
+    showToast(`Loan record updated.`);
+    return { success: true };
+  };
+
+  const deleteCashLoan = (loanId) => {
+    setCashLoans(prev => prev.filter(cl => cl.id !== loanId && cl.loanCode !== loanId));
+    showToast(`Loan record deleted.`);
+    return { success: true };
+  };
+
+  const updateCoopLedgerEntry = (entryId, updatedFields) => {
+    setCoopLedger(prev => prev.map(entry => {
+      if (entry.id === entryId) {
+        return { ...entry, ...updatedFields };
+      }
+      return entry;
+    }));
+    showToast(`Coop ledger transaction updated.`);
+    return { success: true };
+  };
+
+  const deleteCoopLedgerEntry = (entryId) => {
+    setCoopLedger(prev => prev.filter(entry => entry.id !== entryId));
+    showToast(`Coop ledger transaction deleted.`);
+    return { success: true };
+  };
+
+  // 7. Full Database Backup & Restore
+  const exportFullSystemBackup = () => {
+    const backupData = {
+      version: 'NKB_MASTER_V1',
+      exportedAt: new Date().toISOString(),
+      exportedBy: currentUser ? `${currentUser.name} (${currentUser.role})` : 'IT Admin',
+      canteenReceipts,
+      canteenInventory,
+      canteenCategories,
+      personalPurchaseOrders,
+      canteenGatePasses,
+      canteenVoidLogs,
+      attendanceLogs,
+      cashLoans,
+      coopBalances,
+      coopLedger,
+      coopWithdrawals,
+      canteenDrawer,
+      cashAdvances,
+      productJourneys,
+      payRuns,
+      manufacturingProducts,
+      staffList,
+      departments,
+      positions
+    };
+
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `NKB_System_Database_Backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast('Full Enterprise Database Backup exported as JSON!', 'success');
+  };
+
+  const importFullSystemBackup = (backupJson) => {
+    try {
+      if (!backupJson || typeof backupJson !== 'object') {
+        showToast('Invalid backup file format.', 'error');
+        return { success: false, message: 'Invalid backup file' };
+      }
+      if (Array.isArray(backupJson.canteenReceipts)) setCanteenReceipts(backupJson.canteenReceipts);
+      if (Array.isArray(backupJson.canteenInventory)) setCanteenInventory(backupJson.canteenInventory);
+      if (Array.isArray(backupJson.canteenCategories)) setCanteenCategories(backupJson.canteenCategories);
+      if (Array.isArray(backupJson.personalPurchaseOrders)) setPersonalPurchaseOrders(backupJson.personalPurchaseOrders);
+      if (Array.isArray(backupJson.canteenGatePasses)) setCanteenGatePasses(backupJson.canteenGatePasses);
+      if (Array.isArray(backupJson.canteenVoidLogs)) setCanteenVoidLogs(backupJson.canteenVoidLogs);
+      if (Array.isArray(backupJson.attendanceLogs)) setAttendanceLogs(backupJson.attendanceLogs);
+      if (Array.isArray(backupJson.cashLoans)) setCashLoans(backupJson.cashLoans);
+      if (backupJson.coopBalances && typeof backupJson.coopBalances === 'object') setCoopBalances(backupJson.coopBalances);
+      if (Array.isArray(backupJson.coopLedger)) setCoopLedger(backupJson.coopLedger);
+      if (Array.isArray(backupJson.coopWithdrawals)) setCoopWithdrawals(backupJson.coopWithdrawals);
+      if (backupJson.canteenDrawer) setCanteenDrawer(backupJson.canteenDrawer);
+      if (Array.isArray(backupJson.cashAdvances)) setCashAdvances(backupJson.cashAdvances);
+      if (Array.isArray(backupJson.productJourneys)) setProductJourneys(backupJson.productJourneys);
+      if (Array.isArray(backupJson.payRuns)) setPayRuns(backupJson.payRuns);
+      if (Array.isArray(backupJson.manufacturingProducts)) setManufacturingProducts(backupJson.manufacturingProducts);
+      showToast('Enterprise Database restored successfully from backup!', 'success');
+      return { success: true };
+    } catch (err) {
+      showToast(`Database restore error: ${err.message}`, 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
+  const resetTestTransactions = (options = { receipts: true, gatePasses: true, voidLogs: true, purchaseOrders: true }) => {
+    if (options.receipts) setCanteenReceipts([]);
+    if (options.gatePasses) setCanteenGatePasses([]);
+    if (options.voidLogs) setCanteenVoidLogs([]);
+    if (options.purchaseOrders) setPersonalPurchaseOrders([]);
+    showToast('Selected transaction tables purged successfully.');
+    return { success: true };
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -2096,6 +2308,24 @@ export function AppProvider({ children }) {
         voidProductJourneyToInventory,
         updateProductJourneyClaimant,
         resetProductJourney,
+        // IT Admin Master Record Operations
+        updateCanteenReceipt,
+        deleteCanteenReceipt,
+        updatePersonalPurchaseOrder,
+        deletePersonalPurchaseOrder,
+        updateGatePass,
+        deleteGatePass,
+        updateVoidLog,
+        deleteVoidLog,
+        updateAttendanceRecord,
+        deleteAttendanceRecord,
+        updateCashLoan,
+        deleteCashLoan,
+        updateCoopLedgerEntry,
+        deleteCoopLedgerEntry,
+        exportFullSystemBackup,
+        importFullSystemBackup,
+        resetTestTransactions,
         // UI
         activeTab,
         setActiveTab,

@@ -57,6 +57,12 @@ export const TAB_PERMISSIONS = {
     authorizedRoles: ['ceo', 'it_admin', 'canteen'],
     requiredRoleLabel: 'Canteen Management or Super Admin'
   },
+  itAdminHub: {
+    id: 'itAdminHub',
+    title: 'IT Admin Master Records',
+    authorizedRoles: ['ceo', 'it_admin'],
+    requiredRoleLabel: 'IT Administrator or Super Admin'
+  },
   employeePortal: {
     id: 'employeePortal',
     title: 'My Payslips (ESS)',
@@ -88,8 +94,9 @@ export const getDefaultTabForRole = (role) => {
   if (role === 'employee') return 'employeePortal';
   if (role === 'canteen') return 'canteenHub';
   if (role === 'finance' || role === 'accounting') return 'payroll';
+  if (role === 'it_admin') return 'itAdminHub';
   if (role === 'admin' || role === 'hr') return 'staff';
-  return 'staff'; // Default for CEO / IT Admin
+  return 'staff'; // Default for CEO
 };
 
 /**
@@ -145,4 +152,8 @@ export const canManageCanteenInventory = (role) => {
 
 export const canPerformCardVoid = (role) => {
   return role === 'ceo' || role === 'it_admin' || role === 'canteen';
+};
+
+export const canAccessITAdmin = (role) => {
+  return role === 'ceo' || role === 'it_admin';
 };

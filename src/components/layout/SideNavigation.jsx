@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Briefcase, ScanLine, Calculator, Landmark, Utensils, FileText, X, Shield, Network } from 'lucide-react';
+import { Users, Briefcase, ScanLine, Calculator, Landmark, Utensils, FileText, X, Shield, Network, Database } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { isTabAuthorized } from '../../utils/rolePermissions';
 
@@ -13,6 +13,12 @@ export default function SideNavigation({ isOpen, onClose }) {
     { id: 'payroll', label: 'Payroll Engine', icon: Calculator, roleBadge: 'Accounting' },
     { id: 'coopLoans', label: 'Coop, Loans & Canteen', icon: Landmark, roleBadge: currentUser?.role === 'accounting' || currentUser?.role === 'finance' ? 'Accounting' : 'HR & Acct' },
     { id: 'canteenHub', label: 'Canteen & Inventory', icon: Utensils, roleBadge: 'Canteen' },
+    { 
+      id: 'itAdminHub', 
+      label: 'IT Master Records', 
+      icon: Database, 
+      roleBadge: 'IT Admin' 
+    },
     { id: 'employeePortal', label: 'My Payslips (ESS)', icon: FileText, roleBadge: null },
     { 
       id: 'conceptMap', 

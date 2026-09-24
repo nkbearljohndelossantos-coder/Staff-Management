@@ -13,6 +13,7 @@ import PayRunList from './components/payroll/PayRunList';
 import EmployeePortalView from './components/payslip/EmployeePortalView';
 import CoopLoansManager from './components/coop/CoopLoansManager';
 import CanteenHub from './components/canteen/CanteenHub';
+import ITAdminHub from './components/it/ITAdminHub';
 import SystemConceptMapView from './components/concept/SystemConceptMapView';
 import CanteenCustomerDisplay from './components/canteen/CanteenCustomerDisplay';
 import { isTabAuthorized, getDefaultTabForRole, TAB_PERMISSIONS } from './utils/rolePermissions';
@@ -92,6 +93,7 @@ export default function App() {
                 {activeTab === 'payroll' && <PayRunList />}
                 {activeTab === 'coopLoans' && <CoopLoansManager />}
                 {activeTab === 'canteenHub' && <CanteenHub />}
+                {activeTab === 'itAdminHub' && <ITAdminHub />}
                 {activeTab === 'employeePortal' && <EmployeePortalView />}
                 {activeTab === 'conceptMap' && <SystemConceptMapView />}
               </>
