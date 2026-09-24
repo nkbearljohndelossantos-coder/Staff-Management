@@ -227,11 +227,11 @@ export default function StaffFormModal({ staff, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
-      <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl relative my-8 animate-in fade-in zoom-in duration-200 text-xs">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-hidden">
+      <div className="w-full max-w-2xl max-h-[92vh] flex flex-col bg-white border border-slate-200 rounded-3xl shadow-2xl relative my-auto animate-in fade-in zoom-in duration-200 text-xs overflow-hidden">
         
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+        {/* Header (Pinned) */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white shrink-0">
           <div>
             <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
               <UserPlus className="h-4 w-4 text-slate-600" />
@@ -250,8 +250,11 @@ export default function StaffFormModal({ staff, onClose }) {
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        {/* Form with Scrollable Content Body and Pinned Footer */}
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          
+          {/* Scrollable Form Body */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 text-xs">
           
           {/* Automated ID & Barcode Card with Employment Classification */}
           <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
@@ -1014,18 +1017,20 @@ export default function StaffFormModal({ staff, onClose }) {
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+          </div>
+
+          {/* Sticky Modal Footer Actions (Always Accessible) */}
+          <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-3 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-slate-700 hover:bg-slate-100 border border-slate-300 font-semibold transition cursor-pointer"
+              className="px-4 py-2 rounded-xl text-slate-700 hover:bg-slate-200 border border-slate-300 font-semibold transition cursor-pointer text-xs"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold flex items-center gap-2 cursor-pointer shadow-sm transition"
+              className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold flex items-center gap-2 cursor-pointer shadow-sm transition text-xs"
             >
               <Save className="h-4 w-4 text-white" />
               {isEditing ? 'Save Changes' : 'Confirm & Generate ID'}
