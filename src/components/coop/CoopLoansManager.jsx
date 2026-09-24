@@ -1388,7 +1388,8 @@ export default function CoopLoansManager() {
               {Number(loanForm.principal) > 0 && (() => {
                 const p = Number(loanForm.principal);
                 const t = Number(loanForm.termMonths);
-                const r = loanForm.category === 'appliance' ? 5 : (loanForm.category === 'gadget' || loanForm.category === 'education' ? 3 : 2);
+                const catObj = LOAN_CATEGORIES.find(c => c.id === loanForm.category) || { monthlyRate: 2 };
+                const r = catObj.monthlyRate;
                 const int = Math.round(p * (r / 100) * t);
                 const tot = p + int;
                 const cut = Math.round(tot / (t * 2));

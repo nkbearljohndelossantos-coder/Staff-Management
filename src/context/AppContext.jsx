@@ -69,7 +69,19 @@ export function AppProvider({ children }) {
       try {
         const parsed = JSON.parse(saved);
         if (parsed.length === INITIAL_STAFF.length && parsed.some(s => s.employeeId === 'NKBCANTEEN') && parsed.every(s => s.baseSalary === 0)) {
-          return parsed;
+          return parsed.map(s => ({
+            ...s,
+            dateHired: s.dateHired || s.hireDate || '2026-05-01',
+            hireDate: s.hireDate || s.dateHired || '2026-05-01',
+            birthday: s.birthday || '1995-06-15',
+            address: s.address || 'Subic Bay Gateway Park, Olongapo City, Zambales',
+            sssNo: s.sssNo || '',
+            philHealthNo: s.philHealthNo || '12-094820192-1',
+            hdmfNo: s.hdmfNo || '1210-9482-0192',
+            salaryRateType: s.salaryRateType || 'monthly',
+            salaryRate: s.salaryRate !== undefined ? s.salaryRate : (s.baseSalary || 0),
+            filedSalary: s.filedSalary !== undefined ? s.filedSalary : 0
+          }));
         }
       } catch (e) {}
     }
@@ -1101,16 +1113,19 @@ export function AppProvider({ children }) {
     }
 
     // Interest rate determination
-    let rate = 2; // default 2% per month (cash, medical, motor)
-    if (category === 'appliance') rate = 5;
-    else if (category === 'gadget' || category === 'education') rate = 3;
+    // Policy: cash loan 2%, education 2.5%, medical 3%, application 3%, motor 2.5%
+    const catObj = LOAN_CATEGORIES.find(c => c.id === category) || { label: category, monthlyRate: 2 };
+    let rate = catObj.monthlyRate || 2;
+    if (category === 'cash') rate = 2;
+    else if (category === 'education') rate = 2.5;
+    else if (category === 'medical') rate = 3;
+    else if (category === 'application' || category === 'appliance') rate = 3;
+    else if (category === 'motor') rate = 2.5;
 
     const totalInterest = Math.round(p * (rate / 100) * t);
     const totalRepayable = p + totalInterest;
     const monthlyDeduction = Math.round(totalRepayable / t);
     const cutoffDeduction = Math.round(totalRepayable / (t * 2)); // Semi-monthly cutoff
-
-    const catObj = LOAN_CATEGORIES.find(c => c.id === category) || { label: category };
 
     const newLoan = {
       id: `loan-${Date.now()}`,

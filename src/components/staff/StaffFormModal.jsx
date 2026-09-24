@@ -1,7 +1,28 @@
 import React, { useState } from 'react';
-import { X, Sparkles, UserPlus, Save, DollarSign, Plus, Building, Briefcase, Eye, EyeOff, Camera, Upload, Trash2 } from 'lucide-react';
+import {
+  X,
+  Sparkles,
+  UserPlus,
+  Save,
+  DollarSign,
+  Plus,
+  Building,
+  Briefcase,
+  Eye,
+  EyeOff,
+  Camera,
+  Upload,
+  Trash2,
+  Calendar,
+  MapPin,
+  Shield,
+  FileText,
+  Calculator,
+  AlertCircle
+} from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { generateNextEmployeeId } from '../../utils/idGenerator';
+import { formatCurrency, computeFiledSalaryDeductions } from '../../utils/payrollCalculations';
 import BarcodeView from '../common/BarcodeView';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
@@ -17,19 +38,34 @@ export default function StaffFormModal({ staff, onClose }) {
     lastName: staff?.lastName || '',
     email: staff?.email || '',
     phone: staff?.phone || '',
+    birthday: staff?.birthday || '',
+    address: staff?.address || '',
     avatar: staff?.avatar || '',
     employmentType: staff?.employmentType || (staff?.employeeId?.startsWith('PRJ') ? 'contractual' : 'regular'),
     positionId: staff?.positionId || positions[0]?.id || '',
     departmentId: staff?.departmentId || departments[0]?.id || '',
     role: staff?.role || 'employee',
-    baseSalary: staff?.baseSalary || 35000,
+    dateHired: staff?.dateHired || staff?.hireDate || new Date().toISOString().split('T')[0],
+    hireDate: staff?.hireDate || staff?.dateHired || new Date().toISOString().split('T')[0],
+
+    // Government Statutory Identifiers
+    sssNo: staff?.sssNo || '',
+    philHealthNo: staff?.philHealthNo || '',
+    hdmfNo: staff?.hdmfNo || '',
+    tin: staff?.tin || '',
+
+    // Actual Compensation Setup
+    salaryRateType: staff?.salaryRateType || 'monthly', // 'daily' | 'monthly'
+    salaryRate: staff?.salaryRate !== undefined ? staff.salaryRate : (staff?.baseSalary || 25000),
+    baseSalary: staff?.baseSalary || 25000,
     payFrequency: staff?.payFrequency || 'semi-monthly',
+
+    // Government Compliance Filed Salary (basis for SSS, PhilHealth, HDMF, Tax)
+    filedSalary: staff?.filedSalary !== undefined ? staff.filedSalary : 0,
+
     bankName: staff?.bankName || 'BDO Unibank',
     bankAccount: staff?.bankAccount || '',
-    tin: staff?.tin || '',
-    sssNo: staff?.sssNo || '',
-    pin: staff?.pin || '12345678',
-    hireDate: staff?.hireDate || new Date().toISOString().split('T')[0]
+    pin: staff?.pin || '12345678'
   });
 
   // Suggested next ID for employee based on employment type (NKB for regular, PRJ for part-time/contractual)
@@ -132,13 +168,29 @@ export default function StaffFormModal({ staff, onClose }) {
     }
   };
 
+  const statutoryBreakdown = computeFiledSalaryDeductions(formData.filedSalary);
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    const rateVal = Number(formData.salaryRate) || 0;
+    const monthlyEquivalent = formData.salaryRateType === 'daily' ? rateVal * 22 : rateVal;
+
     const finalData = {
       ...formData,
       employeeId: isEditing ? staff.employeeId : nextId,
       barcodeValue: isEditing ? staff.barcodeValue : nextId,
-      baseSalary: Number(formData.baseSalary) || 0,
+      dateHired: formData.dateHired || formData.hireDate,
+      hireDate: formData.dateHired || formData.hireDate,
+      birthday: formData.birthday || '',
+      address: formData.address || '',
+      sssNo: formData.sssNo || '',
+      philHealthNo: formData.philHealthNo || '',
+      hdmfNo: formData.hdmfNo || '',
+      tin: formData.tin || '',
+      salaryRateType: formData.salaryRateType,
+      salaryRate: rateVal,
+      baseSalary: monthlyEquivalent,
+      filedSalary: Number(formData.filedSalary) || 0,
       bankName: formData.bankName === 'Other' ? (formData.customBank || 'Other Bank') : formData.bankName,
       bankAccount: isCash ? 'N/A' : formData.bankAccount
     };
@@ -362,8 +414,37 @@ export default function StaffFormModal({ staff, onClose }) {
             </div>
           </div>
 
-          {/* Position & Department with Quick ADD options */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Birthday & Residential Address */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1 flex items-center gap-1">
+                <Calendar className="h-3 w-3 text-slate-600" />
+                <span>Birthday</span>
+              </label>
+              <input
+                type="date"
+                value={formData.birthday}
+                onChange={(e) => setFormData({ ...formData, birthday: e.target.value })}
+                className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none text-xs"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-slate-700 font-semibold mb-1 flex items-center gap-1">
+                <MapPin className="h-3 w-3 text-slate-600" />
+                <span>Complete Residential Address</span>
+              </label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                placeholder="House No., Street, Barangay, City, Province"
+                className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none text-xs"
+              />
+            </div>
+          </div>
+
+          {/* Position, Department & Date Hired */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             
             {/* Position Select with Quick Add Button */}
             <div>
@@ -439,7 +520,7 @@ export default function StaffFormModal({ staff, onClose }) {
               <select
                 value={formData.departmentId}
                 onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
-                className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none"
+                className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none text-xs"
               >
                 {departments.map(d => (
                   <option key={d.id} value={d.id}>
@@ -483,31 +564,137 @@ export default function StaffFormModal({ staff, onClose }) {
               )}
             </div>
 
+            {/* Date Hired */}
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1 flex items-center gap-1">
+                <Calendar className="h-3 w-3 text-slate-600" />
+                <span>Date Hired</span>
+              </label>
+              <input
+                type="date"
+                required
+                value={formData.dateHired}
+                onChange={(e) => setFormData({ ...formData, dateHired: e.target.value, hireDate: e.target.value })}
+                className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none text-xs"
+              />
+            </div>
+
           </div>
 
-          {/* Compensation Details */}
+          {/* Statutory Identification Numbers */}
           <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
             <h4 className="font-bold text-slate-900 flex items-center gap-1.5">
-              <DollarSign className="h-3.5 w-3.5 text-slate-600" />
-              Compensation &amp; Total Rewards Setup
+              <Shield className="h-3.5 w-3.5 text-slate-600" />
+              Government Statutory Identification Numbers
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-slate-700 font-medium mb-1">SSS No.</label>
+                <input
+                  type="text"
+                  placeholder="03-8899001-1"
+                  value={formData.sssNo}
+                  onChange={(e) => setFormData({ ...formData, sssNo: e.target.value })}
+                  className="w-full h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none font-mono text-xs focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-medium mb-1">PhilHealth No.</label>
+                <input
+                  type="text"
+                  placeholder="12-094820192-1"
+                  value={formData.philHealthNo}
+                  onChange={(e) => setFormData({ ...formData, philHealthNo: e.target.value })}
+                  className="w-full h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none font-mono text-xs focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-medium mb-1">HDMF (Pag-IBIG) No.</label>
+                <input
+                  type="text"
+                  placeholder="1210-9482-0192"
+                  value={formData.hdmfNo}
+                  onChange={(e) => setFormData({ ...formData, hdmfNo: e.target.value })}
+                  className="w-full h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none font-mono text-xs focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-medium mb-1">Taxpayer ID (TIN)</label>
+                <input
+                  type="text"
+                  placeholder="100-200-001"
+                  value={formData.tin}
+                  onChange={(e) => setFormData({ ...formData, tin: e.target.value })}
+                  className="w-full h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none font-mono text-xs focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Actual Salary Compensation Setup */}
+          <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
+            <h4 className="font-bold text-slate-900 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5 text-slate-600" />
+                Actual Compensation &amp; Salary Rate
+              </span>
+              <span className="text-[10px] text-slate-500 font-normal">Used for actual earnings calculation</span>
             </h4>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Daily vs Monthly Toggle */}
               <div>
-                <label className="block text-slate-700 font-medium mb-1">Monthly Base Salary (₱)</label>
+                <label className="block text-slate-700 font-medium mb-1">Salary Rate Type</label>
+                <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-lg border border-slate-300">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, salaryRateType: 'daily' })}
+                    className={`py-1 rounded font-bold text-[11px] transition cursor-pointer ${
+                      formData.salaryRateType === 'daily'
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Daily Rate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, salaryRateType: 'monthly' })}
+                    className={`py-1 rounded font-bold text-[11px] transition cursor-pointer ${
+                      formData.salaryRateType === 'monthly'
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Monthly Rate
+                  </button>
+                </div>
+              </div>
+
+              {/* Rate Input Amount */}
+              <div>
+                <label className="block text-slate-700 font-medium mb-1">
+                  Salary Rate (₱ / {formData.salaryRateType === 'daily' ? 'day' : 'month'})
+                </label>
                 <input
                   type="text"
                   inputMode="numeric"
                   required
-                  value={formData.baseSalary}
+                  value={formData.salaryRate}
                   onChange={(e) => {
                     const val = e.target.value.replace(/[^0-9]/g, '');
-                    setFormData({ ...formData, baseSalary: val });
+                    setFormData({ ...formData, salaryRate: val, baseSalary: val });
                   }}
-                  placeholder="35000"
+                  placeholder={formData.salaryRateType === 'daily' ? '650' : '25000'}
                   className="w-full h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none font-mono focus:ring-2 focus:ring-slate-900"
                 />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {formData.salaryRateType === 'daily'
+                    ? `~${formatCurrency((Number(formData.salaryRate) || 0) * 22)} / mo (22 working days)`
+                    : `~${formatCurrency(Math.round((Number(formData.salaryRate) || 0) / 22))} / day (22 working days)`}
+                </p>
               </div>
+
               <div>
                 <label className="block text-slate-700 font-medium mb-1">Pay Frequency</label>
                 <select
@@ -523,9 +710,7 @@ export default function StaffFormModal({ staff, onClose }) {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200">
               <div>
-                <label className="block text-slate-700 font-medium mb-1 flex items-center justify-between">
-                  <span>Disbursement Method</span>
-                </label>
+                <label className="block text-slate-700 font-medium mb-1">Disbursement Method</label>
                 <select
                   value={formData.bankName}
                   onChange={(e) => handleBankChange(e.target.value)}
@@ -602,6 +787,106 @@ export default function StaffFormModal({ staff, onClose }) {
                   >
                     {showPin ? <EyeOff className="h-3.5 w-3.5 text-slate-600" /> : <Eye className="h-3.5 w-3.5 text-slate-600" />}
                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Government Compliance: Filed Salary & Statutory Deductions Section */}
+          <div className="p-3.5 rounded-2xl border-2 border-slate-300 bg-slate-50 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <h4 className="font-extrabold text-slate-900 flex items-center gap-1.5">
+                <Calculator className="h-4 w-4 text-slate-800" />
+                Statutory Deductions &amp; Filed Salary Basis
+              </h4>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 font-bold uppercase tracking-wider">
+                Government Compliance
+              </span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <strong>Statutory Computation Rule:</strong> In computing other deductions, the actual employee salary is <strong>not used</strong>.
+                Enter the official manual <strong>Filed Salary</strong> below. SSS, PhilHealth, HDMF (Pag-IBIG), and Tax are computed strictly from this filed salary.
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+              <div>
+                <label className="block text-slate-800 font-bold mb-1">
+                  Manual Filed Salary (₱ / month)
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formData.filedSalary}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '');
+                    setFormData({ ...formData, filedSalary: val });
+                  }}
+                  placeholder="e.g. 15000"
+                  className="w-full h-10 px-3 rounded-xl bg-white border border-slate-400 text-slate-900 font-mono font-bold text-sm outline-none focus:ring-2 focus:ring-slate-900 shadow-xs"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Leave at 0 if employee has no statutory deductions filed.
+                </p>
+              </div>
+
+              <div className="text-right sm:text-right">
+                <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider">Total Statutory Deduction Basis</span>
+                <span className="text-lg font-black font-mono text-slate-900">
+                  {formatCurrency(statutoryBreakdown.monthly.total)} <span className="text-xs text-slate-500 font-normal">/mo</span>
+                </span>
+                <div className="text-[11px] font-mono text-slate-600">
+                  {formatCurrency(statutoryBreakdown.cutoff.total)} / 15-day cut-off
+                </div>
+              </div>
+            </div>
+
+            {/* Live Statutory Computation Breakdown Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] pt-1">
+              <div className="p-2.5 rounded-xl bg-white border border-slate-200 shadow-xs">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">SSS Contribution</div>
+                <div className="font-mono font-extrabold text-slate-900 mt-0.5">
+                  {formatCurrency(statutoryBreakdown.monthly.sss)}
+                  <span className="text-[9px] text-slate-500 font-normal"> /mo</span>
+                </div>
+                <div className="text-[10px] font-mono text-slate-500">
+                  {formatCurrency(statutoryBreakdown.cutoff.sss)} / cutoff
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white border border-slate-200 shadow-xs">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">PhilHealth</div>
+                <div className="font-mono font-extrabold text-slate-900 mt-0.5">
+                  {formatCurrency(statutoryBreakdown.monthly.philhealth)}
+                  <span className="text-[9px] text-slate-500 font-normal"> /mo</span>
+                </div>
+                <div className="text-[10px] font-mono text-slate-500">
+                  {formatCurrency(statutoryBreakdown.cutoff.philhealth)} / cutoff
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white border border-slate-200 shadow-xs">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">HDMF (Pag-IBIG)</div>
+                <div className="font-mono font-extrabold text-slate-900 mt-0.5">
+                  {formatCurrency(statutoryBreakdown.monthly.pagibig)}
+                  <span className="text-[9px] text-slate-500 font-normal"> /mo</span>
+                </div>
+                <div className="text-[10px] font-mono text-slate-500">
+                  {formatCurrency(statutoryBreakdown.cutoff.pagibig)} / cutoff
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white border border-slate-200 shadow-xs">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Withholding Tax</div>
+                <div className="font-mono font-extrabold text-slate-900 mt-0.5">
+                  {formatCurrency(statutoryBreakdown.monthly.tax)}
+                  <span className="text-[9px] text-slate-500 font-normal"> /mo</span>
+                </div>
+                <div className="text-[10px] font-mono text-slate-500">
+                  {formatCurrency(statutoryBreakdown.cutoff.tax)} / cutoff
                 </div>
               </div>
             </div>

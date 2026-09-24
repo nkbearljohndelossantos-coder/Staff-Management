@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Search, UserPlus, Filter, Edit3, Trash2, DollarSign, Users, Building, ScanLine, QrCode } from 'lucide-react';
+import { Search, UserPlus, Filter, Edit3, Trash2, DollarSign, Users, Building, ScanLine, QrCode, Eye, Calendar, Shield } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import StaffBadgeModal from './StaffBadgeModal';
 import StaffFormModal from './StaffFormModal';
+import StaffDetailModal from './StaffDetailModal';
 import BarcodeView from '../common/BarcodeView';
 import TableActionDropdown from '../common/TableActionDropdown';
 
@@ -14,22 +15,43 @@ export default function StaffDirectory() {
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [badgeModalStaff, setBadgeModalStaff] = useState(null);
   const [formModalStaff, setFormModalStaff] = useState(null);
+  const [detailModalStaff, setDetailModalStaff] = useState(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
 
   // Filter staff
   const filteredStaff = staffList.filter(s => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
-      s.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.employeeId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.email.toLowerCase().includes(searchQuery.toLowerCase());
+      s.firstName?.toLowerCase().includes(q) ||
+      s.lastName?.toLowerCase().includes(q) ||
+      s.employeeId?.toLowerCase().includes(q) ||
+      s.email?.toLowerCase().includes(q) ||
+      s.sssNo?.toLowerCase().includes(q) ||
+      s.philHealthNo?.toLowerCase().includes(q) ||
+      s.hdmfNo?.toLowerCase().includes(q) ||
+      s.address?.toLowerCase().includes(q);
 
     const matchesDept = selectedDept === 'ALL' || s.departmentId === selectedDept;
 
     return matchesSearch && matchesDept;
   });
 
-  const totalPayrollBudget = staffList.reduce((acc, s) => acc + (Number(s.baseSalary) || 0), 0);
+  const totalPayrollBudget = staffList.reduce((acc, s) => {
+    const rate = Number(s.salaryRate) || Number(s.baseSalary) || 0;
+    const monthly = s.salaryRateType === 'daily' ? rate * 22 : rate;
+    return acc + monthly;
+  }, 0);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -136,9 +158,9 @@ export default function StaffDirectory() {
               <tr>
                 <th className="py-3 px-4">Employee</th>
                 <th className="py-3 px-4">Generated ID &amp; Barcode</th>
-                <th className="py-3 px-4">Job Position</th>
-                <th className="py-3 px-4">Department</th>
-                <th className="py-3 px-4">Base Salary</th>
+                <th className="py-3 px-4">Position &amp; Department</th>
+                <th className="py-3 px-4">Date Hired</th>
+                <th className="py-3 px-4">Salary Rate &amp; Filed Basis</th>
                 <th className="py-3 px-4 text-center">Badge</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
@@ -154,20 +176,26 @@ export default function StaffDirectory() {
                 filteredStaff.map((staff) => {
                   const pos = positions.find(p => p.id === staff.positionId);
                   const dept = departments.find(d => d.id === staff.departmentId);
+                  const salaryRate = Number(staff.salaryRate) || Number(staff.baseSalary) || 0;
+                  const rateType = staff.salaryRateType || 'monthly';
+                  const filedSalary = Number(staff.filedSalary) || 0;
 
                   return (
                     <tr key={staff.id} className="hover:bg-slate-50/80 transition">
                       
                       {/* Name & Photo */}
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
+                        <div
+                          onClick={() => setDetailModalStaff(staff)}
+                          className="flex items-center gap-3 cursor-pointer group"
+                        >
                           <img
                             src={staff.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${staff.firstName}`}
                             alt={staff.firstName}
                             className="w-9 h-9 rounded-xl object-cover border border-slate-200 bg-slate-100 shadow-sm"
                           />
                           <div>
-                            <div className="font-bold text-slate-900 text-xs">
+                            <div className="font-bold text-slate-900 text-xs group-hover:text-blue-600 transition">
                               {staff.firstName} {staff.lastName}
                             </div>
                             <div className="text-[11px] text-slate-500">{staff.email}</div>
@@ -192,21 +220,36 @@ export default function StaffDirectory() {
                         </div>
                       </td>
 
-                      {/* Position */}
+                      {/* Position & Department */}
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">{pos?.title || 'Staff Member'}</div>
-                      </td>
-
-                      {/* Department */}
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[11px] text-slate-700 font-medium">
+                        <div className="font-semibold text-slate-900">{pos?.title || 'Staff Specialist'}</div>
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] text-slate-600 font-medium inline-block mt-0.5">
                           {dept?.name || 'General'}
                         </span>
                       </td>
 
-                      {/* Base Salary */}
-                      <td className="py-3 px-4 font-mono text-slate-900 font-semibold">
-                        {formatCurrency(staff.baseSalary)}
+                      {/* Date Hired */}
+                      <td className="py-3 px-4 font-mono text-[11px] text-slate-700 whitespace-nowrap">
+                        {formatDate(staff.dateHired || staff.hireDate)}
+                      </td>
+
+                      {/* Salary Rate & Filed Salary Basis */}
+                      <td className="py-3 px-4">
+                        <div className="font-mono font-bold text-slate-900 text-xs">
+                          {formatCurrency(salaryRate)}
+                          <span className="text-[10px] text-slate-500 font-normal"> / {rateType === 'daily' ? 'day' : 'mo'}</span>
+                        </div>
+                        <div className="mt-0.5">
+                          {filedSalary > 0 ? (
+                            <span className="text-[10px] font-mono text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-semibold" title="Basis for SSS, PhilHealth, HDMF & Tax">
+                              Filed: {formatCurrency(filedSalary)}/mo
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">
+                              No filed salary
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Digital ID (Barcode & QR) Button */}
@@ -225,6 +268,15 @@ export default function StaffDirectory() {
                       {/* Actions */}
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setDetailModalStaff(staff)}
+                            title="View Full Staff Profile"
+                            className="h-7 w-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition cursor-pointer border border-slate-200"
+                          >
+                            <Eye className="h-3.5 w-3.5 text-slate-600" />
+                          </button>
+
                           {isHR && (
                             <button
                               type="button"
@@ -239,6 +291,11 @@ export default function StaffDirectory() {
                           <TableActionDropdown
                             id={`staff-${staff.id}`}
                             actions={[
+                              {
+                                label: 'View Profile & Deductions',
+                                icon: Eye,
+                                onClick: () => setDetailModalStaff(staff)
+                              },
                               {
                                 label: 'Digital ID (Barcode & QR)',
                                 icon: QrCode,
@@ -279,6 +336,17 @@ export default function StaffDirectory() {
       </div>
 
       {/* Modals */}
+      {detailModalStaff && (
+        <StaffDetailModal
+          staff={detailModalStaff}
+          department={departments.find(d => d.id === detailModalStaff.departmentId)}
+          position={positions.find(p => p.id === detailModalStaff.positionId)}
+          onClose={() => setDetailModalStaff(null)}
+          onEdit={(s) => setFormModalStaff(s)}
+          onOpenDigitalId={(s) => openDigitalId(s)}
+        />
+      )}
+
       {badgeModalStaff && (
         <StaffBadgeModal
           staff={badgeModalStaff}

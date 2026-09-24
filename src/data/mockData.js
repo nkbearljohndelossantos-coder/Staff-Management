@@ -31,9 +31,19 @@ export const INITIAL_POSITIONS = [
 ];
 
 // Registered Personnel from Employee Masterlist.xlsx (all salaries = 0, no demo accounts)
-export const INITIAL_STAFF = [
-  ...generatedStaffData.staff
-];
+export const INITIAL_STAFF = generatedStaffData.staff.map(s => ({
+  ...s,
+  dateHired: s.hireDate || '2026-05-01',
+  hireDate: s.hireDate || '2026-05-01',
+  birthday: s.birthday || '1995-06-15',
+  address: s.address || 'Subic Bay Gateway Park, Olongapo City, Zambales',
+  sssNo: s.sssNo || '',
+  philHealthNo: s.philHealthNo || '12-094820192-1',
+  hdmfNo: s.hdmfNo || '1210-9482-0192',
+  salaryRateType: s.salaryRateType || 'monthly',
+  salaryRate: s.salaryRate !== undefined ? s.salaryRate : (s.baseSalary || 0),
+  filedSalary: s.filedSalary !== undefined ? s.filedSalary : 0
+}));
 
 // No demo attendance logs
 export const INITIAL_ATTENDANCE = [];
@@ -48,14 +58,16 @@ export const INITIAL_COOP_LEDGER = [];
 
 export const INITIAL_COOP_WITHDRAWALS = [];
 
-// 6 Loan Categories with specific monthly rates
+// Loan Categories with specific monthly rates
+// Policy: Cash Loan 2%, Education 2.5%, Cash Advance 1.5% (per cut-off), Medical 3%, Application 3%, Motor 2.5%
 export const LOAN_CATEGORIES = [
-  { id: 'cash', label: 'Personal Cash Loan', monthlyRate: 2, icon: 'Banknote', desc: 'Standard cash assistance for personal needs' },
-  { id: 'medical', label: 'Medical Emergency Loan', monthlyRate: 2, icon: 'Activity', desc: 'Hospitalization and prescription medicine' },
-  { id: 'motor', label: 'Motorcycle & Vehicle Loan', monthlyRate: 2, icon: 'Bike', desc: 'Transportation and vehicle maintenance' },
-  { id: 'education', label: 'Tuition & Education Loan', monthlyRate: 3, icon: 'GraduationCap', desc: 'Tuition fees, books, and school supplies' },
-  { id: 'gadget', label: 'Laptop & Gadget Loan', monthlyRate: 3, icon: 'Smartphone', desc: 'Laptops, mobile devices, and electronics' },
-  { id: 'appliance', label: 'Home Appliance Loan', monthlyRate: 5, icon: 'Tv', desc: 'Refrigerators, air conditioning, home appliances' }
+  { id: 'cash', label: 'Personal Cash Loan', monthlyRate: 2, icon: 'Banknote', desc: 'Standard cash assistance for personal needs (2% monthly)' },
+  { id: 'education', label: 'Tuition & Education Loan', monthlyRate: 2.5, icon: 'GraduationCap', desc: 'Tuition fees, books, and school supplies (2.5% monthly)' },
+  { id: 'medical', label: 'Medical Emergency Loan', monthlyRate: 3, icon: 'Activity', desc: 'Hospitalization and prescription medicine (3% monthly)' },
+  { id: 'application', label: 'Application & Equipment Loan', monthlyRate: 3, icon: 'Tv', desc: 'Equipment, appliances, and application loans (3% monthly)' },
+  { id: 'appliance', label: 'Home Appliance & Tools Loan', monthlyRate: 3, icon: 'Tv', desc: 'Refrigerators, air conditioning, home appliances (3% monthly)' },
+  { id: 'motor', label: 'Motorcycle & Vehicle Loan', monthlyRate: 2.5, icon: 'Bike', desc: 'Transportation and vehicle maintenance (2.5% monthly)' },
+  { id: 'gadget', label: 'Laptop & Gadget Loan', monthlyRate: 3, icon: 'Smartphone', desc: 'Laptops, mobile devices, and electronics (3% monthly)' }
 ];
 
 export const INITIAL_LOANS = [];

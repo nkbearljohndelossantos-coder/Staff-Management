@@ -66,22 +66,49 @@ export default function PayslipDocument({ staff, payRun, item, onClose }) {
           </div>
 
           {/* Employee & Pay Period Details */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-4 border-b border-slate-200 bg-slate-50 p-3 rounded-xl my-3">
-            <div>
-              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Employee Name</span>
-              <span className="font-bold text-slate-900 text-xs">{staff.firstName} {staff.lastName}</span>
+          <div className="py-3 px-4 border-b border-slate-200 bg-slate-50 rounded-xl my-3 space-y-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Employee Name</span>
+                <span className="font-bold text-slate-900 text-xs">{staff.firstName} {staff.lastName}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Employee ID</span>
+                <span className="font-mono font-bold text-slate-900 text-xs">{staff.employeeId}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Pay Period</span>
+                <span className="font-mono text-slate-800 text-[11px]">{payRun.periodStart} ~ {payRun.periodEnd}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Payout Date</span>
+                <span className="font-mono font-bold text-slate-900 text-xs">{payRun.payDate}</span>
+              </div>
             </div>
-            <div>
-              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Employee ID</span>
-              <span className="font-mono font-bold text-slate-900 text-xs">{staff.employeeId}</span>
-            </div>
-            <div>
-              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Pay Period</span>
-              <span className="font-mono text-slate-800 text-[11px]">{payRun.periodStart} ~ {payRun.periodEnd}</span>
-            </div>
-            <div>
-              <span className="text-[10px] text-slate-500 uppercase font-semibold block">Payout Date</span>
-              <span className="font-mono font-bold text-slate-900 text-xs">{payRun.payDate}</span>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-200 text-[11px]">
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Date Hired</span>
+                <span className="font-mono text-slate-800">{staff.dateHired || staff.hireDate || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Actual Salary Rate</span>
+                <span className="font-mono font-bold text-slate-900">
+                  {formatCurrency(staff.salaryRate || staff.baseSalary || item.salaryRate || 0)} / {staff.salaryRateType === 'daily' ? 'day' : 'month'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Filed Salary Basis</span>
+                <span className="font-mono font-bold text-slate-900">
+                  {Number(staff.filedSalary) > 0 ? `${formatCurrency(staff.filedSalary)}/mo` : 'No Filed Salary'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Statutory IDs (SSS/PH/HDMF)</span>
+                <span className="font-mono text-[10px] text-slate-700 truncate block" title={`SSS: ${staff.sssNo || 'N/A'}, PH: ${staff.philHealthNo || 'N/A'}, HDMF: ${staff.hdmfNo || 'N/A'}`}>
+                  {staff.sssNo || '—'} / {staff.philHealthNo || '—'} / {staff.hdmfNo || '—'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -130,19 +157,19 @@ export default function PayslipDocument({ staff, payRun, item, onClose }) {
               </div>
               <div className="space-y-1.5 text-slate-700">
                 <div className="flex justify-between">
-                  <span>Withholding Income Tax</span>
+                  <span>Withholding Income Tax (Filed Basis)</span>
                   <span className="font-mono font-semibold">{formatCurrency(item.withholdingTax || 0)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>SSS Contribution</span>
+                  <span>SSS Contribution (Filed Basis)</span>
                   <span className="font-mono font-semibold">{formatCurrency(item.sssDeduction || 0)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>PhilHealth Contribution</span>
+                  <span>PhilHealth Contribution (Filed Basis)</span>
                   <span className="font-mono font-semibold">{formatCurrency(item.philhealthDeduction || 0)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Pag-IBIG / HDMF</span>
+                  <span>Pag-IBIG / HDMF (Filed Basis)</span>
                   <span className="font-mono font-semibold">{formatCurrency(item.pagibigDeduction || 0)}</span>
                 </div>
                 {item.tardinessDeduction > 0 && (

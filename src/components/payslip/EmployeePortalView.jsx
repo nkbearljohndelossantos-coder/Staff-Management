@@ -1297,7 +1297,7 @@ export default function EmployeePortalView() {
 
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs leading-relaxed">
               💡 <strong>2-Stage Approval Process:</strong> Once endorsed by HR, your loan is forwarded to the <strong>Accounting Department</strong> for approval and withdrawal from the <strong>Coop Share Capital pool</strong> before salary deductions take effect.
-              Interest rates: <strong>Cash / Medical / Motor = 2%/mo</strong>, <strong>Gadget / Education = 3%/mo</strong>, <strong>Appliance = 5%/mo</strong>.
+              Interest rates: <strong>Cash = 2%/mo</strong>, <strong>Education &amp; Motor = 2.5%/mo</strong>, <strong>Medical, Application &amp; Gadget = 3%/mo</strong>. Canteen Cash Advance = <strong>1.5% per cut-off / 15-day salary</strong>.
             </div>
 
             <div className="space-y-3 text-xs">
@@ -1359,7 +1359,8 @@ export default function EmployeePortalView() {
               {Number(loanForm.principal) > 0 && (() => {
                 const p = Number(loanForm.principal);
                 const t = Number(loanForm.termMonths);
-                const r = loanForm.category === 'appliance' ? 5 : (loanForm.category === 'gadget' || loanForm.category === 'education' ? 3 : 2);
+                const catObj = LOAN_CATEGORIES.find(c => c.id === loanForm.category) || { monthlyRate: 2 };
+                const r = catObj.monthlyRate;
                 const int = Math.round(p * (r / 100) * t);
                 const tot = p + int;
                 const cut = Math.round(tot / (t * 2));
