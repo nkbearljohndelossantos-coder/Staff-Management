@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { X, Printer, ShieldCheck, QrCode, Copy, Check, ScanLine } from 'lucide-react';
 import BarcodeView from '../common/BarcodeView';
 import QRCodeView from '../common/QRCodeView';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function StaffBadgeModal({ staff, department, position, onClose }) {
   if (!staff) return null;
+
+  useEscapeKey('staff-badge-modal', ESCAPE_PRIORITY.MODAL, true, onClose);
 
   const [copiedType, setCopiedType] = useState(null);
 

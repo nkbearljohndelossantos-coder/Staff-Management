@@ -29,6 +29,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
+import TableActionDropdown from '../common/TableActionDropdown';
 
 export default function ITAdminHub() {
   const {
@@ -87,6 +89,11 @@ export default function ITAdminHub() {
     voidLogs: true,
     purchaseOrders: true
   });
+
+  // Progressive Escape dismissal: Closes modals at Priority 40 (MODAL)
+  useEscapeKey('it-edit-record-modal', ESCAPE_PRIORITY.MODAL, Boolean(editingRecord), () => setEditingRecord(null));
+  useEscapeKey('it-delete-record-modal', ESCAPE_PRIORITY.MODAL, Boolean(deletingRecord), () => setDeletingRecord(null));
+  useEscapeKey('it-purge-modal', ESCAPE_PRIORITY.MODAL, isPurgeModalOpen, () => setIsPurgeModalOpen(false));
   
   const fileInputRef = useRef(null);
 
@@ -653,22 +660,32 @@ export default function ITAdminHub() {
                         </span>
                       </td>
                       <td className="p-3.5 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit('receipt', r)}
-                          className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition mr-1 cursor-pointer"
-                          title="Edit Receipt Fields"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingRecord({ type: 'receipt', id: r.receiptNo, title: `Receipt #${r.receiptNo} (${r.customerName})` })}
-                          className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
-                          title="Delete Receipt"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit('receipt', r)}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                            title="Edit Receipt Fields"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <TableActionDropdown
+                            id={`it-receipt-${r.receiptNo}`}
+                            actions={[
+                              {
+                                label: 'Edit Transaction Details',
+                                icon: Edit3,
+                                onClick: () => handleOpenEdit('receipt', r)
+                              },
+                              {
+                                label: 'Delete Receipt Record',
+                                icon: Trash2,
+                                danger: true,
+                                onClick: () => setDeletingRecord({ type: 'receipt', id: r.receiptNo, title: `Receipt #${r.receiptNo} (${r.customerName})` })
+                              }
+                            ]}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -745,22 +762,32 @@ export default function ITAdminHub() {
                       <td className="p-3.5 font-mono text-slate-500">{item.reorderLevel || 10}</td>
                       <td className="p-3.5 text-slate-600">{item.expirationDate || '—'}</td>
                       <td className="p-3.5 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit('inventory', item)}
-                          className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition mr-1 cursor-pointer"
-                          title="Edit Inventory Item"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingRecord({ type: 'inventory', id: item.id, title: `${item.name} (${item.barcode})` })}
-                          className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
-                          title="Delete Inventory Item"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit('inventory', item)}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                            title="Edit Inventory Item"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <TableActionDropdown
+                            id={`it-inv-${item.id}`}
+                            actions={[
+                              {
+                                label: 'Edit Supply & Price',
+                                icon: Edit3,
+                                onClick: () => handleOpenEdit('inventory', item)
+                              },
+                              {
+                                label: 'Delete Supply Item',
+                                icon: Trash2,
+                                danger: true,
+                                onClick: () => setDeletingRecord({ type: 'inventory', id: item.id, title: `${item.name} (${item.barcode})` })
+                              }
+                            ]}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -834,22 +861,32 @@ export default function ITAdminHub() {
                         </span>
                       </td>
                       <td className="p-3.5 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit('purchaseOrder', po)}
-                          className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition mr-1 cursor-pointer"
-                          title="Edit Purchase Order"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingRecord({ type: 'purchaseOrder', id: po.id || po.poNumber, title: `PO #${po.poNumber} (${po.staffName})` })}
-                          className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
-                          title="Delete Purchase Order"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit('purchaseOrder', po)}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                            title="Edit Purchase Order"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <TableActionDropdown
+                            id={`it-po-${po.id || po.poNumber}`}
+                            actions={[
+                              {
+                                label: 'Edit Order & Terms',
+                                icon: Edit3,
+                                onClick: () => handleOpenEdit('purchaseOrder', po)
+                              },
+                              {
+                                label: 'Delete Purchase Order',
+                                icon: Trash2,
+                                danger: true,
+                                onClick: () => setDeletingRecord({ type: 'purchaseOrder', id: po.id || po.poNumber, title: `PO #${po.poNumber} (${po.staffName})` })
+                              }
+                            ]}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -923,22 +960,32 @@ export default function ITAdminHub() {
                         {gp.securityGuard || 'Awaiting Gate Post 1 Check'}
                       </td>
                       <td className="p-3.5 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit('gatePass', gp)}
-                          className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition mr-1 cursor-pointer"
-                          title="Edit Gate Pass"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingRecord({ type: 'gatePass', id: gp.gatePassNo, title: `Gate Pass #${gp.gatePassNo} (${gp.staffName})` })}
-                          className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
-                          title="Delete Gate Pass"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit('gatePass', gp)}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                            title="Edit Gate Pass"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <TableActionDropdown
+                            id={`it-gp-${gp.gatePassNo}`}
+                            actions={[
+                              {
+                                label: 'Edit Clearance Details',
+                                icon: Edit3,
+                                onClick: () => handleOpenEdit('gatePass', gp)
+                              },
+                              {
+                                label: 'Delete Gate Pass',
+                                icon: Trash2,
+                                danger: true,
+                                onClick: () => setDeletingRecord({ type: 'gatePass', id: gp.gatePassNo, title: `Gate Pass #${gp.gatePassNo} (${gp.staffName})` })
+                              }
+                            ]}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1003,22 +1050,32 @@ export default function ITAdminHub() {
                         {vl.amount ? `₱${Number(vl.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
                       </td>
                       <td className="p-3.5 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit('voidLog', vl)}
-                          className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition mr-1 cursor-pointer"
-                          title="Edit Void Audit Record"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingRecord({ type: 'voidLog', id: vl.id, title: `Void Record (${vl.voidedBy})` })}
-                          className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
-                          title="Delete Void Record"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit('voidLog', vl)}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                            title="Edit Void Audit Record"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <TableActionDropdown
+                            id={`it-void-${vl.id}`}
+                            actions={[
+                              {
+                                label: 'Edit Audit Record',
+                                icon: Edit3,
+                                onClick: () => handleOpenEdit('voidLog', vl)
+                              },
+                              {
+                                label: 'Delete Void Log',
+                                icon: Trash2,
+                                danger: true,
+                                onClick: () => setDeletingRecord({ type: 'voidLog', id: vl.id, title: `Void Record (${vl.voidedBy})` })
+                              }
+                            ]}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1085,22 +1142,32 @@ export default function ITAdminHub() {
                         </span>
                       </td>
                       <td className="p-3.5 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit('attendance', att)}
-                          className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition mr-1 cursor-pointer"
-                          title="Edit Attendance Record"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingRecord({ type: 'attendance', id: att.id, title: `Attendance: ${att.staffName} (${att.date})` })}
-                          className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
-                          title="Delete Attendance Record"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit('attendance', att)}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                            title="Edit Attendance Record"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <TableActionDropdown
+                            id={`it-att-${att.id}`}
+                            actions={[
+                              {
+                                label: 'Edit Shift Times & Status',
+                                icon: Edit3,
+                                onClick: () => handleOpenEdit('attendance', att)
+                              },
+                              {
+                                label: 'Delete Attendance Record',
+                                icon: Trash2,
+                                danger: true,
+                                onClick: () => setDeletingRecord({ type: 'attendance', id: att.id, title: `Attendance: ${att.staffName} (${att.date})` })
+                              }
+                            ]}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1164,22 +1231,32 @@ export default function ITAdminHub() {
                           </span>
                         </td>
                         <td className="p-3.5 text-right whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit('loan', loan)}
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition mr-1 cursor-pointer"
-                            title="Edit Loan Record"
-                          >
-                            <Edit3 className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeletingRecord({ type: 'loan', id: loan.id || loan.loanCode, title: `Loan ${loan.loanCode} (${loan.staffName})` })}
-                            className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
-                            title="Delete Loan"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit('loan', loan)}
+                              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                              title="Edit Loan Record"
+                            >
+                              <Edit3 className="h-4 w-4" />
+                            </button>
+                            <TableActionDropdown
+                              id={`it-loan-${loan.id || loan.loanCode}`}
+                              actions={[
+                                {
+                                  label: 'Edit Principal & Terms',
+                                  icon: Edit3,
+                                  onClick: () => handleOpenEdit('loan', loan)
+                                },
+                                {
+                                  label: 'Delete Loan Record',
+                                  icon: Trash2,
+                                  danger: true,
+                                  onClick: () => setDeletingRecord({ type: 'loan', id: loan.id || loan.loanCode, title: `Loan ${loan.loanCode} (${loan.staffName})` })
+                                }
+                              ]}
+                            />
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1237,22 +1314,32 @@ export default function ITAdminHub() {
                         </td>
                         <td className="p-3.5 text-slate-700 max-w-sm">{entry.note}</td>
                         <td className="p-3.5 text-right whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit('coopLedger', entry)}
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition mr-1 cursor-pointer"
-                            title="Edit Ledger Entry"
-                          >
-                            <Edit3 className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeletingRecord({ type: 'coopLedger', id: entry.id, title: `Coop Ledger Entry (${entry.type})` })}
-                            className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
-                            title="Delete Ledger Entry"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit('coopLedger', entry)}
+                              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                              title="Edit Ledger Entry"
+                            >
+                              <Edit3 className="h-4 w-4" />
+                            </button>
+                            <TableActionDropdown
+                              id={`it-coop-${entry.id}`}
+                              actions={[
+                                {
+                                  label: 'Edit Ledger Transaction',
+                                  icon: Edit3,
+                                  onClick: () => handleOpenEdit('coopLedger', entry)
+                                },
+                                {
+                                  label: 'Delete Ledger Entry',
+                                  icon: Trash2,
+                                  danger: true,
+                                  onClick: () => setDeletingRecord({ type: 'coopLedger', id: entry.id, title: `Coop Ledger Entry (${entry.type})` })
+                                }
+                              ]}
+                            />
+                          </div>
                         </td>
                       </tr>
                     ))

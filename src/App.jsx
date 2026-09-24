@@ -18,6 +18,7 @@ import SystemConceptMapView from './components/concept/SystemConceptMapView';
 import CanteenCustomerDisplay from './components/canteen/CanteenCustomerDisplay';
 import MobileBottomNav from './components/layout/MobileBottomNav';
 import DigitalIdModal from './components/id/DigitalIdModal';
+import CommandPalette from './components/common/CommandPalette';
 import { isTabAuthorized, getDefaultTabForRole, TAB_PERMISSIONS } from './utils/rolePermissions';
 
 export default function App() {
@@ -35,6 +36,19 @@ export default function App() {
   } = useApp();
   const [loginMode, setLoginMode] = useState('staff'); // 'staff' or 'barcode'
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  // Global keyboard listener for Command Palette (Ctrl+K or Cmd+K)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Check if opened as 2nd Monitor Customer Display
   const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -68,7 +82,11 @@ export default function App() {
   // Authenticated Portal: Dark Header + Dark Side Tabs + Crisp Light Body
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col font-sans selection:bg-slate-300 selection:text-slate-900">
-      <AppHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+      <AppHeader
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+      />
 
       <div className="flex-1 flex min-h-[calc(100vh-57px)]">
         {/* Left Side Navigation Tabs (Dark) */}
@@ -130,6 +148,12 @@ export default function App() {
           onClose={closeDigitalId}
         />
       )}
+
+      {/* Global Command Palette (Ctrl+K) */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+      />
 
       {/* Toast Notification (Monochrome/Neutral high-contrast) */}
       {notification && (

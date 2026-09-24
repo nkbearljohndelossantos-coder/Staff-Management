@@ -3,9 +3,12 @@ import { X, Sparkles, UserPlus, Save, DollarSign, Plus, Building, Briefcase, Eye
 import { useApp } from '../../context/AppContext';
 import { generateNextEmployeeId } from '../../utils/idGenerator';
 import BarcodeView from '../common/BarcodeView';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function StaffFormModal({ staff, onClose }) {
   const { staffList, departments, positions, addStaff, updateStaff, addDepartment, addPosition } = useApp();
+
+  useEscapeKey('staff-form-modal', ESCAPE_PRIORITY.MODAL, true, onClose);
 
   const isEditing = Boolean(staff);
 

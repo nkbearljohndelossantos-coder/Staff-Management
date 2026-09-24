@@ -1,9 +1,12 @@
 import React from 'react';
 import { Printer, X, ShieldCheck, CheckCircle2, Package, Calendar, User, Building2, FileText } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function GatePassModal({ gatePass, onClose }) {
   const { clearGatePass, currentUser, isSuperAdmin } = useApp();
+
+  useEscapeKey('canteen-gate-pass-modal', ESCAPE_PRIORITY.MODAL, Boolean(gatePass), onClose);
 
   if (!gatePass) return null;
 

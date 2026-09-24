@@ -18,6 +18,7 @@ import {
 import BarcodeView from '../common/BarcodeView';
 import QRCodeView from '../common/QRCodeView';
 import QRCode from 'qrcode';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function DigitalIdModal({ staff, department, position, onClose }) {
   if (!staff) return null;
@@ -25,6 +26,9 @@ export default function DigitalIdModal({ staff, department, position, onClose })
   const [copiedType, setCopiedType] = useState(null); // 'barcode' | 'qr' | 'all' | 'id'
   const [isScanMode, setIsScanMode] = useState(false);
   const cardRef = useRef(null);
+
+  // Progressive Escape dismissal: Closes Digital ID modal at Priority 40 (MODAL)
+  useEscapeKey('digital-id-modal', ESCAPE_PRIORITY.MODAL, true, onClose);
 
   const employeeId = staff.employeeId || staff.id || 'NKB-STAFF';
   const barcodeValue = staff.barcodeValue || employeeId;

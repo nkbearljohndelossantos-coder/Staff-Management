@@ -2,9 +2,13 @@ import React from 'react';
 import { Users, Briefcase, ScanLine, Calculator, Landmark, Utensils, FileText, X, Shield, Network, Database } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { isTabAuthorized } from '../../utils/rolePermissions';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function SideNavigation({ isOpen, onClose }) {
   const { activeTab, setActiveTab, currentUser } = useApp();
+
+  // Progressive Escape dismissal: Closes mobile flyout drawer at Priority 20 (FLYOUT)
+  useEscapeKey('sidebar-drawer', ESCAPE_PRIORITY.FLYOUT, isOpen, onClose);
 
   const allTabs = [
     { id: 'staff', label: 'Staff & IDs', icon: Users, roleBadge: 'HR' },

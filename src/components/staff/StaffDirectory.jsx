@@ -5,6 +5,7 @@ import { formatCurrency } from '../../utils/payrollCalculations';
 import StaffBadgeModal from './StaffBadgeModal';
 import StaffFormModal from './StaffFormModal';
 import BarcodeView from '../common/BarcodeView';
+import TableActionDropdown from '../common/TableActionDropdown';
 
 export default function StaffDirectory() {
   const { staffList, departments, positions, deleteStaff, isHR, openDigitalId } = useApp();
@@ -223,28 +224,49 @@ export default function StaffDirectory() {
 
                       {/* Actions */}
                       <td className="py-3 px-4 text-right">
-                        {isHR ? (
-                          <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {isHR && (
                             <button
                               type="button"
                               onClick={() => setFormModalStaff(staff)}
-                              title="Edit Profile"
+                              title="Quick Edit Profile"
                               className="h-7 w-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition cursor-pointer border border-slate-200"
                             >
                               <Edit3 className="h-3.5 w-3.5 text-slate-600" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => deleteStaff(staff.id)}
-                              title="Delete"
-                              className="h-7 w-7 rounded-lg bg-slate-100 hover:bg-rose-50 hover:border-rose-200 text-slate-600 hover:text-rose-700 flex items-center justify-center transition cursor-pointer border border-slate-200"
-                            >
-                              <Trash2 className="h-3.5 w-3.5 text-slate-600" />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 font-semibold italic">View Only</span>
-                        )}
+                          )}
+
+                          <TableActionDropdown
+                            id={`staff-${staff.id}`}
+                            actions={[
+                              {
+                                label: 'Digital ID (Barcode & QR)',
+                                icon: QrCode,
+                                onClick: () => openDigitalId(staff)
+                              },
+                              {
+                                label: 'Print Badge Card',
+                                icon: ScanLine,
+                                onClick: () => setBadgeModalStaff(staff)
+                              },
+                              ...(isHR
+                                ? [
+                                    {
+                                      label: 'Edit Profile & Salary',
+                                      icon: Edit3,
+                                      onClick: () => setFormModalStaff(staff)
+                                    },
+                                    {
+                                      label: 'Delete Staff Member',
+                                      icon: Trash2,
+                                      danger: true,
+                                      onClick: () => deleteStaff(staff.id)
+                                    }
+                                  ]
+                                : [])
+                            ]}
+                          />
+                        </div>
                       </td>
 
                     </tr>

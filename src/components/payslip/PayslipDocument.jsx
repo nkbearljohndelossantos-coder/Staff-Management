@@ -2,8 +2,11 @@ import React from 'react';
 import { X, Printer } from 'lucide-react';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import BarcodeView from '../common/BarcodeView';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function PayslipDocument({ staff, payRun, item, onClose }) {
+  useEscapeKey('payslip-document-modal', ESCAPE_PRIORITY.MODAL, Boolean(staff && payRun && item), onClose);
+
   if (!staff || !payRun || !item) return null;
 
   const handlePrint = () => {

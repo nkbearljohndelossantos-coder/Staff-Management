@@ -1,8 +1,8 @@
 import React from 'react';
-import { LogOut, Sparkles, Menu, QrCode } from 'lucide-react';
+import { LogOut, Sparkles, Menu, QrCode, Search, Command } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
-export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
+export default function AppHeader({ sidebarOpen, setSidebarOpen, onOpenCommandPalette }) {
   const { currentUser, logout, switchDemoRole, isSuperAdmin, openDigitalId } = useApp();
 
   const getRoleBadge = (role) => {
@@ -168,6 +168,20 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
               </button>
             </div>
           )}
+
+          {/* Command Palette Trigger Button (Ctrl+K) */}
+          <button
+            type="button"
+            onClick={() => onOpenCommandPalette && onOpenCommandPalette()}
+            className="h-8 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 flex items-center gap-1.5 transition cursor-pointer text-xs font-semibold shrink-0 shadow-sm"
+            title="Open Command Palette (Ctrl+K)"
+          >
+            <Command className="h-3.5 w-3.5 text-slate-400" />
+            <span className="hidden md:inline text-[11px] text-slate-300">Commands</span>
+            <kbd className="hidden sm:inline px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700 font-mono text-[9px] text-slate-400 font-bold">
+              ⌘K
+            </kbd>
+          </button>
 
           {/* Quick Digital ID Button (Available everywhere on Mobile & Desktop) */}
           <button

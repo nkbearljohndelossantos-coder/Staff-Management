@@ -28,6 +28,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { PRODUCT_JOURNEY_STAGES } from '../../data/mockData';
 import { exportProductJourneyExcel } from '../../utils/productJourneyExcel';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function ProductTrackingMap() {
   const { 
@@ -50,6 +51,12 @@ export default function ProductTrackingMap() {
   const [showChangeClaimantModal, setShowChangeClaimantModal] = useState(false);
   const [showVoidModal, setShowVoidModal] = useState(false);
   const [showPrintReportModal, setShowPrintReportModal] = useState(false);
+
+  // Progressive Escape dismissal (Priority 40 - MODAL)
+  useEscapeKey('tracking-handover-modal', ESCAPE_PRIORITY.MODAL, showHandoverModal, () => setShowHandoverModal(false));
+  useEscapeKey('tracking-claimant-modal', ESCAPE_PRIORITY.MODAL, showChangeClaimantModal, () => setShowChangeClaimantModal(false));
+  useEscapeKey('tracking-void-modal', ESCAPE_PRIORITY.MODAL, showVoidModal, () => setShowVoidModal(false));
+  useEscapeKey('tracking-print-modal', ESCAPE_PRIORITY.MODAL, showPrintReportModal, () => setShowPrintReportModal(false));
 
   // Form states
   const [selectedStaffId, setSelectedStaffId] = useState('');

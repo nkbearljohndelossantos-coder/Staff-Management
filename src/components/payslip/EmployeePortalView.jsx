@@ -28,6 +28,7 @@ import BarcodeView from '../common/BarcodeView';
 import QRCodeView from '../common/QRCodeView';
 import PayslipDocument from './PayslipDocument';
 import GatePassModal from '../canteen/GatePassModal';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function EmployeePortalView() {
   const {
@@ -69,6 +70,14 @@ export default function EmployeePortalView() {
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showPOModal, setShowPOModal] = useState(false);
   const [selectedGatePass, setSelectedGatePass] = useState(null);
+
+  // Progressive Escape dismissal (Priority 40 - MODAL)
+  useEscapeKey('ess-loan-modal', ESCAPE_PRIORITY.MODAL, showLoanModal, () => setShowLoanModal(false));
+  useEscapeKey('ess-advance-modal', ESCAPE_PRIORITY.MODAL, showAdvanceModal, () => setShowAdvanceModal(false));
+  useEscapeKey('ess-withdraw-modal', ESCAPE_PRIORITY.MODAL, showWithdrawModal, () => setShowWithdrawModal(false));
+  useEscapeKey('ess-po-modal', ESCAPE_PRIORITY.MODAL, showPOModal, () => setShowPOModal(false));
+  useEscapeKey('ess-gate-pass-modal', ESCAPE_PRIORITY.MODAL, Boolean(selectedGatePass), () => setSelectedGatePass(null));
+  useEscapeKey('ess-payslip-modal', ESCAPE_PRIORITY.MODAL, Boolean(selectedPayslipData), () => setSelectedPayslipData(null));
 
   // Form States
   const [loanForm, setLoanForm] = useState({ category: 'cash', principal: '', termMonths: 3, purpose: '' });

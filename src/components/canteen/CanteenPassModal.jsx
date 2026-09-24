@@ -1,8 +1,11 @@
 import React from 'react';
 import { X, Printer, ShieldCheck, Store, ScanBarcode } from 'lucide-react';
 import BarcodeView from '../common/BarcodeView';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function CanteenPassModal({ onClose }) {
+  useEscapeKey('canteen-pass-modal', ESCAPE_PRIORITY.MODAL, true, onClose);
+
   const handlePrint = () => {
     window.print();
   };

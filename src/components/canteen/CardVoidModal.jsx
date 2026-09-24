@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, ShieldAlert, ScanBarcode, QrCode, Radio, CheckCircle, AlertCircle, ArrowLeftRight } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function CardVoidModal({ receipt, onClose }) {
   const { voidTransactionWithCard, currentUser } = useApp();
@@ -9,6 +10,8 @@ export default function CardVoidModal({ receipt, onClose }) {
   const [reason, setReason] = useState('');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  useEscapeKey('canteen-card-void-modal', ESCAPE_PRIORITY.MODAL, Boolean(receipt), onClose);
 
   if (!receipt) return null;
 

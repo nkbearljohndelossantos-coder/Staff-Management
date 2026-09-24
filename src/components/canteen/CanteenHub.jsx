@@ -37,6 +37,7 @@ import GatePassModal from './GatePassModal';
 import CanteenScannerTerminal from './CanteenScannerTerminal';
 import CanteenReportsSection from './CanteenReportsSection';
 import CanteenPassModal from './CanteenPassModal';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 // Known Catalog for Automatic Inbound Scan Pre-filling
 export const KNOWN_INBOUND_CATALOG = {
@@ -201,6 +202,12 @@ export default function CanteenHub() {
   // Search & Filter
   const [inventorySearch, setInventorySearch] = useState('');
   const [selectedVoidReceipt, setSelectedVoidReceipt] = useState(null);
+
+  // Progressive Escape dismissal (Priority 40 - MODAL)
+  useEscapeKey('canteen-add-supply-modal', ESCAPE_PRIORITY.MODAL, showAddModal, () => setShowAddModal(false));
+  useEscapeKey('canteen-category-modal', ESCAPE_PRIORITY.MODAL, showCategoryModal, () => setShowCategoryModal(false));
+  useEscapeKey('canteen-pass-modal-hub', ESCAPE_PRIORITY.MODAL, showCanteenPassModal, () => setShowCanteenPassModal(false));
+  useEscapeKey('canteen-void-receipt-hub', ESCAPE_PRIORITY.MODAL, Boolean(selectedVoidReceipt), () => setSelectedVoidReceipt(null));
 
   // Scan & Auto-Fill Inbound Stock Handler
   const handleScanInboundInventory = (code) => {

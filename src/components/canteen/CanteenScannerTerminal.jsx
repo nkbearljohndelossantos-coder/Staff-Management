@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useMultiScreenManager } from '../../utils/useMultiScreenManager';
+import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 // Standard fallback catalog for barcode gun recognition
 const STANDARD_SUPPLIES_CATALOG = {
@@ -96,6 +97,15 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   const barcodeInputRef = useRef(null);
   const supervisorInputRef = useRef(null);
   const customerInputRef = useRef(null);
+
+  // Progressive Escape dismissal:
+  // 1. Suggestions: Clear customer search query first if populated (Priority 80)
+  useEscapeKey('canteen-customer-search-query', ESCAPE_PRIORITY.SUGGESTION, showCustomerModal && Boolean(customerSearchQuery), () => setCustomerSearchQuery(''));
+  // 2. Modals: Close customer modal or void modal (Priority 40)
+  useEscapeKey('canteen-customer-modal', ESCAPE_PRIORITY.MODAL, showCustomerModal, () => setShowCustomerModal(false));
+  useEscapeKey('canteen-void-modal', ESCAPE_PRIORITY.MODAL, showVoidModal, () => setShowVoidModal(false));
+  // 3. Docked mini-tabs / floating panels: Dismiss lastScanned item banner (Priority 10)
+  useEscapeKey('canteen-scanned-banner', ESCAPE_PRIORITY.DOCKED_TAB, Boolean(lastScanned), () => setLastScanned(null));
 
   // Focus barcode input on mount and after actions
   useEffect(() => {
