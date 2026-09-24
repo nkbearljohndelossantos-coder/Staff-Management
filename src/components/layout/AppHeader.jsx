@@ -1,9 +1,9 @@
 import React from 'react';
-import { LogOut, Sparkles, Menu } from 'lucide-react';
+import { LogOut, Sparkles, Menu, QrCode } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
-  const { currentUser, logout, switchDemoRole, isSuperAdmin } = useApp();
+  const { currentUser, logout, switchDemoRole, isSuperAdmin, openDigitalId } = useApp();
 
   const getRoleBadge = (role) => {
     switch (role) {
@@ -168,6 +168,17 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen }) {
               </button>
             </div>
           )}
+
+          {/* Quick Digital ID Button (Available everywhere on Mobile & Desktop) */}
+          <button
+            type="button"
+            onClick={() => openDigitalId()}
+            className="h-8 px-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5 transition cursor-pointer text-xs font-bold shrink-0 shadow-sm"
+            title="Open My Digital ID (Barcode & QR Pass)"
+          >
+            <QrCode className="h-3.5 w-3.5 text-cyan-400" />
+            <span className="text-[11px] font-extrabold">Digital ID</span>
+          </button>
 
           {/* Current User Card */}
           <div className="flex items-center gap-2.5 pl-2 border-l border-slate-800">

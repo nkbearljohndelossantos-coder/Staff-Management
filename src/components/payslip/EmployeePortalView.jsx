@@ -16,13 +16,16 @@ import {
   Package,
   ShoppingBag,
   Check,
-  Printer
+  Printer,
+  QrCode,
+  Copy,
+  Maximize2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import { LOAN_CATEGORIES } from '../../data/mockData';
 import BarcodeView from '../common/BarcodeView';
-import StaffBadgeModal from '../staff/StaffBadgeModal';
+import QRCodeView from '../common/QRCodeView';
 import PayslipDocument from './PayslipDocument';
 import GatePassModal from '../canteen/GatePassModal';
 
@@ -45,11 +48,20 @@ export default function EmployeePortalView() {
     manufacturingProducts,
     personalPurchaseOrders,
     createPersonalPurchaseOrder,
-    canteenGatePasses
+    canteenGatePasses,
+    openDigitalId
   } = useApp();
 
-  const [showBadgeModal, setShowBadgeModal] = useState(false);
+  const [copiedSnippet, setCopiedSnippet] = useState(null);
   const [selectedPayslipData, setSelectedPayslipData] = useState(null);
+
+  const handleCopySnippet = (text, type) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedSnippet(type);
+      setTimeout(() => setCopiedSnippet(null), 2500);
+    }).catch(err => console.warn('Copy error:', err));
+  };
 
   // Financial Modals State
   const [showLoanModal, setShowLoanModal] = useState(false);
@@ -194,12 +206,148 @@ export default function EmployeePortalView() {
           </div>
           <button
             type="button"
-            onClick={() => setShowBadgeModal(true)}
+            onClick={() => openDigitalId(currentStaff)}
             className="w-full py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition"
           >
-            <ScanLine className="h-3.5 w-3.5 text-white" />
-            Print Digital ID Badge
+            <QrCode className="h-3.5 w-3.5 text-cyan-400" />
+            Digital ID (Barcode &amp; QR)
           </button>
+        </div>
+      </div>
+
+      {/* Official Digital Identity (Barcode & QR Pass) Copy Section */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <span className="p-2 rounded-xl bg-cyan-500/10 text-cyan-600 border border-cyan-500/20 shrink-0">
+              <QrCode className="h-5 w-5" />
+            </span>
+            <div>
+              <h3 className="text-sm font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-2">
+                Digital Employee Identity Pass (Barcode &amp; QR)
+                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                  Active Verified Pass
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500">
+                Official high-contrast digital pass for factory security turnstiles, canteen register, and kiosk timekeeping.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => openDigitalId(currentStaff)}
+              className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <Maximize2 className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Open Full Pass / Scan Mode</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Dual Codes Display Grid with Copy Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
+          {/* Card 1: Linear Barcode (Code 128) */}
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                <ScanLine className="h-4 w-4 text-slate-600" /> 1D Barcode (Code 128)
+              </span>
+              <button
+                type="button"
+                onClick={() => handleCopySnippet(currentStaff?.barcodeValue || currentStaff?.employeeId, 'barcode')}
+                className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition shadow-xs"
+              >
+                {copiedSnippet === 'barcode' ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-emerald-700">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5 text-slate-500" />
+                    <span>Copy Barcode</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="bg-white p-3 rounded-xl border border-slate-200 flex flex-col items-center justify-center">
+              <BarcodeView
+                value={currentStaff?.barcodeValue || currentStaff?.employeeId}
+                width={1.6}
+                height={48}
+                displayValue={false}
+              />
+              <span className="font-mono text-xs font-black tracking-widest text-slate-900 mt-1">
+                {currentStaff?.barcodeValue || currentStaff?.employeeId}
+              </span>
+            </div>
+
+            <div className="text-[11px] text-slate-500 flex items-center justify-between">
+              <span>Type: Code 128 Standard</span>
+              <span className="text-slate-700 font-semibold font-mono">ID: {currentStaff?.employeeId}</span>
+            </div>
+          </div>
+
+          {/* Card 2: 2D QR Code */}
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                <QrCode className="h-4 w-4 text-slate-600" /> 2D Turnstile QR Pass
+              </span>
+              <button
+                type="button"
+                onClick={() => handleCopySnippet(`NKB-STAFF:${currentStaff?.employeeId}:${currentStaff?.firstName}_${currentStaff?.lastName}:AUTH-2026`, 'qr')}
+                className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition shadow-xs"
+              >
+                {copiedSnippet === 'qr' ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-emerald-700">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5 text-slate-500" />
+                    <span>Copy QR Data</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-center gap-4">
+              <QRCodeView
+                value={`NKB-STAFF:${currentStaff?.employeeId}:${currentStaff?.firstName}_${currentStaff?.lastName}:AUTH-2026`}
+                size={95}
+              />
+              <div className="space-y-1 text-xs">
+                <div className="font-bold text-slate-900">{currentStaff?.firstName} {currentStaff?.lastName}</div>
+                <div className="text-[11px] text-slate-500">{pos?.title || 'Staff'}</div>
+                <div className="font-mono text-[11px] font-bold text-slate-700">{currentStaff?.employeeId}</div>
+                <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
+                  <ShieldCheck className="h-3 w-3" /> Turnstile Authorized
+                </div>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-slate-500 flex items-center justify-between">
+              <span>Format: High Error Correction 2D</span>
+              <button
+                type="button"
+                onClick={() => handleCopySnippet(
+                  `NKB EMPLOYEE ID: ${currentStaff?.employeeId}\nName: ${currentStaff?.firstName} ${currentStaff?.lastName}\nBarcode: ${currentStaff?.barcodeValue || currentStaff?.employeeId}\nDept: ${dept?.name}`,
+                  'all'
+                )}
+                className="text-cyan-700 hover:text-cyan-900 font-bold underline cursor-pointer"
+              >
+                {copiedSnippet === 'all' ? 'Copied All!' : 'Copy Full Details'}
+              </button>
+            </div>
+          </div>
+
         </div>
       </div>
 

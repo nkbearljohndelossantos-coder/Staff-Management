@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, UserPlus, Filter, Edit3, Trash2, DollarSign, Users, Building, ScanLine } from 'lucide-react';
+import { Search, UserPlus, Filter, Edit3, Trash2, DollarSign, Users, Building, ScanLine, QrCode } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import StaffBadgeModal from './StaffBadgeModal';
@@ -7,7 +7,7 @@ import StaffFormModal from './StaffFormModal';
 import BarcodeView from '../common/BarcodeView';
 
 export default function StaffDirectory() {
-  const { staffList, departments, positions, deleteStaff, isHR } = useApp();
+  const { staffList, departments, positions, deleteStaff, isHR, openDigitalId } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState('ALL');
@@ -208,15 +208,16 @@ export default function StaffDirectory() {
                         {formatCurrency(staff.baseSalary)}
                       </td>
 
-                      {/* Badge View Button */}
+                      {/* Digital ID (Barcode & QR) Button */}
                       <td className="py-3 px-4 text-center">
                         <button
                           type="button"
-                          onClick={() => setBadgeModalStaff(staff)}
+                          onClick={() => openDigitalId(staff)}
                           className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                          title="View Digital ID with Barcode & QR"
                         >
-                          <ScanLine className="h-3 w-3 text-slate-600" />
-                          Badge
+                          <QrCode className="h-3.5 w-3.5 text-cyan-600" />
+                          <span>Digital ID</span>
                         </button>
                       </td>
 

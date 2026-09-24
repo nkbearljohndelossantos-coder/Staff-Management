@@ -16,10 +16,23 @@ import CanteenHub from './components/canteen/CanteenHub';
 import ITAdminHub from './components/it/ITAdminHub';
 import SystemConceptMapView from './components/concept/SystemConceptMapView';
 import CanteenCustomerDisplay from './components/canteen/CanteenCustomerDisplay';
+import MobileBottomNav from './components/layout/MobileBottomNav';
+import DigitalIdModal from './components/id/DigitalIdModal';
 import { isTabAuthorized, getDefaultTabForRole, TAB_PERMISSIONS } from './utils/rolePermissions';
 
 export default function App() {
-  const { currentUser, activeTab, setActiveTab, notification } = useApp();
+  const {
+    currentUser,
+    activeTab,
+    setActiveTab,
+    notification,
+    departments,
+    positions,
+    digitalIdStaff,
+    isDigitalIdOpen,
+    openDigitalId,
+    closeDigitalId
+  } = useApp();
   const [loginMode, setLoginMode] = useState('staff'); // 'staff' or 'barcode'
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -64,8 +77,8 @@ export default function App() {
           onClose={() => setSidebarOpen(false)}
         />
 
-        {/* Right Main Content Area (High-Contrast Light Body) */}
-        <main className="flex-1 bg-slate-100 text-slate-800 min-w-0 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        {/* Right Main Content Area (High-Contrast Light Body, Mobile-optimized with bottom padding) */}
+        <main className="flex-1 bg-slate-100 text-slate-800 min-w-0 p-3 sm:p-6 lg:p-8 pb-24 lg:pb-8 overflow-y-auto">
           <div className="max-w-7xl mx-auto">
             {!authorized ? (
               <div className="p-8 rounded-3xl bg-white border border-slate-200 shadow-sm text-center max-w-xl mx-auto my-12 space-y-4">
@@ -102,9 +115,25 @@ export default function App() {
         </main>
       </div>
 
+      {/* Mobile Sticky Bottom Thumb Navigation Bar (Hidden on desktop) */}
+      <MobileBottomNav
+        onOpenMenu={() => setSidebarOpen(true)}
+        onOpenDigitalId={() => openDigitalId()}
+      />
+
+      {/* Global Digital Employee ID (Barcode & QR) Modal */}
+      {isDigitalIdOpen && digitalIdStaff && (
+        <DigitalIdModal
+          staff={digitalIdStaff}
+          department={departments.find(d => d.id === digitalIdStaff.departmentId)}
+          position={positions.find(p => p.id === digitalIdStaff.positionId)}
+          onClose={closeDigitalId}
+        />
+      )}
+
       {/* Toast Notification (Monochrome/Neutral high-contrast) */}
       {notification && (
-        <div className="fixed bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom duration-300">
+        <div className="fixed bottom-20 lg:bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom duration-300">
           <div className="px-4 py-3 rounded-2xl bg-slate-900 border border-slate-700 text-white shadow-2xl text-xs font-bold flex items-center gap-2.5">
             <span className="w-2 h-2 rounded-full bg-slate-300 animate-pulse" />
             {notification.message}

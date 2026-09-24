@@ -257,6 +257,24 @@ export function AppProvider({ children }) {
   const [activeTab, setActiveTab] = useState('staff');
   const [notification, setNotification] = useState(null);
 
+  // Global Digital ID (Barcode & QR) Modal State
+  const [digitalIdStaff, setDigitalIdStaff] = useState(null);
+  const [isDigitalIdOpen, setIsDigitalIdOpen] = useState(false);
+
+  const openDigitalId = (staffMember = null) => {
+    let target = staffMember;
+    if (!target && currentUser) {
+      target = staffList.find(s => s.id === currentUser.staffId || s.employeeId === currentUser.employeeId) || staffList[0];
+    }
+    if (!target) target = staffList[0];
+    setDigitalIdStaff(target);
+    setIsDigitalIdOpen(true);
+  };
+
+  const closeDigitalId = () => {
+    setIsDigitalIdOpen(false);
+  };
+
   // Sync with localStorage
   useEffect(() => {
     localStorage.setItem('nkb_hr_staff', JSON.stringify(staffList));
@@ -2326,6 +2344,11 @@ export function AppProvider({ children }) {
         exportFullSystemBackup,
         importFullSystemBackup,
         resetTestTransactions,
+        // Global Digital ID Modal
+        digitalIdStaff,
+        isDigitalIdOpen,
+        openDigitalId,
+        closeDigitalId,
         // UI
         activeTab,
         setActiveTab,
