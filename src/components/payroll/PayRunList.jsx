@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { Calculator, Plus, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Calculator, Plus, CheckCircle2, ChevronRight, Landmark, FileText, Download } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import PayRunDetails from './PayRunDetails';
+import BankPayrollExportModal from './BankPayrollExportModal';
+import BIR2316Modal from './BIR2316Modal';
 
 export default function PayRunList() {
-  const { payRuns, createPayRun, isAccounting } = useApp();
+  const { payRuns, createPayRun, isAccounting, staffList = [] } = useApp();
   const [selectedPayRunId, setSelectedPayRunId] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [showBankExport, setShowBankExport] = useState(false);
+  const [selectedBirStaff, setSelectedBirStaff] = useState(null);
 
   const [newTitle, setNewTitle] = useState('1st Half June 2026 Regular Payroll');
   const [newStart, setNewStart] = useState('2026-06-01');
@@ -52,16 +56,40 @@ export default function PayRunList() {
           <p className="text-xs text-slate-500 mt-0.5">Automated gross earnings calculation, statutory tax deductions &amp; bank files</p>
         </div>
 
-        {isAccounting && (
+        <div className="flex flex-wrap items-center gap-2">
+          {payRuns.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowBankExport(true)}
+              className="h-10 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+              title="Export PESONet / BDO / BPI bank file"
+            >
+              <Landmark className="h-4 w-4 text-cyan-600" />
+              <span>PESONet Bank Export</span>
+            </button>
+          )}
+
           <button
             type="button"
-            onClick={() => setIsCreating(true)}
-            className="h-10 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer shrink-0 shadow-sm transition"
+            onClick={() => setSelectedBirStaff(staffList[0] || null)}
+            className="h-10 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+            title="Generate BIR Form 2316 Certificate"
           >
-            <Plus className="h-4 w-4 text-white" />
-            Create New Pay Run Batch
+            <FileText className="h-4 w-4 text-emerald-600" />
+            <span>BIR Form 2316</span>
           </button>
-        )}
+
+          {isAccounting && (
+            <button
+              type="button"
+              onClick={() => setIsCreating(true)}
+              className="h-10 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer shrink-0 shadow-sm transition"
+            >
+              <Plus className="h-4 w-4 text-white" />
+              Create New Pay Run Batch
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats Cards (Light theme, monochrome icons) */}
@@ -204,6 +232,24 @@ export default function PayRunList() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* PESONet Bank Export Modal */}
+      {showBankExport && payRuns.length > 0 && (
+        <BankPayrollExportModal
+          payRun={payRuns[0]}
+          staffList={staffList}
+          onClose={() => setShowBankExport(false)}
+        />
+      )}
+
+      {/* BIR 2316 Tax Certificate Modal */}
+      {selectedBirStaff && (
+        <BIR2316Modal
+          staff={selectedBirStaff}
+          payRuns={payRuns}
+          onClose={() => setSelectedBirStaff(null)}
+        />
       )}
 
     </div>

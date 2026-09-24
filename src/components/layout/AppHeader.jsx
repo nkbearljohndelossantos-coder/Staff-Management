@@ -1,9 +1,35 @@
-import React from 'react';
-import { LogOut, Sparkles, Menu, QrCode, Search, Command } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LogOut, Sparkles, Menu, QrCode, Search, Command, Sun, Moon, Lock } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import NotificationBell from '../common/NotificationBell';
+import TerminalLockModal from '../common/TerminalLockModal';
 
 export default function AppHeader({ sidebarOpen, setSidebarOpen, onOpenCommandPalette }) {
-  const { currentUser, logout, switchDemoRole, isSuperAdmin, openDigitalId } = useApp();
+  const { currentUser, logout, switchDemoRole, isSuperAdmin, openDigitalId, theme, toggleTheme } = useApp();
+  const [isTerminalLocked, setIsTerminalLocked] = useState(false);
+
+  // Inactivity auto-lock (20 minutes)
+  useEffect(() => {
+    let timeoutId;
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setIsTerminalLocked(true);
+      }, 20 * 60 * 1000);
+    };
+
+    window.addEventListener('mousemove', resetTimer);
+    window.addEventListener('keydown', resetTimer);
+    window.addEventListener('touchstart', resetTimer);
+    resetTimer();
+
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('mousemove', resetTimer);
+      window.removeEventListener('keydown', resetTimer);
+      window.removeEventListener('touchstart', resetTimer);
+    };
+  }, []);
 
   const getRoleBadge = (role) => {
     switch (role) {
@@ -183,6 +209,33 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen, onOpenCommandPa
             </kbd>
           </button>
 
+          {/* In-App Notifications Bell */}
+          <NotificationBell />
+
+          {/* Dark / Light Theme Toggle */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="h-8 w-8 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-amber-400 border border-slate-800 flex items-center justify-center transition cursor-pointer shrink-0 shadow-sm"
+            title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+          >
+            {theme === 'dark' ? (
+              <Sun className="h-4 w-4 text-amber-400" />
+            ) : (
+              <Moon className="h-4 w-4 text-slate-300" />
+            )}
+          </button>
+
+          {/* Manual Terminal Security Lock */}
+          <button
+            type="button"
+            onClick={() => setIsTerminalLocked(true)}
+            className="h-8 w-8 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-cyan-400 border border-slate-800 flex items-center justify-center transition cursor-pointer shrink-0 shadow-sm"
+            title="Lock Terminal Workstation"
+          >
+            <Lock className="h-3.5 w-3.5" />
+          </button>
+
           {/* Quick Digital ID Button (Available everywhere on Mobile & Desktop) */}
           <button
             type="button"
@@ -230,6 +283,12 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen, onOpenCommandPa
         </div>
 
       </div>
+
+      {/* Terminal Lock Security Modal */}
+      <TerminalLockModal
+        isOpen={isTerminalLocked}
+        onUnlock={() => setIsTerminalLocked(false)}
+      />
     </header>
   );
 }

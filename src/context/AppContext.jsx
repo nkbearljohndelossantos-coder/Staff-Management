@@ -20,10 +20,15 @@ import {
   INITIAL_CANTEEN_GATE_PASSES,
   INITIAL_CANTEEN_VOID_LOGS,
   INITIAL_PRODUCT_JOURNEYS,
-  PRODUCT_JOURNEY_STAGES
+  PRODUCT_JOURNEY_STAGES,
+  INITIAL_LEAVE_REQUESTS,
+  INITIAL_OVERTIME_REQUESTS
 } from '../data/mockData';
 import { generateNextEmployeeId, formatBarcodeValue } from '../utils/idGenerator';
 import { computeEmployeePayroll } from '../utils/payrollCalculations';
+import { logAuditEvent, getAuditLogs } from '../utils/auditLogger';
+import { getOfflineQueue, clearOfflineQueue, initOfflineSyncListener } from '../utils/offlineSync';
+import { scanForAnomalies, saveAnomalyEvaluation, computeExecutiveRiskSummary, getStoredEvaluations } from '../utils/anomalyDetector';
 
 const AppContext = createContext(null);
 
@@ -274,6 +279,290 @@ export function AppProvider({ children }) {
   const closeDigitalId = () => {
     setIsDigitalIdOpen(false);
   };
+
+  // Leave & Overtime Requests State
+  const [leaveRequests, setLeaveRequests] = useState(() => {
+    const saved = localStorage.getItem('nkb_hr_leave_requests');
+    return saved ? JSON.parse(saved) : INITIAL_LEAVE_REQUESTS;
+  });
+
+  const [overtimeRequests, setOvertimeRequests] = useState(() => {
+    const saved = localStorage.getItem('nkb_hr_overtime_requests');
+    return saved ? JSON.parse(saved) : INITIAL_OVERTIME_REQUESTS;
+  });
+
+  // In-App Notification Center State
+  const [inAppNotifications, setInAppNotifications] = useState(() => {
+    const saved = localStorage.getItem('nkb_notifications');
+    return saved ? JSON.parse(saved) : [
+      {
+        id: 'notif-1',
+        title: 'Digital Employee ID Ready',
+        message: 'Your official 1D Barcode and 2D QR turnstile pass is available in your portal.',
+        time: 'Today',
+        type: 'info',
+        read: false
+      },
+      {
+        id: 'notif-2',
+        title: 'PWA Offline Mode Activated',
+        message: 'Portal is ready for home-screen installation and offline factory floor operation.',
+        time: 'Today',
+        type: 'success',
+        read: false
+      }
+    ];
+  });
+
+  // Dark / Light Mode Theme State
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('nkb_theme') || 'dark';
+    }
+    return 'dark';
+  });
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      localStorage.setItem('nkb_theme', theme);
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
+
+  // Audit Logs State
+  const [auditLogs, setAuditLogs] = useState(() => getAuditLogs());
+
+  const logSystemEvent = (eventData) => {
+    const entry = logAuditEvent({
+      ...eventData,
+      operatorId: currentUser?.employeeId || currentUser?.id || 'SYSTEM',
+      operatorName: currentUser?.name || 'System Operator',
+      operatorRole: currentUser?.role || 'system'
+    });
+    setAuditLogs(getAuditLogs());
+    return entry;
+  };
+
+  // Anomaly Evaluations State
+  const [anomalyEvaluations, setAnomalyEvaluations] = useState(() => getStoredEvaluations());
+
+  const recordAnomalyEvaluation = (anomalyId, evalData) => {
+    const updated = saveAnomalyEvaluation(anomalyId, {
+      ...evalData,
+      reviewedBy: currentUser?.name || 'IT Admin Carl Laurence B. PATAGNAN',
+      reviewedAt: new Date().toISOString()
+    });
+    setAnomalyEvaluations(getStoredEvaluations());
+    logSystemEvent({
+      category: 'SECURITY',
+      action: 'EVALUATE_ANOMALY',
+      details: `IT Admin evaluated anomaly ${anomalyId} with status ${evalData.status || 'REVIEWED'}`,
+      targetId: anomalyId
+    });
+    return updated;
+  };
+
+  // Offline Sync Listener
+  useEffect(() => {
+    const cleanup = initOfflineSyncListener((queue) => {
+      setNotification({ message: `Reconnected to network! Syncing ${queue.length} offline record(s)...` });
+      setTimeout(() => {
+        clearOfflineQueue();
+        setNotification({ message: `Offline factory records successfully synchronized!` });
+        setTimeout(() => setNotification(null), 4000);
+      }, 1200);
+    });
+    return cleanup;
+  }, []);
+
+  // Notifications Helpers
+  const addInAppNotification = (notif) => {
+    const entry = {
+      id: `notif-${Date.now()}`,
+      time: 'Just now',
+      read: false,
+      ...notif
+    };
+    setInAppNotifications(prev => [entry, ...prev].slice(0, 50));
+  };
+
+  const markNotificationAsRead = (id) => {
+    setInAppNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  };
+
+  const clearAllNotifications = () => {
+    setInAppNotifications([]);
+  };
+
+  // Leave & Overtime Handlers
+  const fileLeaveRequest = (data) => {
+    const newReq = {
+      id: `leave-${Date.now()}`,
+      status: 'Pending',
+      submittedAt: new Date().toISOString(),
+      remarks: '',
+      ...data
+    };
+    setLeaveRequests(prev => [newReq, ...prev]);
+    addInAppNotification({
+      title: 'Leave Request Submitted',
+      message: `Your ${data.type} request for ${data.days} day(s) was sent to HR for approval.`,
+      type: 'info'
+    });
+    logSystemEvent({
+      category: 'STAFF',
+      action: 'FILE_LEAVE',
+      details: `Leave filed by ${data.staffName} (${data.type}, ${data.days} days)`
+    });
+    return newReq;
+  };
+
+  const approveLeaveRequest = (id, remarks = '') => {
+    setLeaveRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        const updated = {
+          ...req,
+          status: 'Approved',
+          reviewedBy: `${currentUser?.name || 'HR Manager'} (HR)`,
+          reviewedAt: new Date().toISOString(),
+          remarks: remarks || 'Approved by HR'
+        };
+        addInAppNotification({
+          title: 'Leave Request Approved',
+          message: `Your ${req.type} starting ${req.startDate} has been approved.`,
+          type: 'success'
+        });
+        logSystemEvent({
+          category: 'STAFF',
+          action: 'APPROVE_LEAVE',
+          details: `Leave #${id} for ${req.staffName} approved by ${currentUser?.name || 'HR'}`
+        });
+        return updated;
+      }
+      return req;
+    }));
+  };
+
+  const rejectLeaveRequest = (id, remarks = '') => {
+    setLeaveRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        const updated = {
+          ...req,
+          status: 'Rejected',
+          reviewedBy: `${currentUser?.name || 'HR Manager'} (HR)`,
+          reviewedAt: new Date().toISOString(),
+          remarks: remarks || 'Request disapproved'
+        };
+        addInAppNotification({
+          title: 'Leave Request Disapproved',
+          message: `Your ${req.type} request was not approved. Remarks: ${remarks || 'Disapproved'}`,
+          type: 'warning'
+        });
+        logSystemEvent({
+          category: 'STAFF',
+          action: 'REJECT_LEAVE',
+          details: `Leave #${id} for ${req.staffName} rejected by ${currentUser?.name || 'HR'}`
+        });
+        return updated;
+      }
+      return req;
+    }));
+  };
+
+  const fileOvertimeRequest = (data) => {
+    const newReq = {
+      id: `ot-${Date.now()}`,
+      status: 'Pending',
+      submittedAt: new Date().toISOString(),
+      remarks: '',
+      ...data
+    };
+    setOvertimeRequests(prev => [newReq, ...prev]);
+    addInAppNotification({
+      title: 'Overtime Request Submitted',
+      message: `Overtime request for ${data.hours} hours on ${data.date} sent to supervisor.`,
+      type: 'info'
+    });
+    logSystemEvent({
+      category: 'ATTENDANCE',
+      action: 'FILE_OVERTIME',
+      details: `Overtime filed by ${data.staffName} (${data.hours} hrs on ${data.date})`
+    });
+    return newReq;
+  };
+
+  const approveOvertimeRequest = (id, remarks = '') => {
+    setOvertimeRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        const updated = {
+          ...req,
+          status: 'Approved',
+          reviewedBy: `${currentUser?.name || 'Supervisor'} (Supervisor)`,
+          reviewedAt: new Date().toISOString(),
+          remarks: remarks || 'Approved for factory shift completion'
+        };
+        addInAppNotification({
+          title: 'Overtime Approved',
+          message: `Your ${req.hours}h overtime on ${req.date} has been approved.`,
+          type: 'success'
+        });
+        logSystemEvent({
+          category: 'ATTENDANCE',
+          action: 'APPROVE_OVERTIME',
+          details: `Overtime #${id} for ${req.staffName} approved by ${currentUser?.name || 'Supervisor'}`
+        });
+        return updated;
+      }
+      return req;
+    }));
+  };
+
+  const rejectOvertimeRequest = (id, remarks = '') => {
+    setOvertimeRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        const updated = {
+          ...req,
+          status: 'Rejected',
+          reviewedBy: `${currentUser?.name || 'Supervisor'} (Supervisor)`,
+          reviewedAt: new Date().toISOString(),
+          remarks: remarks || 'Overtime not authorized'
+        };
+        addInAppNotification({
+          title: 'Overtime Disapproved',
+          message: `Your ${req.hours}h overtime on ${req.date} was not approved.`,
+          type: 'warning'
+        });
+        logSystemEvent({
+          category: 'ATTENDANCE',
+          action: 'REJECT_OVERTIME',
+          details: `Overtime #${id} for ${req.staffName} rejected by ${currentUser?.name || 'Supervisor'}`
+        });
+        return updated;
+      }
+      return req;
+    }));
+  };
+
+  // Sync with localStorage
+  useEffect(() => {
+    localStorage.setItem('nkb_hr_leave_requests', JSON.stringify(leaveRequests));
+  }, [leaveRequests]);
+
+  useEffect(() => {
+    localStorage.setItem('nkb_hr_overtime_requests', JSON.stringify(overtimeRequests));
+  }, [overtimeRequests]);
+
+  useEffect(() => {
+    localStorage.setItem('nkb_notifications', JSON.stringify(inAppNotifications));
+  }, [inAppNotifications]);
 
   // Sync with localStorage
   useEffect(() => {
@@ -2344,6 +2633,29 @@ export function AppProvider({ children }) {
         exportFullSystemBackup,
         importFullSystemBackup,
         resetTestTransactions,
+        // Leave & Overtime Workflows
+        leaveRequests,
+        fileLeaveRequest,
+        approveLeaveRequest,
+        rejectLeaveRequest,
+        overtimeRequests,
+        fileOvertimeRequest,
+        approveOvertimeRequest,
+        rejectOvertimeRequest,
+        // Notifications Center
+        inAppNotifications,
+        addInAppNotification,
+        markNotificationAsRead,
+        clearAllNotifications,
+        // Theme Management
+        theme,
+        toggleTheme,
+        // Security Audit Trail
+        auditLogs,
+        logSystemEvent,
+        // IT Anomaly Detection & Evaluations
+        anomalyEvaluations,
+        recordAnomalyEvaluation,
         // Global Digital ID Modal
         digitalIdStaff,
         isDigitalIdOpen,

@@ -31,6 +31,9 @@ import {
 import { useApp } from '../../context/AppContext';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 import TableActionDropdown from '../common/TableActionDropdown';
+import ITAnomalyEvaluationView from './ITAnomalyEvaluationView';
+import ITSystemAuditLogView from './ITSystemAuditLogView';
+import { detectSystemAnomalies } from '../../utils/anomalyDetector';
 
 export default function ITAdminHub() {
   const {
@@ -68,11 +71,25 @@ export default function ITAdminHub() {
     deleteCoopLedgerEntry,
     exportFullSystemBackup,
     importFullSystemBackup,
-    resetTestTransactions
+    resetTestTransactions,
+    auditLogs = [],
+    anomalyEvaluations = {}
   } = useApp();
 
   // Active collection sub-tab
-  const [activeCategory, setActiveCategory] = useState('receipts');
+  const [activeCategory, setActiveCategory] = useState('anomalies');
+  
+  // Real-time Anomaly Detection
+  const detectedAnomalies = useMemo(() => {
+    return detectSystemAnomalies({
+      attendanceLogs,
+      canteenReceipts,
+      canteenInventory,
+      canteenVoidLogs,
+      cashLoans,
+      staffList
+    });
+  }, [attendanceLogs, canteenReceipts, canteenInventory, canteenVoidLogs, cashLoans, staffList]);
   
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -460,6 +477,8 @@ export default function ITAdminHub() {
       {/* Workspace Section Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200">
         {[
+          { id: 'anomalies', label: 'Security & Anomaly Evaluation', count: detectedAnomalies.length, icon: AlertTriangle, highlight: true },
+          { id: 'auditLogs', label: 'System Audit Trail', count: auditLogs.length, icon: ShieldCheck },
           { id: 'receipts', label: 'POS Receipts', count: canteenReceipts.length, icon: Receipt },
           { id: 'inventory', label: 'Canteen Supplies', count: canteenInventory.length, icon: Package },
           { id: 'purchaseOrders', label: 'Personal POs', count: personalPurchaseOrders.length, icon: ShoppingBag },
@@ -481,13 +500,15 @@ export default function ITAdminHub() {
               className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap cursor-pointer shrink-0 ${
                 isActive
                   ? 'bg-slate-900 text-white shadow-sm'
+                  : tab.highlight
+                  ? 'bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 border border-amber-300'
                   : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
               }`}
             >
-              <Icon className={`h-4 w-4 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`} />
+              <Icon className={`h-4 w-4 ${isActive ? 'text-cyan-400' : tab.highlight ? 'text-amber-600' : 'text-slate-400'}`} />
               <span>{tab.label}</span>
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'
+                isActive ? 'bg-white/20 text-white' : tab.highlight ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600 border border-slate-200'
               }`}>
                 {tab.count}
               </span>
@@ -496,8 +517,17 @@ export default function ITAdminHub() {
         })}
       </div>
 
-      {/* Control Filter Bar */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+      {/* 0. ANOMALY EVALUATION SUBTAB */}
+      {activeCategory === 'anomalies' && <ITAnomalyEvaluationView />}
+
+      {/* 0.5. SYSTEM AUDIT TRAIL SUBTAB */}
+      {activeCategory === 'auditLogs' && <ITSystemAuditLogView />}
+
+      {/* Master Records Filters and Tables */}
+      {activeCategory !== 'anomalies' && activeCategory !== 'auditLogs' && (
+        <>
+          {/* Control Filter Bar */}
+          <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
         <div className="flex flex-col md:flex-row items-center justify-between gap-3">
           {/* Universal Search Input */}
           <div className="relative w-full md:w-80">
@@ -1349,6 +1379,8 @@ export default function ITAdminHub() {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* --- EDIT RECORD MODAL --- */}

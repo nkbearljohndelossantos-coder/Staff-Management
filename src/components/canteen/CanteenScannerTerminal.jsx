@@ -163,17 +163,61 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     openCustomerDisplay();
   };
 
+  // Resolves staff from barcode gun, digital ID QR, name, or employee ID
+  const resolveStaffFromScan = (inputStr) => {
+    if (!inputStr) return null;
+    const clean = inputStr.trim();
+
+    // 1. Direct barcode value or employee ID match
+    let staff = staffList.find(s => 
+      s.barcodeValue.toUpperCase() === clean.toUpperCase() ||
+      s.employeeId.toUpperCase() === clean.toUpperCase()
+    );
+    if (staff) return staff;
+
+    // 2. JSON formatted scan from Digital ID QR code
+    try {
+      if (clean.startsWith('{') && clean.endsWith('}')) {
+        const parsed = JSON.parse(clean);
+        const targetId = parsed.employeeId || parsed.id || parsed.barcode;
+        if (targetId) {
+          staff = staffList.find(s => 
+            s.employeeId.toUpperCase() === targetId.toUpperCase() || 
+            s.barcodeValue.toUpperCase() === targetId.toUpperCase()
+          );
+          if (staff) return staff;
+        }
+      }
+    } catch {}
+
+    // 3. Colon-separated barcode e.g. "NKB052026-0001:Glen Nobleza" or "NKB-ID:NKB052026-0001"
+    if (clean.includes(':')) {
+      const parts = clean.split(':').map(p => p.trim());
+      for (const p of parts) {
+        staff = staffList.find(s => 
+          s.employeeId.toUpperCase() === p.toUpperCase() || 
+          s.barcodeValue.toUpperCase() === p.toUpperCase()
+        );
+        if (staff) return staff;
+      }
+    }
+
+    // 4. Name match (case-insensitive full name or contains)
+    staff = staffList.find(s => {
+      const fullName = `${s.firstName} ${s.lastName}`.toLowerCase();
+      return fullName === clean.toLowerCase() || fullName.includes(clean.toLowerCase());
+    });
+    return staff || null;
+  };
+
   // Handle Barcode Scan
   const handleBarcodeSubmit = (e) => {
     e.preventDefault();
     const clean = barcodeQuery.trim();
     if (!clean) return;
 
-    // 1. Check if user scanned an employee badge directly
-    const foundStaff = staffList.find(s => 
-      s.barcodeValue.toUpperCase() === clean.toUpperCase() ||
-      s.employeeId.toUpperCase() === clean.toUpperCase()
-    );
+    // 1. Check if user scanned an employee badge (supports Name + ID + unlimited uses)
+    const foundStaff = resolveStaffFromScan(clean);
     if (foundStaff) {
       setSelectedStaff(foundStaff);
       playBeep('success');
@@ -363,14 +407,10 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
 
   const handleCustomerScanSubmit = (e) => {
     e.preventDefault();
-    const clean = customerSearchQuery.trim().toUpperCase();
+    const clean = customerSearchQuery.trim();
     if (!clean) return;
 
-    const found = staffList.find(s => 
-      s.barcodeValue.toUpperCase() === clean ||
-      s.employeeId.toUpperCase() === clean ||
-      `${s.firstName} ${s.lastName}`.toUpperCase().includes(clean)
-    );
+    const found = resolveStaffFromScan(clean);
 
     if (found) {
       setSelectedStaff(found);
@@ -378,7 +418,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       playBeep('success');
     } else {
       playBeep('error');
-      alert(`Employee ID or Barcode "${clean}" not recognized in Masterlist.`);
+      alert(`Employee ID, Name, or Barcode "${clean}" not recognized in Masterlist.`);
     }
   };
 
@@ -853,7 +893,14 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                 <div className="flex items-center gap-2 min-w-0">
                   <UserCheck className="h-4 w-4 text-slate-700 shrink-0" />
                   <div className="min-w-0">
-                    <div className="text-[10px] uppercase font-bold text-slate-400">Customer ID Badge</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] uppercase font-bold text-slate-400">Customer ID Badge</span>
+                      {selectedStaff && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold">
+                          ♾️ Unlimited Uses
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs font-bold text-slate-900 truncate">
                       {selectedStaff ? `${selectedStaff.firstName} ${selectedStaff.lastName} (${selectedStaff.employeeId})` : 'Not Scanned Yet'}
                     </div>
@@ -966,6 +1013,9 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                       <div className="text-[11px] text-slate-500">
                         {selectedStaff.departmentName}
                       </div>
+                      <span className="mt-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1">
+                        ♾️ Unlimited Daily Scan Pass Active
+                      </span>
                     </div>
                   </div>
 

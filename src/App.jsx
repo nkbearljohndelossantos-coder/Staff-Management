@@ -14,6 +14,7 @@ import EmployeePortalView from './components/payslip/EmployeePortalView';
 import CoopLoansManager from './components/coop/CoopLoansManager';
 import CanteenHub from './components/canteen/CanteenHub';
 import ITAdminHub from './components/it/ITAdminHub';
+import ExecutiveDashboardView from './components/dashboard/ExecutiveDashboardView';
 import SystemConceptMapView from './components/concept/SystemConceptMapView';
 import CanteenCustomerDisplay from './components/canteen/CanteenCustomerDisplay';
 import MobileBottomNav from './components/layout/MobileBottomNav';
@@ -118,6 +119,7 @@ export default function App() {
               </div>
             ) : (
               <>
+                {activeTab === 'executiveDashboard' && <ExecutiveDashboardView />}
                 {activeTab === 'staff' && <StaffDirectory />}
                 {activeTab === 'positions' && <PositionDeptManager />}
                 {activeTab === 'attendance' && <BarcodeClockInKiosk />}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Briefcase, ScanLine, Calculator, Landmark, Utensils, FileText, X, Shield, Network, Database } from 'lucide-react';
+import { Users, Briefcase, ScanLine, Calculator, Landmark, Utensils, FileText, X, Shield, Network, Database, BarChart3 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { isTabAuthorized } from '../../utils/rolePermissions';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
@@ -11,6 +11,7 @@ export default function SideNavigation({ isOpen, onClose }) {
   useEscapeKey('sidebar-drawer', ESCAPE_PRIORITY.FLYOUT, isOpen, onClose);
 
   const allTabs = [
+    { id: 'executiveDashboard', label: 'Executive Analytics', icon: BarChart3, roleBadge: 'CEO' },
     { id: 'staff', label: 'Staff & IDs', icon: Users, roleBadge: 'HR' },
     { id: 'positions', label: 'Positions & Depts', icon: Briefcase, roleBadge: 'HR' },
     { id: 'attendance', label: 'Barcode Clock-In', icon: ScanLine, roleBadge: 'HR' },

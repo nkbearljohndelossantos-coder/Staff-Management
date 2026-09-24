@@ -37,6 +37,8 @@ import GatePassModal from './GatePassModal';
 import CanteenScannerTerminal from './CanteenScannerTerminal';
 import CanteenReportsSection from './CanteenReportsSection';
 import CanteenPassModal from './CanteenPassModal';
+import ThermalReceiptView from './ThermalReceiptView';
+import BarcodeLabelSheet from './BarcodeLabelSheet';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 // Known Catalog for Automatic Inbound Scan Pre-filling
@@ -151,6 +153,8 @@ export default function CanteenHub() {
   const [lastReceipt, setLastReceipt] = useState(null);
   const [lastGatePass, setLastGatePass] = useState(null);
   const [selectedGatePass, setSelectedGatePass] = useState(null);
+  const [selectedThermalReceipt, setSelectedThermalReceipt] = useState(null);
+  const [showBarcodeSheet, setShowBarcodeSheet] = useState(false);
 
   // Inbound Inventory Scanner State
   const [inboundScanQuery, setInboundScanQuery] = useState('');
@@ -473,6 +477,16 @@ export default function CanteenHub() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setShowBarcodeSheet(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-500/40 text-xs font-bold transition cursor-pointer shadow-sm"
+              title="Generate & Print A4 Barcode Sticker Sheet (24-Up)"
+            >
+              <Tag className="h-3.5 w-3.5 text-cyan-400" />
+              <span>🏷️ Barcode Stickers</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowCanteenPassModal(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-bold transition cursor-pointer shadow-sm"
               title="Print & View Official Canteen Barcode Pass (NKBCANTEEN)"
@@ -493,7 +507,10 @@ export default function CanteenHub() {
       {/* SUBTAB 1: BARCODE POS REGISTER & DUAL-MONITOR SCANNER */}
       {activeSubtab === 'pos' && (
         <CanteenScannerTerminal 
-          onShowReceipt={(r) => { setLastReceipt(r); }}
+          onShowReceipt={(r) => { 
+            setLastReceipt(r); 
+            setSelectedThermalReceipt(r);
+          }}
           onShowGatePass={(gp) => { setLastGatePass(gp); setSelectedGatePass(gp); }}
         />
       )}
@@ -1712,6 +1729,22 @@ export default function CanteenHub() {
       {showCanteenPassModal && (
         <CanteenPassModal
           onClose={() => setShowCanteenPassModal(false)}
+        />
+      )}
+
+      {/* 58mm / 80mm ESC/POS Thermal Receipt Modal */}
+      {selectedThermalReceipt && (
+        <ThermalReceiptView
+          receipt={selectedThermalReceipt}
+          onClose={() => setSelectedThermalReceipt(null)}
+        />
+      )}
+
+      {/* A4 24-Up Barcode Sticker Label Sheet Modal */}
+      {showBarcodeSheet && (
+        <BarcodeLabelSheet
+          inventory={canteenInventory}
+          onClose={() => setShowBarcodeSheet(false)}
         />
       )}
 

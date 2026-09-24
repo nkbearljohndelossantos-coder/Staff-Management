@@ -1,0 +1,54 @@
+{
+  "name": "NKB Manufacturing Enterprise Portal",
+  "short_name": "NKB Portal",
+  "description": "Multi-role Staff, Attendance, Canteen POS, Coop, and Payroll Portal",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": [
+    {
+      "src": "/LogoC.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/LogoC.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Digital Employee ID",
+      "short_name": "Digital ID",
+      "description": "View official barcode and 2D QR pass",
+      "url": "/?shortcut=digital-id",
+      "icons": [{ "src": "/LogoC.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Barcode Clock-In Kiosk",
+      "short_name": "Clock-In",
+      "description": "Scan badge to clock in or clock out",
+      "url": "/?tab=attendance",
+      "icons": [{ "src": "/LogoC.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Canteen POS Register",
+      "short_name": "Canteen POS",
+      "description": "Plant cafeteria scanner terminal",
+      "url": "/?tab=canteenHub",
+      "icons": [{ "src": "/LogoC.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Payslips (ESS)",
+      "short_name": "Payslips",
+      "description": "View and download personal payslips",
+      "url": "/?tab=employeePortal",
+      "icons": [{ "src": "/LogoC.png", "sizes": "192x192" }]
+    }
+  ]
+}

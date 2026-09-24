@@ -19,7 +19,10 @@ import {
   Printer,
   QrCode,
   Copy,
-  Maximize2
+  Maximize2,
+  Calendar,
+  CalendarCheck,
+  Sun
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
@@ -28,6 +31,7 @@ import BarcodeView from '../common/BarcodeView';
 import QRCodeView from '../common/QRCodeView';
 import PayslipDocument from './PayslipDocument';
 import GatePassModal from '../canteen/GatePassModal';
+import BIR2316Modal from '../payroll/BIR2316Modal';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function EmployeePortalView() {
@@ -50,7 +54,11 @@ export default function EmployeePortalView() {
     personalPurchaseOrders,
     createPersonalPurchaseOrder,
     canteenGatePasses,
-    openDigitalId
+    openDigitalId,
+    leaveRequests = [],
+    fileLeaveRequest,
+    overtimeRequests = [],
+    fileOvertimeRequest
   } = useApp();
 
   const [copiedSnippet, setCopiedSnippet] = useState(null);
@@ -64,12 +72,15 @@ export default function EmployeePortalView() {
     }).catch(err => console.warn('Copy error:', err));
   };
 
-  // Financial Modals State
+  // Financial & ESS Modals State
   const [showLoanModal, setShowLoanModal] = useState(false);
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showPOModal, setShowPOModal] = useState(false);
   const [selectedGatePass, setSelectedGatePass] = useState(null);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [showOTModal, setShowOTModal] = useState(false);
+  const [showBIRModal, setShowBIRModal] = useState(false);
 
   // Progressive Escape dismissal (Priority 40 - MODAL)
   useEscapeKey('ess-loan-modal', ESCAPE_PRIORITY.MODAL, showLoanModal, () => setShowLoanModal(false));
@@ -78,11 +89,26 @@ export default function EmployeePortalView() {
   useEscapeKey('ess-po-modal', ESCAPE_PRIORITY.MODAL, showPOModal, () => setShowPOModal(false));
   useEscapeKey('ess-gate-pass-modal', ESCAPE_PRIORITY.MODAL, Boolean(selectedGatePass), () => setSelectedGatePass(null));
   useEscapeKey('ess-payslip-modal', ESCAPE_PRIORITY.MODAL, Boolean(selectedPayslipData), () => setSelectedPayslipData(null));
+  useEscapeKey('ess-leave-modal', ESCAPE_PRIORITY.MODAL, showLeaveModal, () => setShowLeaveModal(false));
+  useEscapeKey('ess-ot-modal', ESCAPE_PRIORITY.MODAL, showOTModal, () => setShowOTModal(false));
+  useEscapeKey('ess-bir-modal', ESCAPE_PRIORITY.MODAL, showBIRModal, () => setShowBIRModal(false));
 
   // Form States
   const [loanForm, setLoanForm] = useState({ category: 'cash', principal: '', termMonths: 3, purpose: '' });
   const [advanceForm, setAdvanceForm] = useState({ principal: '', termMonths: 1, reason: '' });
   const [withdrawForm, setWithdrawForm] = useState({ amount: '', reason: '' });
+  const [leaveForm, setLeaveForm] = useState({
+    type: 'Vacation Leave',
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
+    days: 1,
+    reason: ''
+  });
+  const [otForm, setOtForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    hours: 2,
+    reason: ''
+  });
   
   // Personal PO Form State
   const [poCart, setPoCart] = useState([]);
@@ -102,6 +128,8 @@ export default function EmployeePortalView() {
   const myAdvances = cashAdvances.filter(ca => ca.staffId === currentStaff?.id);
   const myPurchaseOrders = (personalPurchaseOrders || []).filter(po => po.staffId === currentStaff?.id);
   const myGatePasses = (canteenGatePasses || []).filter(gp => gp.bearerStaffId === currentStaff?.id);
+  const myLeaves = (leaveRequests || []).filter(l => l.staffId === currentStaff?.id);
+  const myOvertime = (overtimeRequests || []).filter(o => o.staffId === currentStaff?.id);
   const myPendingWithdrawals = coopWithdrawals.filter(
     w => w.staffId === currentStaff?.id && w.status === 'Pending Accounting Approval'
   );
@@ -754,6 +782,160 @@ export default function EmployeePortalView() {
         </div>
       )}
 
+      {/* Leave & Overtime Self-Service Request Center */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <CalendarCheck className="h-4 w-4 text-slate-600" />
+              Leave &amp; Overtime Request Center
+            </h4>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              File leaves, schedule daytime overtime extensions, and retrieve annual tax certificates
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setLeaveForm({
+                  type: 'Vacation Leave',
+                  startDate: new Date().toISOString().split('T')[0],
+                  endDate: new Date().toISOString().split('T')[0],
+                  days: 1,
+                  reason: ''
+                });
+                setShowLeaveModal(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+            >
+              <Plus className="h-3.5 w-3.5 text-white" />
+              <span>File Leave</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setOtForm({
+                  date: new Date().toISOString().split('T')[0],
+                  hours: 2,
+                  reason: ''
+                });
+                setShowOTModal(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
+            >
+              <Plus className="h-3.5 w-3.5 text-slate-700" />
+              <span>File Overtime</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowBIRModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition shadow-sm"
+              title="View Annual BIR Form 2316 Tax Certificate"
+            >
+              <FileText className="h-3.5 w-3.5 text-slate-500" />
+              <span>BIR Form 2316</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Requests Grid: Leaves & Overtime */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
+          {/* Leaves Subcard */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-slate-600" />
+                My Leave Applications ({myLeaves.length})
+              </span>
+              <span className="text-[10px] text-slate-500">Subject to HR approval</span>
+            </div>
+
+            {myLeaves.length === 0 ? (
+              <p className="text-xs text-slate-400 py-3 text-center">No leave applications filed yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {myLeaves.map(leave => (
+                  <div key={leave.id} className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-900">{leave.type}</span>
+                      <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                        leave.status === 'Approved'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : leave.status === 'Rejected'
+                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                          : 'bg-amber-100 text-amber-800 border border-amber-300'
+                      }`}>
+                        {leave.status}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-600 font-mono">
+                      {leave.startDate} {leave.endDate && leave.endDate !== leave.startDate ? `~ ${leave.endDate}` : ''} ({leave.days} day{leave.days > 1 ? 's' : ''})
+                    </div>
+                    {leave.reason && (
+                      <p className="text-[10px] text-slate-500 italic truncate">&ldquo;{leave.reason}&rdquo;</p>
+                    )}
+                    {leave.remarks && (
+                      <div className="text-[9px] text-slate-400">HR: {leave.remarks}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Overtime Subcard */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-slate-600" />
+                My Overtime Requests ({myOvertime.length})
+              </span>
+              <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1">
+                <Sun className="h-3 w-3" /> Day Shift Only (No NSD)
+              </span>
+            </div>
+
+            {myOvertime.length === 0 ? (
+              <p className="text-xs text-slate-400 py-3 text-center">No overtime requests submitted yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {myOvertime.map(ot => (
+                  <div key={ot.id} className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-900">{ot.hours} Hours OT</span>
+                      <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                        ot.status === 'Approved'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : ot.status === 'Rejected'
+                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                          : 'bg-amber-100 text-amber-800 border border-amber-300'
+                      }`}>
+                        {ot.status}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-600 font-mono">
+                      Shift Date: {ot.date} · Day Shift Extension
+                    </div>
+                    {ot.reason && (
+                      <p className="text-[10px] text-slate-500 italic truncate">&ldquo;{ot.reason}&rdquo;</p>
+                    )}
+                    {ot.remarks && (
+                      <div className="text-[9px] text-slate-400">Supervisor: {ot.remarks}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+
       {/* Main Grid: Payslips History + Attendance Records */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
@@ -853,13 +1035,241 @@ export default function EmployeePortalView() {
       </div>
 
       {/* Modals */}
-      {showBadgeModal && (
-        <StaffBadgeModal
+      {showBIRModal && (
+        <BIR2316Modal
           staff={currentStaff}
-          department={dept}
-          position={pos}
-          onClose={() => setShowBadgeModal(false)}
+          payRuns={payRuns}
+          onClose={() => setShowBIRModal(false)}
         />
+      )}
+
+      {/* Modal: File Leave Application */}
+      {showLeaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-slate-700" />
+                File Leave Application
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowLeaveModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs leading-relaxed">
+              💡 <strong>HR Leave Workflow:</strong> Leave filings require endorsement by HR Manager Genevieve Anne A. JURADO before inclusion in scheduled timesheets.
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!leaveForm.startDate || !leaveForm.endDate) return;
+                fileLeaveRequest({
+                  staffId: currentStaff?.id,
+                  staffName: `${currentStaff?.firstName} ${currentStaff?.lastName}`,
+                  employeeId: currentStaff?.employeeId,
+                  type: leaveForm.type,
+                  startDate: leaveForm.startDate,
+                  endDate: leaveForm.endDate,
+                  days: Number(leaveForm.days) || 1,
+                  reason: leaveForm.reason
+                });
+                setShowLeaveModal(false);
+              }}
+              className="space-y-3 text-xs"
+            >
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Leave Category</label>
+                <select
+                  value={leaveForm.type}
+                  onChange={(e) => setLeaveForm({ ...leaveForm, type: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                >
+                  <option value="Vacation Leave">Vacation Leave (VL)</option>
+                  <option value="Sick Leave">Sick Leave (SL)</option>
+                  <option value="Emergency Leave">Emergency Leave (EL)</option>
+                  <option value="Bereavement Leave">Bereavement Leave</option>
+                  <option value="Solo Parent Leave">Solo Parent Leave</option>
+                  <option value="Maternity / Paternity Leave">Maternity / Paternity Leave</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={leaveForm.startDate}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, startDate: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">End Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={leaveForm.endDate}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Total Days Duration</label>
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  max="30"
+                  required
+                  value={leaveForm.days}
+                  onChange={(e) => setLeaveForm({ ...leaveForm, days: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Reason / Coverage Plan</label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Detail the purpose of leave and shift handover plan..."
+                  value={leaveForm.reason}
+                  onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowLeaveModal(false)}
+                  className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm flex items-center gap-1.5"
+                >
+                  <CalendarCheck className="h-3.5 w-3.5 text-white" />
+                  Submit Leave Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: File Overtime Request */}
+      {showOTModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Clock className="h-4 w-4 text-slate-700" />
+                File Overtime (OT) Request
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowOTModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed flex items-start gap-2">
+              <Sun className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <strong>Day Shift Extension Policy:</strong> NKB operates strictly on daytime plant shifts. Overtime hours count as regular day extension at 125% regular rate. <strong>Night shifts / Night shift differential (NSD) are not applicable.</strong>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!otForm.date) return;
+                fileOvertimeRequest({
+                  staffId: currentStaff?.id,
+                  staffName: `${currentStaff?.firstName} ${currentStaff?.lastName}`,
+                  employeeId: currentStaff?.employeeId,
+                  date: otForm.date,
+                  hours: Number(otForm.hours) || 2,
+                  reason: otForm.reason,
+                  shift: 'Day Shift Extension (No Night Shift)'
+                });
+                setShowOTModal(false);
+              }}
+              className="space-y-3 text-xs"
+            >
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Shift Extension Date</label>
+                <input
+                  type="date"
+                  required
+                  value={otForm.date}
+                  onChange={(e) => setOtForm({ ...otForm, date: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Estimated Overtime Hours (Day Shift)</label>
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  max="8"
+                  required
+                  value={otForm.hours}
+                  onChange={(e) => setOtForm({ ...otForm, hours: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  e.g. 2 hours (5:00 PM – 7:00 PM day shift extension)
+                </span>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Work Justification / Project Tasks</label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="e.g. Batch assembly run completion, urgent client delivery order, warehouse inventory sorting..."
+                  value={otForm.reason}
+                  onChange={(e) => setOtForm({ ...otForm, reason: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowOTModal(false)}
+                  className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm flex items-center gap-1.5"
+                >
+                  <Clock className="h-3.5 w-3.5 text-white" />
+                  Submit Overtime Application
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {selectedPayslipData && (

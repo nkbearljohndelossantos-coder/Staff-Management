@@ -21,6 +21,12 @@
  */
 
 export const TAB_PERMISSIONS = {
+  executiveDashboard: {
+    id: 'executiveDashboard',
+    title: 'Executive Analytics & Anomaly Briefing',
+    authorizedRoles: ['ceo', 'it_admin', 'admin', 'finance', 'accounting'],
+    requiredRoleLabel: 'Executive & Senior Leadership'
+  },
   staff: {
     id: 'staff',
     title: 'Staff & IDs',
@@ -96,7 +102,8 @@ export const getDefaultTabForRole = (role) => {
   if (role === 'finance' || role === 'accounting') return 'payroll';
   if (role === 'it_admin') return 'itAdminHub';
   if (role === 'admin' || role === 'hr') return 'staff';
-  return 'staff'; // Default for CEO
+  if (role === 'ceo') return 'executiveDashboard';
+  return 'staff'; // Fallback
 };
 
 /**
