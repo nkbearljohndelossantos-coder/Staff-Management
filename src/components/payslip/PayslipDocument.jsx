@@ -123,7 +123,7 @@ export default function PayslipDocument({ staff, payRun, item, payItem, onClose 
             </div>
 
             {/* Attendance & Absence Schedule Factors Row */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200 text-[10px] text-slate-600 bg-white p-2 rounded-lg border border-slate-200">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-200 text-[10px] text-slate-600 bg-white p-2 rounded-lg border border-slate-200">
               <div>
                 <span className="text-slate-400 uppercase font-semibold block">Schedule Type</span>
                 <span className="font-bold text-slate-900">{scheduleLabel}</span>
@@ -135,6 +135,10 @@ export default function PayslipDocument({ staff, payRun, item, payItem, onClose 
               <div>
                 <span className="text-slate-400 uppercase font-semibold block">Tardiness Minute Rate</span>
                 <span className="font-mono font-bold text-slate-900">{formatCurrency(minuteRate)} / min</span>
+              </div>
+              <div>
+                <span className="text-slate-400 uppercase font-semibold block">OT Rate (+30%/hr)</span>
+                <span className="font-mono font-bold text-slate-900">{formatCurrency(currentItem.otHourlyRate || ((dailyRate / 8) * 1.30))} / hr</span>
               </div>
             </div>
           </div>
@@ -160,7 +164,7 @@ export default function PayslipDocument({ staff, payRun, item, payItem, onClose 
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span>Overtime Pay ({currentItem.otHours || 0} hrs)</span>
+                  <span>Overtime Pay ({currentItem.otHours || 0} hrs @ +30%)</span>
                   <span className="font-mono font-semibold">{formatCurrency(currentItem.overtimePay || 0)}</span>
                 </div>
                 {currentItem.cutoffAllowance > 0 && (

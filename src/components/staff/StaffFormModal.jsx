@@ -28,6 +28,7 @@ import {
   getDailyRate,
   getHourlyRate,
   getMinuteRate,
+  getOvertimeRate,
   FACTOR_5_DAYS,
   FACTOR_6_DAYS
 } from '../../utils/payrollCalculations';
@@ -186,6 +187,7 @@ export default function StaffFormModal({ staff, onClose }) {
   const computedDailyRate = getDailyRate(rateValue, formData.salaryRateType, effectiveScheduleType);
   const computedHourlyRate = getHourlyRate(computedDailyRate);
   const computedMinuteRate = getMinuteRate(computedDailyRate);
+  const computedOtRate = getOvertimeRate(computedDailyRate);
   const computedCutoff15Days = isMonthlyRate
     ? rateValue / 2
     : computedDailyRate * 13; // 13 days in a 15-day semi-monthly cut-off for 6-day work week
@@ -781,7 +783,7 @@ export default function StaffFormModal({ staff, onClose }) {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
                 <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
                   <span className="text-[10px] text-slate-500 uppercase block font-semibold">15-Day Salary</span>
                   <span className="font-mono font-bold text-slate-900 text-xs">
@@ -803,6 +805,13 @@ export default function StaffFormModal({ staff, onClose }) {
                   </span>
                   <span className="text-[9px] text-slate-400 block">Daily ÷ 8 hrs</span>
                 </div>
+                <div className="p-2 rounded-lg bg-indigo-50/70 border border-indigo-200">
+                  <span className="text-[10px] text-indigo-700 uppercase block font-semibold">OT Rate (+30%)</span>
+                  <span className="font-mono font-bold text-indigo-900 text-xs">
+                    {formatCurrency(computedOtRate)}
+                  </span>
+                  <span className="text-[9px] text-indigo-500 block">Hourly × 1.30</span>
+                </div>
                 <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
                   <span className="text-[10px] text-slate-500 uppercase block font-semibold">Minute Rate (Late)</span>
                   <span className="font-mono font-bold text-slate-900 text-xs">
@@ -812,12 +821,15 @@ export default function StaffFormModal({ staff, onClose }) {
                 </div>
               </div>
 
-              <div className="text-[10px] text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-200 flex items-center justify-between">
+              <div className="text-[10px] text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-1.5">
                 <span>
                   <strong>Absence Policy:</strong> Salary(15 days) - Absences. (1 missed day = -{formatCurrency(computedDailyRate)})
                 </span>
                 <span>
                   <strong>Tardiness Policy:</strong> 30 mins late = -{formatCurrency(computedMinuteRate * 30)}
+                </span>
+                <span>
+                  <strong>Overtime Policy:</strong> Hourly + 30% ({formatCurrency(computedOtRate)}/hr)
                 </span>
               </div>
             </div>

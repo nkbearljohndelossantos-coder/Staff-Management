@@ -1190,7 +1190,7 @@ export default function EmployeePortalView() {
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed flex items-start gap-2">
               <Sun className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <strong>Day Shift Extension Policy:</strong> NKB operates strictly on daytime plant shifts. Overtime hours count as regular day extension at 125% regular rate. <strong>Night shifts / Night shift differential (NSD) are not applicable.</strong>
+                <strong>Day Shift Extension Policy:</strong> NKB operates strictly on daytime plant shifts. Overtime hours count as regular day extension at +30% per hour (130% regular rate). <strong>Night shifts / Night shift differential (NSD) are not applicable.</strong>
               </div>
             </div>
 

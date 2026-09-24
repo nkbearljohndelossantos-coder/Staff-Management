@@ -22,6 +22,7 @@ import {
   getDailyRate,
   getHourlyRate,
   getMinuteRate,
+  getOvertimeRate,
   FACTOR_5_DAYS,
   FACTOR_6_DAYS
 } from '../../utils/payrollCalculations';
@@ -48,6 +49,7 @@ export default function StaffDetailModal({
   const dailyRate = getDailyRate(salaryRate, salaryRateType, workScheduleType);
   const hourlyRate = getHourlyRate(dailyRate);
   const minuteRate = getMinuteRate(dailyRate);
+  const otHourlyRate = getOvertimeRate(dailyRate);
   const cutoff15Days = isDaily
     ? dailyRate * 13
     : salaryRate / 2;
@@ -277,7 +279,7 @@ export default function StaffDetailModal({
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                 <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
                   <span className="text-[10px] text-slate-500 uppercase block font-semibold">Daily Absence Rate</span>
                   <span className="font-mono font-bold text-slate-900 text-xs">
@@ -291,6 +293,13 @@ export default function StaffDetailModal({
                     {formatCurrency(hourlyRate)}
                   </span>
                   <span className="text-[9px] text-slate-400 block">Daily Rate ÷ 8 hrs</span>
+                </div>
+                <div className="p-2 rounded-lg bg-indigo-50/70 border border-indigo-200">
+                  <span className="text-[10px] text-indigo-700 uppercase block font-semibold">OT Rate (+30%)</span>
+                  <span className="font-mono font-bold text-indigo-900 text-xs">
+                    {formatCurrency(otHourlyRate)}
+                  </span>
+                  <span className="text-[9px] text-indigo-500 block">Hourly Rate × 1.30</span>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
                   <span className="text-[10px] text-slate-500 uppercase block font-semibold">Minute Rate (Late)</span>
@@ -307,6 +316,9 @@ export default function StaffDetailModal({
                 </div>
                 <div>
                   <strong>Tardiness Policy:</strong> Late Minutes × {formatCurrency(minuteRate)} (Minute Rate)
+                </div>
+                <div>
+                  <strong>Overtime Policy:</strong> Hourly Rate + 30% = {formatCurrency(otHourlyRate)} / hour
                 </div>
               </div>
             </div>

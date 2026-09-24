@@ -335,7 +335,7 @@ export default function BarcodeClockInKiosk() {
                 <span className="text-2xl font-black text-amber-600">{pendingOTCount}</span>
                 <Clock className="h-6 w-6 text-amber-400" />
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">Day shift extensions (125% rate)</p>
+              <p className="text-[11px] text-slate-400 mt-1">Day shift extensions (+30% rate)</p>
             </div>
 
             <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">

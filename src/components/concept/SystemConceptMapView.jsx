@@ -218,11 +218,11 @@ export default function SystemConceptMapView() {
       code: 'ATT-AUDIT',
       owner: 'HR Attendance Auditor',
       roles: ['ceo', 'it_admin', 'hr', 'admin'],
-      summary: 'Aggregates punch logs into payable regular hours, night differentials (10%), regular overtime (125%), and rest day overtime (130%).',
+      summary: 'Aggregates punch logs into payable regular hours, night differentials (10%), and day overtime (+30% per hour / 1.30x rate).',
       inputs: ['Raw attendance punch logs', 'Shift schedules', 'Approved leave vouchers'],
       outputs: ['Semi-monthly hours summary', 'Tardiness/Absence deduction feed for Payroll'],
       storageKey: 'nkb_attendance_summary',
-      formula: 'Regular Hrs = 8/day; OT = (BaseHourly * 1.25) * OTHours; ND = (BaseHourly * 0.10) * NDHours',
+      formula: 'Regular Hrs = 8/day; OT = (BaseHourly * 1.30) * OTHours; ND = (BaseHourly * 0.10) * NDHours',
       security: 'HR verifies before passing immutable timesheet batch to Payroll'
     },
 

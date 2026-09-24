@@ -48,6 +48,13 @@ export function getMinuteRate(dailyRate) {
 }
 
 /**
+ * Calculates Overtime Hourly Rate (additional 30% per hour = 1.30x regular hourly rate)
+ */
+export function getOvertimeRate(dailyRate) {
+  return ((Number(dailyRate) || 0) / 8) * 1.30;
+}
+
+/**
  * Calculates SSS (Social Security System) employee contribution from Filed Salary
  * 2025 SSS Schedule: 4.5% employee share based on Monthly Salary Credit (MSC ₱4,000 - ₱30,000)
  */
@@ -207,8 +214,9 @@ export function computeEmployeePayroll(staff, attendance = {}, customAdjustments
   const lateMinutes = Number(attendance.lateMinutes) || 0;
   const unpaidDays = Number(attendance.unpaidDays) || 0;
 
-  // Overtime computation (1.25x regular hourly rate for day shift extension)
-  const overtimePay = Math.round(otHours * hourlyRate * 1.25);
+  // Overtime computation (additional 30% per hour = 1.30x regular hourly rate)
+  const otHourlyRate = hourlyRate * 1.30;
+  const overtimePay = Math.round(otHours * otHourlyRate);
 
   // Incentives & Adjustments
   const bonus = Number(customAdjustments.bonus) || 0;
@@ -253,6 +261,7 @@ export function computeEmployeePayroll(staff, attendance = {}, customAdjustments
     dailyRate,
     hourlyRate,
     minuteRate,
+    otHourlyRate,
     filedSalary,
     cutoffBasePay,
     netBasePayAfterAbsence,
