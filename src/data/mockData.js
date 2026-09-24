@@ -41,6 +41,7 @@ export const INITIAL_STAFF = generatedStaffData.staff.map(s => ({
   philHealthNo: s.philHealthNo || '12-094820192-1',
   hdmfNo: s.hdmfNo || '1210-9482-0192',
   salaryRateType: s.salaryRateType || 'monthly',
+  workScheduleType: s.workScheduleType || '6_days', // '5_days' | '6_days'
   salaryRate: s.salaryRate !== undefined ? s.salaryRate : (s.baseSalary || 0),
   filedSalary: s.filedSalary !== undefined ? s.filedSalary : 0
 }));

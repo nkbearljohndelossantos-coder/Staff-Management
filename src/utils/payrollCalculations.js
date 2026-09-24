@@ -9,13 +9,42 @@ export function formatCurrency(amount, currency = '₱') {
   return `${currency} ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// Standard Philippine DOLE Annual Work Day Factors
+export const FACTOR_5_DAYS = 261; // 365 days - 104 weekend days (Saturdays & Sundays)
+export const FACTOR_6_DAYS = 313; // 365 days - 52 rest days (Sundays only)
+
 /**
- * Calculates hourly and daily rate from monthly base salary or daily rate
- * Assuming 22 working days/month and 8 hours/day
+ * Calculates Equivalent Daily Rate (EDR) / Absence Rate
+ * For Monthly Rate:
+ *  - 5 Days Work Week: (Monthly Salary * 12) / 261 days
+ *  - 6 Days Work Week: (Monthly Salary * 12) / 313 days
+ * For Daily Rate:
+ *  - Returns the daily salary rate directly
  */
-export function getHourlyRate(monthlySalary) {
-  const dailyRate = (Number(monthlySalary) || 0) / 22;
-  return dailyRate / 8;
+export function getDailyRate(salaryRate, salaryRateType = 'monthly', workScheduleType = '6_days') {
+  const rate = Number(salaryRate) || 0;
+  if (rate <= 0) return 0;
+  if (salaryRateType === 'daily') {
+    return rate;
+  }
+  // Monthly rate calculation
+  const factor = workScheduleType === '5_days' ? FACTOR_5_DAYS : FACTOR_6_DAYS;
+  return (rate * 12) / factor;
+}
+
+/**
+ * Calculates Hourly Rate from Daily Rate (based on standard 8-hour workday)
+ */
+export function getHourlyRate(dailyRate) {
+  return (Number(dailyRate) || 0) / 8;
+}
+
+/**
+ * Calculates Minute Rate from Daily Rate (based on 480 minutes per standard 8-hour shift)
+ * Used as the exact deduction rate for tardiness/lateness.
+ */
+export function getMinuteRate(dailyRate) {
+  return (Number(dailyRate) || 0) / 480;
 }
 
 /**
@@ -135,12 +164,14 @@ export function computeFiledSalaryDeductions(filedSalary) {
 
 /**
  * Complete payroll compilation for a single employee in a pay period
- * Actual earnings derive from salaryRate (daily or monthly),
+ * Actual earnings derive from salaryRate (daily or monthly with 5-day / 6-day schedule),
  * while other deductions (SSS, PhilHealth, HDMF, Tax) derive strictly from filedSalary.
  */
 export function computeEmployeePayroll(staff, attendance = {}, customAdjustments = {}) {
   const isSemiMonthly = staff.payFrequency !== 'monthly';
   const salaryRateType = staff.salaryRateType || 'monthly';
+  const workScheduleType = staff.workScheduleType || '6_days'; // '5_days' | '6_days'
+  const workFactorDays = workScheduleType === '5_days' ? FACTOR_5_DAYS : FACTOR_6_DAYS;
 
   // Determine actual compensation rate
   let salaryRate = Number(staff.salaryRate);
@@ -150,23 +181,28 @@ export function computeEmployeePayroll(staff, attendance = {}, customAdjustments
 
   let dailyRate = 0;
   let monthlyEquivalent = 0;
-  let hourlyRate = 0;
   let cutoffBasePay = 0;
 
   if (salaryRateType === 'daily') {
     dailyRate = salaryRate;
-    monthlyEquivalent = dailyRate * 22; // Standard 22 working days / month
-    hourlyRate = dailyRate / 8;
-    cutoffBasePay = isSemiMonthly ? (dailyRate * 11) : monthlyEquivalent;
+    // Monthly equivalent: 26 days for 6-day week, 21.75 days for 5-day week
+    const workingDaysMonth = workScheduleType === '5_days' ? 21.75 : 26;
+    monthlyEquivalent = Math.round(dailyRate * workingDaysMonth);
+    // 15-day semi-monthly cut-off: 13 days for 6-day, 11 days for 5-day
+    const cutoffDays = workScheduleType === '5_days' ? 11 : 13;
+    cutoffBasePay = isSemiMonthly ? Math.round(dailyRate * cutoffDays) : monthlyEquivalent;
   } else {
     // monthly rate
     monthlyEquivalent = salaryRate;
-    dailyRate = monthlyEquivalent / 22;
-    hourlyRate = dailyRate / 8;
+    // Formula: (monthly salary x mos of a year) / days of year without weekend for 5 days (261) and without sunday for 6 days (313)
+    dailyRate = (monthlyEquivalent * 12) / workFactorDays;
+    // Semi-monthly 15-day salary: monthly / 2
     cutoffBasePay = isSemiMonthly ? (monthlyEquivalent / 2) : monthlyEquivalent;
   }
 
-  const minuteRate = hourlyRate / 60;
+  // Hourly and minute rates for attendance computation
+  const hourlyRate = dailyRate / 8;
+  const minuteRate = hourlyRate / 60; // dailyRate / 480
 
   // Attendance inputs
   const otHours = Number(attendance.otHours) || 0;
@@ -180,12 +216,17 @@ export function computeEmployeePayroll(staff, attendance = {}, customAdjustments
   const bonus = Number(customAdjustments.bonus) || 0;
   const cutoffAllowance = 0;
 
-  // Actual Gross Earnings
-  const grossPay = Math.round(cutoffBasePay + overtimePay + bonus);
+  // Actual Gross Earnings (Before attendance deductions)
+  const grossPay = Math.round(cutoffBasePay + overtimePay + bonus + cutoffAllowance);
 
-  // Attendance Deductions
+  // Attendance Deductions:
+  // Tardiness based on minute rate: lateMinutes * minuteRate
   const tardinessDeduction = Math.round(lateMinutes * minuteRate);
-  const absentDeduction = Math.round(unpaidDays * (hourlyRate * 8));
+  // Absences based on daily absence rate: unpaidDays * dailyRate
+  const absentDeduction = Math.round(unpaidDays * dailyRate);
+
+  // Net Basic Salary after absences: salary(15 days) - absences
+  const netBasePayAfterAbsence = Math.max(0, cutoffBasePay - absentDeduction);
 
   // Statutory "Other Deductions" (SSS, PhilHealth, HDMF, Tax):
   // Rule: In computing other deduction, do NOT use actual salary; use manual "filed salary".
@@ -208,11 +249,15 @@ export function computeEmployeePayroll(staff, attendance = {}, customAdjustments
 
   return {
     salaryRateType,
+    workScheduleType,
+    workFactorDays,
     salaryRate,
     dailyRate,
     hourlyRate,
+    minuteRate,
     filedSalary,
     cutoffBasePay,
+    netBasePayAfterAbsence,
     overtimePay,
     otHours,
     cutoffAllowance,

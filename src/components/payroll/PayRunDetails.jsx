@@ -51,6 +51,7 @@ export default function PayRunDetails({ payRunId, onBack }) {
           payRun={payRun}
           payItem={selectedPayslipItem}
           staff={staff}
+          onClose={() => setSelectedPayslipItem(null)}
         />
       </div>
     );
@@ -199,7 +200,14 @@ export default function PayRunDetails({ payRunId, onBack }) {
                         <div className="font-bold text-slate-900">{staff.firstName} {staff.lastName}</div>
                         <div className="font-mono text-[10px] text-slate-500">{staff.employeeId}</div>
                       </td>
-                      <td className="py-3 px-4 font-mono">{formatCurrency(item.cutoffBasePay)}</td>
+                      <td className="py-3 px-4 font-mono">
+                        <div>{formatCurrency(item.cutoffBasePay)}</div>
+                        {item.absentDeduction > 0 && (
+                          <div className="text-[10px] text-rose-600 font-sans font-medium">
+                            ↳ Net: {formatCurrency(item.netBasePayAfterAbsence || (item.cutoffBasePay - item.absentDeduction))} (-{item.unpaidDays}d)
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3 px-4 font-mono text-slate-700">
                         {item.otHours > 0 ? (
                           <span className="text-slate-900 font-semibold">
@@ -211,7 +219,12 @@ export default function PayRunDetails({ payRunId, onBack }) {
                         {formatCurrency(item.grossPay)}
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-700">
-                        -{formatCurrency(item.totalDeductions)}
+                        <div>-{formatCurrency(item.totalDeductions)}</div>
+                        {(item.absentDeduction > 0 || item.tardinessDeduction > 0) && (
+                          <div className="text-[10px] text-slate-500 font-sans">
+                            Abs/Late: -{formatCurrency((item.absentDeduction || 0) + (item.tardinessDeduction || 0))}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-900 font-black text-sm">
                         {formatCurrency(item.netPay)}

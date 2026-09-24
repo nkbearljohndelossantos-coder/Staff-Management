@@ -22,7 +22,15 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { generateNextEmployeeId } from '../../utils/idGenerator';
-import { formatCurrency, computeFiledSalaryDeductions } from '../../utils/payrollCalculations';
+import {
+  formatCurrency,
+  computeFiledSalaryDeductions,
+  getDailyRate,
+  getHourlyRate,
+  getMinuteRate,
+  FACTOR_5_DAYS,
+  FACTOR_6_DAYS
+} from '../../utils/payrollCalculations';
 import BarcodeView from '../common/BarcodeView';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
@@ -56,6 +64,7 @@ export default function StaffFormModal({ staff, onClose }) {
 
     // Actual Compensation Setup
     salaryRateType: staff?.salaryRateType || 'monthly', // 'daily' | 'monthly'
+    workScheduleType: staff?.workScheduleType || '6_days', // '5_days' | '6_days'
     salaryRate: staff?.salaryRate !== undefined ? staff.salaryRate : (staff?.baseSalary || 25000),
     baseSalary: staff?.baseSalary || 25000,
     payFrequency: staff?.payFrequency || 'semi-monthly',
@@ -170,10 +179,22 @@ export default function StaffFormModal({ staff, onClose }) {
 
   const statutoryBreakdown = computeFiledSalaryDeductions(formData.filedSalary);
 
+  const rateValue = Number(formData.salaryRate) || 0;
+  const isMonthlyRate = formData.salaryRateType === 'monthly';
+  const workFactorDays = formData.workScheduleType === '5_days' ? FACTOR_5_DAYS : FACTOR_6_DAYS;
+  const computedDailyRate = getDailyRate(rateValue, formData.salaryRateType, formData.workScheduleType);
+  const computedHourlyRate = getHourlyRate(computedDailyRate);
+  const computedMinuteRate = getMinuteRate(computedDailyRate);
+  const computedCutoff15Days = isMonthlyRate
+    ? rateValue / 2
+    : computedDailyRate * (formData.workScheduleType === '5_days' ? 11 : 13);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const rateVal = Number(formData.salaryRate) || 0;
-    const monthlyEquivalent = formData.salaryRateType === 'daily' ? rateVal * 22 : rateVal;
+    const monthlyEquivalent = formData.salaryRateType === 'daily'
+      ? Math.round(rateVal * (formData.workScheduleType === '5_days' ? 21.75 : 26))
+      : rateVal;
 
     const finalData = {
       ...formData,
@@ -188,6 +209,7 @@ export default function StaffFormModal({ staff, onClose }) {
       hdmfNo: formData.hdmfNo || '',
       tin: formData.tin || '',
       salaryRateType: formData.salaryRateType,
+      workScheduleType: formData.workScheduleType,
       salaryRate: rateVal,
       baseSalary: monthlyEquivalent,
       filedSalary: Number(formData.filedSalary) || 0,
@@ -671,6 +693,42 @@ export default function StaffFormModal({ staff, onClose }) {
                 </div>
               </div>
 
+              {/* Work Schedule Type (5 Days vs 6 Days) */}
+              <div>
+                <label className="block text-slate-700 font-medium mb-1 flex items-center justify-between">
+                  <span>Work Schedule</span>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    {formData.workScheduleType === '5_days' ? '261 days/yr' : '313 days/yr'}
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-lg border border-slate-300">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, workScheduleType: '5_days' })}
+                    className={`py-1 rounded font-bold text-[11px] transition cursor-pointer ${
+                      formData.workScheduleType === '5_days'
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="5 Days / Week (Monday to Friday, No Weekends: 261 days/year)"
+                  >
+                    5 Days (Mon-Fri)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, workScheduleType: '6_days' })}
+                    className={`py-1 rounded font-bold text-[11px] transition cursor-pointer ${
+                      formData.workScheduleType === '6_days'
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="6 Days / Week (Monday to Saturday, Sundays Off: 313 days/year)"
+                  >
+                    6 Days (Mon-Sat)
+                  </button>
+                </div>
+              </div>
+
               {/* Rate Input Amount */}
               <div>
                 <label className="block text-slate-700 font-medium mb-1">
@@ -688,27 +746,76 @@ export default function StaffFormModal({ staff, onClose }) {
                   placeholder={formData.salaryRateType === 'daily' ? '650' : '25000'}
                   className="w-full h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none font-mono focus:ring-2 focus:ring-slate-900"
                 />
-                <p className="text-[10px] text-slate-500 mt-1">
-                  {formData.salaryRateType === 'daily'
-                    ? `~${formatCurrency((Number(formData.salaryRate) || 0) * 22)} / mo (22 working days)`
-                    : `~${formatCurrency(Math.round((Number(formData.salaryRate) || 0) / 22))} / day (22 working days)`}
-                </p>
+              </div>
+            </div>
+
+            {/* Live Rate Breakdown & Absence/Tardiness Computation Card */}
+            <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                  <Calculator className="h-3 w-3 text-slate-600" />
+                  Absence &amp; Tardiness Computation Breakdown
+                </span>
+                <span className="text-[10px] font-mono text-slate-500">
+                  {isMonthlyRate
+                    ? `(Monthly × 12) ÷ ${workFactorDays} days (${formData.workScheduleType === '5_days' ? 'w/o weekends' : 'w/o Sunday'})`
+                    : 'Daily Rate direct wage'}
+                </span>
               </div>
 
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] text-slate-500 uppercase block font-semibold">15-Day Salary</span>
+                  <span className="font-mono font-bold text-slate-900 text-xs">
+                    {formatCurrency(computedCutoff15Days)}
+                  </span>
+                  <span className="text-[9px] text-slate-400 block">Cut-off base</span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] text-slate-500 uppercase block font-semibold">Daily Absence Rate</span>
+                  <span className="font-mono font-bold text-slate-900 text-xs">
+                    {formatCurrency(computedDailyRate)}
+                  </span>
+                  <span className="text-[9px] text-slate-400 block">Per day absent</span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] text-slate-500 uppercase block font-semibold">Hourly Rate</span>
+                  <span className="font-mono font-bold text-slate-900 text-xs">
+                    {formatCurrency(computedHourlyRate)}
+                  </span>
+                  <span className="text-[9px] text-slate-400 block">Daily ÷ 8 hrs</span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] text-slate-500 uppercase block font-semibold">Minute Rate (Late)</span>
+                  <span className="font-mono font-bold text-slate-900 text-xs">
+                    {formatCurrency(computedMinuteRate)}
+                  </span>
+                  <span className="text-[9px] text-slate-400 block">Per min tardy</span>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-200 flex items-center justify-between">
+                <span>
+                  <strong>Absence Policy:</strong> Salary(15 days) - Absences. (1 missed day = -{formatCurrency(computedDailyRate)})
+                </span>
+                <span>
+                  <strong>Tardiness Policy:</strong> 30 mins late = -{formatCurrency(computedMinuteRate * 30)}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-200">
               <div>
                 <label className="block text-slate-700 font-medium mb-1">Pay Frequency</label>
                 <select
                   value={formData.payFrequency}
                   onChange={(e) => setFormData({ ...formData, payFrequency: e.target.value })}
-                  className="w-full h-9 px-2.5 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none focus:ring-2 focus:ring-slate-900"
+                  className="w-full h-9 px-2.5 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none focus:ring-2 focus:ring-slate-900 text-xs"
                 >
                   <option value="semi-monthly">Semi-Monthly (15th &amp; 30th)</option>
                   <option value="monthly">Monthly</option>
                 </select>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200">
               <div>
                 <label className="block text-slate-700 font-medium mb-1">Disbursement Method</label>
                 <select

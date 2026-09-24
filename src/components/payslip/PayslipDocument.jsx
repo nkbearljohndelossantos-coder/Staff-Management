@@ -4,14 +4,25 @@ import { formatCurrency } from '../../utils/payrollCalculations';
 import BarcodeView from '../common/BarcodeView';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
-export default function PayslipDocument({ staff, payRun, item, onClose }) {
-  useEscapeKey('payslip-document-modal', ESCAPE_PRIORITY.MODAL, Boolean(staff && payRun && item), onClose);
+export default function PayslipDocument({ staff, payRun, item, payItem, onClose }) {
+  const currentItem = item || payItem;
+  useEscapeKey('payslip-document-modal', ESCAPE_PRIORITY.MODAL, Boolean(staff && payRun && currentItem), onClose);
 
-  if (!staff || !payRun || !item) return null;
+  if (!staff || !payRun || !currentItem) return null;
 
   const handlePrint = () => {
     window.print();
   };
+
+  const scheduleLabel = staff.salaryRateType === 'daily'
+    ? 'Daily Rate'
+    : (staff.workScheduleType === '5_days' ? '5 Days/wk (261 factor)' : '6 Days/wk (313 factor)');
+
+  const dailyRate = currentItem.dailyRate || 0;
+  const minuteRate = currentItem.minuteRate || (dailyRate / 480);
+  const netBasicAfterAbsence = currentItem.netBasePayAfterAbsence !== undefined
+    ? currentItem.netBasePayAfterAbsence
+    : Math.max(0, (currentItem.cutoffBasePay || 0) - (currentItem.absentDeduction || 0));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
@@ -94,7 +105,7 @@ export default function PayslipDocument({ staff, payRun, item, onClose }) {
               <div>
                 <span className="text-[10px] text-slate-500 uppercase font-semibold block">Actual Salary Rate</span>
                 <span className="font-mono font-bold text-slate-900">
-                  {formatCurrency(staff.salaryRate || staff.baseSalary || item.salaryRate || 0)} / {staff.salaryRateType === 'daily' ? 'day' : 'month'}
+                  {formatCurrency(staff.salaryRate || staff.baseSalary || currentItem.salaryRate || 0)} / {staff.salaryRateType === 'daily' ? 'day' : 'month'}
                 </span>
               </div>
               <div>
@@ -110,6 +121,22 @@ export default function PayslipDocument({ staff, payRun, item, onClose }) {
                 </span>
               </div>
             </div>
+
+            {/* Attendance & Absence Schedule Factors Row */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200 text-[10px] text-slate-600 bg-white p-2 rounded-lg border border-slate-200">
+              <div>
+                <span className="text-slate-400 uppercase font-semibold block">Schedule Type</span>
+                <span className="font-bold text-slate-900">{scheduleLabel}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 uppercase font-semibold block">Daily Absence Rate</span>
+                <span className="font-mono font-bold text-slate-900">{formatCurrency(dailyRate)} / day</span>
+              </div>
+              <div>
+                <span className="text-slate-400 uppercase font-semibold block">Tardiness Minute Rate</span>
+                <span className="font-mono font-bold text-slate-900">{formatCurrency(minuteRate)} / min</span>
+              </div>
+            </div>
           </div>
 
           {/* Itemized Earnings & Deductions Tables */}
@@ -123,29 +150,35 @@ export default function PayslipDocument({ staff, payRun, item, onClose }) {
               </div>
               <div className="space-y-1.5 text-slate-700">
                 <div className="flex justify-between">
-                  <span>Basic Salary (Cut-off)</span>
-                  <span className="font-mono font-semibold">{formatCurrency(item.cutoffBasePay)}</span>
+                  <span>Basic Salary (15-day cut-off)</span>
+                  <span className="font-mono font-semibold">{formatCurrency(currentItem.cutoffBasePay)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Overtime Pay ({item.otHours || 0} hrs)</span>
-                  <span className="font-mono font-semibold">{formatCurrency(item.overtimePay || 0)}</span>
-                </div>
-                {item.cutoffAllowance > 0 && (
-                  <div className="flex justify-between">
-                    <span>Allowances &amp; De Minimis</span>
-                    <span className="font-mono font-semibold">{formatCurrency(item.cutoffAllowance)}</span>
+                {currentItem.absentDeduction > 0 && (
+                  <div className="text-[10px] text-slate-500 flex justify-between bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
+                    <span>↳ Net Basic (Salary 15 days - Absences):</span>
+                    <span className="font-mono font-bold text-slate-800">{formatCurrency(netBasicAfterAbsence)}</span>
                   </div>
                 )}
-                {item.bonus > 0 && (
+                <div className="flex justify-between">
+                  <span>Overtime Pay ({currentItem.otHours || 0} hrs)</span>
+                  <span className="font-mono font-semibold">{formatCurrency(currentItem.overtimePay || 0)}</span>
+                </div>
+                {currentItem.cutoffAllowance > 0 && (
+                  <div className="flex justify-between">
+                    <span>Allowances &amp; De Minimis</span>
+                    <span className="font-mono font-semibold">{formatCurrency(currentItem.cutoffAllowance)}</span>
+                  </div>
+                )}
+                {currentItem.bonus > 0 && (
                   <div className="flex justify-between text-slate-900 font-medium">
                     <span>Performance Incentive</span>
-                    <span className="font-mono font-semibold">{formatCurrency(item.bonus)}</span>
+                    <span className="font-mono font-semibold">{formatCurrency(currentItem.bonus)}</span>
                   </div>
                 )}
               </div>
               <div className="pt-2 mt-2 border-t-2 border-slate-300 flex justify-between font-black text-slate-950">
                 <span>TOTAL GROSS PAY</span>
-                <span className="font-mono text-slate-900">{formatCurrency(item.grossPay)}</span>
+                <span className="font-mono text-slate-900">{formatCurrency(currentItem.grossPay)}</span>
               </div>
             </div>
 
@@ -156,44 +189,53 @@ export default function PayslipDocument({ staff, payRun, item, onClose }) {
                 <span className="text-[10px] text-slate-500 font-mono">Amount (PHP)</span>
               </div>
               <div className="space-y-1.5 text-slate-700">
+                {/* Attendance Deductions (Absence & Tardiness) */}
+                {currentItem.absentDeduction > 0 && (
+                  <div className="flex justify-between text-rose-800 font-medium bg-rose-50/70 px-1.5 py-0.5 rounded border border-rose-100">
+                    <span>Absences ({currentItem.unpaidDays} day{currentItem.unpaidDays > 1 ? 's' : ''} @ {formatCurrency(dailyRate)}/day)</span>
+                    <span className="font-mono font-semibold">-{formatCurrency(currentItem.absentDeduction)}</span>
+                  </div>
+                )}
+                {currentItem.tardinessDeduction > 0 && (
+                  <div className="flex justify-between text-rose-800 font-medium bg-rose-50/70 px-1.5 py-0.5 rounded border border-rose-100">
+                    <span>Tardiness ({currentItem.lateMinutes} mins @ {formatCurrency(minuteRate)}/min)</span>
+                    <span className="font-mono font-semibold">-{formatCurrency(currentItem.tardinessDeduction)}</span>
+                  </div>
+                )}
+
+                {/* Statutory Deductions (Filed Salary Basis) */}
                 <div className="flex justify-between">
                   <span>Withholding Income Tax (Filed Basis)</span>
-                  <span className="font-mono font-semibold">{formatCurrency(item.withholdingTax || 0)}</span>
+                  <span className="font-mono font-semibold">{formatCurrency(currentItem.withholdingTax || 0)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>SSS Contribution (Filed Basis)</span>
-                  <span className="font-mono font-semibold">{formatCurrency(item.sssDeduction || 0)}</span>
+                  <span className="font-mono font-semibold">{formatCurrency(currentItem.sssDeduction || 0)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>PhilHealth Contribution (Filed Basis)</span>
-                  <span className="font-mono font-semibold">{formatCurrency(item.philhealthDeduction || 0)}</span>
+                  <span className="font-mono font-semibold">{formatCurrency(currentItem.philhealthDeduction || 0)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Pag-IBIG / HDMF (Filed Basis)</span>
-                  <span className="font-mono font-semibold">{formatCurrency(item.pagibigDeduction || 0)}</span>
+                  <span className="font-mono font-semibold">{formatCurrency(currentItem.pagibigDeduction || 0)}</span>
                 </div>
-                {item.tardinessDeduction > 0 && (
-                  <div className="flex justify-between text-slate-800 font-medium">
-                    <span>Tardiness ({item.lateMinutes} mins)</span>
-                    <span className="font-mono font-semibold">-{formatCurrency(item.tardinessDeduction)}</span>
-                  </div>
-                )}
-                {item.loanDeduction > 0 && (
+                {currentItem.loanDeduction > 0 && (
                   <div className="flex justify-between text-slate-800 font-medium">
                     <span>Coop Cash Loan Deduction</span>
-                    <span className="font-mono font-semibold">-{formatCurrency(item.loanDeduction)}</span>
+                    <span className="font-mono font-semibold">-{formatCurrency(currentItem.loanDeduction)}</span>
                   </div>
                 )}
-                {item.cashAdvanceDeduction > 0 && (
+                {currentItem.cashAdvanceDeduction > 0 && (
                   <div className="flex justify-between text-slate-800 font-medium">
                     <span>Canteen Cash Advance (1.5% fee)</span>
-                    <span className="font-mono font-semibold">-{formatCurrency(item.cashAdvanceDeduction)}</span>
+                    <span className="font-mono font-semibold">-{formatCurrency(currentItem.cashAdvanceDeduction)}</span>
                   </div>
                 )}
               </div>
               <div className="pt-2 mt-2 border-t-2 border-slate-300 flex justify-between font-black text-slate-950">
                 <span>TOTAL DEDUCTIONS</span>
-                <span className="font-mono text-slate-900">-{formatCurrency(item.totalDeductions)}</span>
+                <span className="font-mono text-slate-900">-{formatCurrency(currentItem.totalDeductions)}</span>
               </div>
             </div>
 

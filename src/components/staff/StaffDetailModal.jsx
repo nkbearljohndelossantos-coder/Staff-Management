@@ -16,7 +16,15 @@ import {
   KeyRound,
   CreditCard
 } from 'lucide-react';
-import { formatCurrency, computeFiledSalaryDeductions } from '../../utils/payrollCalculations';
+import {
+  formatCurrency,
+  computeFiledSalaryDeductions,
+  getDailyRate,
+  getHourlyRate,
+  getMinuteRate,
+  FACTOR_5_DAYS,
+  FACTOR_6_DAYS
+} from '../../utils/payrollCalculations';
 import BarcodeView from '../common/BarcodeView';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
@@ -33,8 +41,18 @@ export default function StaffDetailModal({
   if (!staff) return null;
 
   const salaryRateType = staff.salaryRateType || 'monthly';
+  const workScheduleType = staff.workScheduleType || '6_days';
+  const workFactorDays = workScheduleType === '5_days' ? FACTOR_5_DAYS : FACTOR_6_DAYS;
   const salaryRate = Number(staff.salaryRate) || Number(staff.baseSalary) || 0;
-  const monthlyEquivalent = salaryRateType === 'daily' ? salaryRate * 22 : salaryRate;
+  const dailyRate = getDailyRate(salaryRate, salaryRateType, workScheduleType);
+  const hourlyRate = getHourlyRate(dailyRate);
+  const minuteRate = getMinuteRate(dailyRate);
+  const cutoff15Days = salaryRateType === 'daily'
+    ? dailyRate * (workScheduleType === '5_days' ? 11 : 13)
+    : salaryRate / 2;
+  const monthlyEquivalent = salaryRateType === 'daily'
+    ? Math.round(salaryRate * (workScheduleType === '5_days' ? 21.75 : 26))
+    : salaryRate;
   const filedSalary = Number(staff.filedSalary) || 0;
   const statutory = computeFiledSalaryDeductions(filedSalary);
 
@@ -192,30 +210,46 @@ export default function StaffDetailModal({
           </div>
 
           {/* Section 3: Actual Compensation & Salary Rate */}
-          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
                 <DollarSign className="h-3.5 w-3.5 text-slate-600" />
-                Actual Compensation &amp; Salary Rate
+                Actual Compensation &amp; Work Schedule
               </h4>
               <span className="text-[10px] text-slate-500 font-medium">Actual wage basis</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div>
                 <span className="text-[10px] text-slate-500 font-semibold uppercase block">Salary Rate</span>
                 <span className="font-mono font-black text-slate-900 text-sm">
                   {formatCurrency(salaryRate)} <span className="text-xs font-normal text-slate-500">/ {salaryRateType === 'daily' ? 'day' : 'month'}</span>
                 </span>
-                <span className="text-[10px] text-slate-500 block mt-0.5">
-                  Type: <strong className="capitalize">{salaryRateType} Rate</strong>
+                <span className="text-[10px] text-slate-500 block mt-0.5 capitalize font-medium">
+                  {salaryRateType} Rate
                 </span>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 font-semibold uppercase block">Monthly Gross Equivalent</span>
-                <span className="font-mono font-bold text-slate-900 text-sm">
-                  {formatCurrency(monthlyEquivalent)}
+                <span className="text-[10px] text-slate-500 font-semibold uppercase block">Work Schedule</span>
+                <span className="font-bold text-slate-900 text-xs block">
+                  {salaryRateType === 'daily'
+                    ? 'Daily Rate'
+                    : workScheduleType === '5_days'
+                    ? '5 Days (Mon–Fri)'
+                    : '6 Days (Mon–Sat)'}
                 </span>
-                <span className="text-[10px] text-slate-500 block mt-0.5">Based on 22 working days</span>
+                <span className="text-[10px] text-slate-500 block mt-0.5 font-mono">
+                  {salaryRateType === 'daily'
+                    ? (workScheduleType === '5_days' ? '21.75 days/mo' : '26 days/mo')
+                    : `${workFactorDays} days/yr divisor`}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-semibold uppercase block">15-Day Salary</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">
+                  {formatCurrency(cutoff15Days)}
+                </span>
+                <span className="text-[10px] text-slate-500 block mt-0.5">Cut-off base pay</span>
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 font-semibold uppercase block">Disbursement</span>
@@ -225,6 +259,54 @@ export default function StaffDetailModal({
                 <span className="font-mono text-[10px] text-slate-500 block">
                   {staff.bankName === 'Cash' ? 'Physical Payout' : (staff.bankAccount || 'No Account Set')}
                 </span>
+              </div>
+            </div>
+
+            {/* Attendance Deduction Formula Card */}
+            <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                  <Calculator className="h-3 w-3 text-slate-600" />
+                  Absence &amp; Tardiness Rate Formula
+                </span>
+                <span className="text-[10px] font-mono text-slate-500">
+                  {salaryRateType === 'monthly'
+                    ? `(Monthly × 12) ÷ ${workFactorDays} days`
+                    : 'Daily direct wage'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] text-slate-500 uppercase block font-semibold">Daily Absence Rate</span>
+                  <span className="font-mono font-bold text-slate-900 text-xs">
+                    {formatCurrency(dailyRate)}
+                  </span>
+                  <span className="text-[9px] text-slate-400 block">Deducted per day missed</span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] text-slate-500 uppercase block font-semibold">Hourly Rate</span>
+                  <span className="font-mono font-bold text-slate-900 text-xs">
+                    {formatCurrency(hourlyRate)}
+                  </span>
+                  <span className="text-[9px] text-slate-400 block">Daily Rate ÷ 8 hrs</span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] text-slate-500 uppercase block font-semibold">Minute Rate (Late)</span>
+                  <span className="font-mono font-bold text-slate-900 text-xs">
+                    {formatCurrency(minuteRate)}
+                  </span>
+                  <span className="text-[9px] text-slate-400 block">Daily Rate ÷ 480 mins</span>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200 space-y-0.5">
+                <div>
+                  <strong>Absences Policy:</strong> Salary(15 days) - Absences = {formatCurrency(cutoff15Days)} - (Absent Days × {formatCurrency(dailyRate)})
+                </div>
+                <div>
+                  <strong>Tardiness Policy:</strong> Late Minutes × {formatCurrency(minuteRate)} (Minute Rate)
+                </div>
               </div>
             </div>
           </div>

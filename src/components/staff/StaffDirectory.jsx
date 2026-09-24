@@ -235,9 +235,19 @@ export default function StaffDirectory() {
 
                       {/* Salary Rate & Filed Salary Basis */}
                       <td className="py-3 px-4">
-                        <div className="font-mono font-bold text-slate-900 text-xs">
-                          {formatCurrency(salaryRate)}
-                          <span className="text-[10px] text-slate-500 font-normal"> / {rateType === 'daily' ? 'day' : 'mo'}</span>
+                        <div className="font-mono font-bold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
+                          <span>{formatCurrency(salaryRate)}</span>
+                          <span className="text-[10px] text-slate-500 font-normal">
+                            / {rateType === 'daily' ? 'day' : 'mo'}
+                          </span>
+                          {rateType !== 'daily' && (
+                            <span
+                              className="text-[9px] px-1.5 py-0.5 rounded font-sans font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200"
+                              title={staff.workScheduleType === '5_days' ? '5 Days Work: 261 days/year factor without weekend' : '6 Days Work: 313 days/year factor without Sunday'}
+                            >
+                              {staff.workScheduleType === '5_days' ? '5D · 261' : '6D · 313'}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-0.5">
                           {filedSalary > 0 ? (
