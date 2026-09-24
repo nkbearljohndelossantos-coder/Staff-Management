@@ -12,7 +12,8 @@ import {
   AlertCircle,
   Sun,
   ShieldCheck,
-  Filter
+  Filter,
+  Plus
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -25,6 +26,7 @@ export default function BarcodeClockInKiosk() {
     approveLeaveRequest,
     rejectLeaveRequest,
     overtimeRequests = [],
+    fileOvertimeRequest,
     approveOvertimeRequest,
     rejectOvertimeRequest
   } = useApp();
@@ -32,6 +34,17 @@ export default function BarcodeClockInKiosk() {
   const [activeSubTab, setActiveSubTab] = useState('kiosk'); // 'kiosk' | 'approvals'
   const [approvalCategory, setApprovalCategory] = useState('all'); // 'all' | 'leaves' | 'overtime'
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'Pending' | 'Approved' | 'Rejected'
+  
+  // HR Manual OT Declaration Modal State
+  const [showHRFileOTModal, setShowHRFileOTModal] = useState(false);
+  const [hrOTForm, setHrOTForm] = useState({
+    staffId: '',
+    date: new Date().toISOString().split('T')[0],
+    hours: 2,
+    reasonCategory: 'Urgent Client Delivery / Rush Order',
+    reason: '',
+    autoApprove: true
+  });
   
   // Reject remark modal state
   const [rejectItem, setRejectItem] = useState(null); // { type: 'leave' | 'ot', id: string, staffName: string }
@@ -105,12 +118,39 @@ export default function BarcodeClockInKiosk() {
     return true;
   });
 
+  const handleHRSubmitOT = (e) => {
+    e.preventDefault();
+    const targetStaff = staffList.find(s => s.id === hrOTForm.staffId) || staffList[0];
+    if (!targetStaff) return;
+    if (!hrOTForm.reason || hrOTForm.reason.trim().length < 5) {
+      alert('HR Policy: An official reason/justification is required before declaring overtime.');
+      return;
+    }
+    const newReq = fileOvertimeRequest({
+      staffId: targetStaff.id,
+      staffName: `${targetStaff.firstName} ${targetStaff.lastName}`,
+      employeeId: targetStaff.employeeId,
+      date: hrOTForm.date,
+      hours: Number(hrOTForm.hours) || 2,
+      reasonCategory: hrOTForm.reasonCategory,
+      reason: hrOTForm.reason.trim(),
+      shift: 'Day Shift Extension (No Night Shift)',
+      status: hrOTForm.autoApprove ? 'Approved' : 'Pending',
+      reviewedBy: hrOTForm.autoApprove ? 'Genevieve Anne A. JURADO (HR)' : null,
+      reviewedAt: hrOTForm.autoApprove ? new Date().toISOString() : null,
+      remarks: hrOTForm.autoApprove ? 'Directly authorized by HR desk with verified operational reason' : ''
+    });
+    if (newReq) {
+      setShowHRFileOTModal(false);
+    }
+  };
+
   const handleConfirmReject = () => {
     if (!rejectItem) return;
     if (rejectItem.type === 'leave') {
       rejectLeaveRequest(rejectItem.id, rejectRemarks || 'Disapproved by HR');
     } else {
-      rejectOvertimeRequest(rejectItem.id, rejectRemarks || 'Disapproved by Supervisor');
+      rejectOvertimeRequest(rejectItem.id, rejectRemarks || 'Disapproved by HR Management');
     }
     setRejectItem(null);
     setRejectRemarks('');
@@ -352,15 +392,20 @@ export default function BarcodeClockInKiosk() {
 
           {/* Policy Compliance Notice */}
           <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-amber-900 text-xs flex items-start gap-3">
-            <Sun className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <strong className="font-bold">Plant Operational Shift Constraint:</strong> All operations at NKB Manufacturing operate strictly on daytime regular shifts (8:00 AM – 5:00 PM). Overtime approvals extend the regular day work shift. <strong>Night shift differential (NSD) calculations are disabled by plant policy.</strong>
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div>
+                <strong className="font-bold">Mandatory HR Overtime Policy:</strong> Before declaring or rendering overtime, an official request must be submitted to HR stating an operational reason. Only HR-authorized overtime hours are creditable for payroll compensation (+30% per hour).
+              </div>
+              <div className="text-[11px] text-amber-800">
+                Plant Operational Constraint: NKB operates strictly on daytime plant shifts (8:00 AM – 5:00 PM). Authorized overtime extends daytime shift hours; night shift differentials (NSD) are not applicable.
+              </div>
             </div>
           </div>
 
           {/* Sub-Filters and View Toggle */}
           <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1">
                 <Filter className="h-3.5 w-3.5" /> View:
               </span>
@@ -409,22 +454,43 @@ export default function BarcodeClockInKiosk() {
               </button>
             </div>
 
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-slate-500 mr-1">Status:</span>
-              {['all', 'Pending', 'Approved', 'Rejected'].map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                    statusFilter === status
-                      ? 'bg-slate-800 text-white'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200'
-                  }`}
-                >
-                  {status === 'all' ? 'All' : status}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-500 mr-1">Status:</span>
+                {['all', 'Pending', 'Approved', 'Rejected'].map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setStatusFilter(status)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      statusFilter === status
+                        ? 'bg-slate-800 text-white'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200'
+                    }`}
+                  >
+                    {status === 'all' ? 'All' : status}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setHrOTForm({
+                    staffId: staffList[0]?.id || '',
+                    date: new Date().toISOString().split('T')[0],
+                    hours: 2,
+                    reasonCategory: 'Urgent Client Delivery / Rush Order',
+                    reason: '',
+                    autoApprove: true
+                  });
+                  setShowHRFileOTModal(true);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+              >
+                <Plus className="h-3.5 w-3.5 text-white" />
+                <span>+ Declare OT to HR</span>
+              </button>
             </div>
           </div>
 
@@ -530,10 +596,15 @@ export default function BarcodeClockInKiosk() {
           {(approvalCategory === 'all' || approvalCategory === 'overtime') && (
             <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm space-y-3">
               <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-slate-600" />
-                  Employee Overtime Applications (Day Shift)
-                </h3>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-slate-600" />
+                    Employee Overtime Applications &amp; HR Authorizations
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Mandatory: Overtime must be pre-requested to HR with reason before declaration and payroll credit
+                  </p>
+                </div>
                 <span className="text-xs text-slate-500">{filteredOT.length} records</span>
               </div>
 
@@ -546,10 +617,10 @@ export default function BarcodeClockInKiosk() {
                       <tr>
                         <th className="py-3 px-4">Employee</th>
                         <th className="py-3 px-4">Shift &amp; Date</th>
-                        <th className="py-3 px-4">OT Hours</th>
-                        <th className="py-3 px-4">Reason / Plant Task</th>
+                        <th className="py-3 px-4">OT Hours (@ +30%)</th>
+                        <th className="py-3 px-4">Reason / Operational Justification (Required)</th>
                         <th className="py-3 px-4">Status</th>
-                        <th className="py-3 px-4 text-right">Supervisor Actions</th>
+                        <th className="py-3 px-4 text-right">HR Clearance Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
@@ -568,8 +639,20 @@ export default function BarcodeClockInKiosk() {
                           <td className="py-3 px-4 font-mono text-slate-900 font-bold">
                             {req.hours} Hours
                           </td>
-                          <td className="py-3 px-4 max-w-xs truncate text-slate-600" title={req.reason}>
-                            {req.reason || 'Plant operations completion'}
+                          <td className="py-3 px-4 max-w-sm">
+                            {req.reasonCategory && (
+                              <span className="text-[10px] font-bold text-slate-800 block uppercase tracking-wider mb-0.5">
+                                {req.reasonCategory}
+                              </span>
+                            )}
+                            <p className="text-slate-600 text-xs leading-snug" title={req.reason || req.task}>
+                              {req.reason || req.task || 'Operational plant shift completion'}
+                            </p>
+                            {req.remarks && (
+                              <p className="text-[10px] text-slate-400 mt-1 italic">
+                                Note: {req.remarks}
+                              </p>
+                            )}
                           </td>
                           <td className="py-3 px-4">
                             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
@@ -579,7 +662,7 @@ export default function BarcodeClockInKiosk() {
                                 ? 'bg-rose-100 text-rose-800 border border-rose-300'
                                 : 'bg-amber-100 text-amber-800 border border-amber-300'
                             }`}>
-                              {req.status}
+                              {req.status === 'Approved' ? 'HR Authorized' : req.status === 'Rejected' ? 'HR Disapproved' : 'Pending HR'}
                             </span>
                             {req.reviewedBy && (
                               <div className="text-[9px] text-slate-400 mt-0.5">
@@ -592,12 +675,12 @@ export default function BarcodeClockInKiosk() {
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={() => approveOvertimeRequest(req.id, 'Approved for daytime payroll')}
+                                  onClick={() => approveOvertimeRequest(req.id, 'HR Approved with verified operational reason')}
                                   className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition cursor-pointer"
-                                  title="Approve Overtime"
+                                  title="Authorize Overtime as HR"
                                 >
                                   <Check className="h-3.5 w-3.5" />
-                                  <span>Approve</span>
+                                  <span>Approve (HR)</span>
                                 </button>
                                 <button
                                   type="button"
@@ -610,7 +693,7 @@ export default function BarcodeClockInKiosk() {
                                 </button>
                               </div>
                             ) : (
-                              <span className="text-[11px] text-slate-400 font-medium">Evaluation Final</span>
+                              <span className="text-[11px] text-slate-400 font-medium">HR Evaluation Final</span>
                             )}
                           </td>
                         </tr>
@@ -674,6 +757,152 @@ export default function BarcodeClockInKiosk() {
                 Confirm Disapproval
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Declare / File Overtime to HR Modal */}
+      {showHRFileOTModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-slate-700" />
+                  Declare / File Overtime Authorization (to HR)
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Record official pre-approved overtime shift with required operational reason
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHRFileOTModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 text-xs leading-relaxed space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                <span>Mandatory HR Policy Enforcement</span>
+              </div>
+              <p className="text-[11px] text-amber-900">
+                Before declaring an overtime shift, it <strong>must be formally requested to HR with a justifiable reason</strong>. Unapproved overtime is strictly not creditable in attendance or payroll.
+              </p>
+            </div>
+
+            <form onSubmit={handleHRSubmitOT} className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Select Employee</label>
+                <select
+                  value={hrOTForm.staffId}
+                  onChange={(e) => setHrOTForm({ ...hrOTForm, staffId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                >
+                  {staffList.filter(s => s.status === 'active').map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.firstName} {s.lastName} ({s.employeeId}) · {s.salaryRateType === 'daily' ? 'Daily Rate' : 'Monthly Rate'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Shift Extension Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={hrOTForm.date}
+                    onChange={(e) => setHrOTForm({ ...hrOTForm, date: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">OT Hours (@ +30%)</label>
+                  <input
+                    type="number"
+                    min="0.5"
+                    step="0.5"
+                    max="8"
+                    required
+                    value={hrOTForm.hours}
+                    onChange={(e) => setHrOTForm({ ...hrOTForm, hours: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    e.g. 2 hrs (5:00 PM – 7:00 PM)
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Reason Category (HR Classification)</label>
+                <select
+                  value={hrOTForm.reasonCategory}
+                  onChange={(e) => setHrOTForm({ ...hrOTForm, reasonCategory: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                >
+                  <option value="Urgent Client Delivery / Rush Order">Urgent Client Delivery / Rush Order</option>
+                  <option value="Machine Maintenance &amp; IT Repairs">Machine Maintenance &amp; IT Repairs</option>
+                  <option value="Physical Inventory Audit / Stock Receiving">Physical Inventory Audit / Stock Receiving</option>
+                  <option value="Shift Cover / Unplanned Absence Replacement">Shift Cover / Unplanned Absence Replacement</option>
+                  <option value="Facility Sanitation &amp; Safety Compliance">Facility Sanitation &amp; Safety Compliance</option>
+                  <option value="Special Plant Engineering Project">Special Plant Engineering Project</option>
+                  <option value="Other Operational Task">Other Operational Task</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1 flex items-center justify-between">
+                  <span>Detailed Reason / Operational Justification (Required)</span>
+                  <span className="text-[10px] text-slate-500 font-normal">Min 5 characters</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  minLength={5}
+                  placeholder="State the clear, concrete reason why this overtime is necessary..."
+                  value={hrOTForm.reason}
+                  onChange={(e) => setHrOTForm({ ...hrOTForm, reason: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-slate-800 block text-xs">Immediate HR Endorsement</span>
+                  <span className="text-[10px] text-slate-500">Approve immediately and credit directly for payroll computation</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={hrOTForm.autoApprove}
+                  onChange={(e) => setHrOTForm({ ...hrOTForm, autoApprove: e.target.checked })}
+                  className="h-4 w-4 rounded text-slate-900 focus:ring-slate-900 cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowHRFileOTModal(false)}
+                  className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm flex items-center gap-1.5"
+                >
+                  <Check className="h-3.5 w-3.5 text-white" />
+                  <span>{hrOTForm.autoApprove ? 'Authorize & Credit Overtime' : 'Submit Overtime Request'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

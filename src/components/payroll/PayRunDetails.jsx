@@ -210,9 +210,17 @@ export default function PayRunDetails({ payRunId, onBack }) {
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-700">
                         {item.otHours > 0 ? (
-                          <span className="text-slate-900 font-semibold">
-                            +{formatCurrency(item.overtimePay)} ({item.otHours}h)
-                          </span>
+                          <div>
+                            <span className="text-slate-900 font-semibold block">
+                              +{formatCurrency(item.overtimePay)} ({item.otHours}h)
+                            </span>
+                            <span 
+                              className="text-[10px] text-emerald-700 font-sans font-medium flex items-center gap-0.5 cursor-help"
+                              title={item.otReasons && item.otReasons.length > 0 ? `HR Verified Reason: ${item.otReasons.join(', ')}` : 'HR Authorized Overtime with verified reason'}
+                            >
+                              ✓ HR Authorized
+                            </span>
+                          </div>
                         ) : '₱ 0.00'}
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-900 font-bold">

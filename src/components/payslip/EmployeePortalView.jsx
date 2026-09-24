@@ -107,6 +107,7 @@ export default function EmployeePortalView() {
   const [otForm, setOtForm] = useState({
     date: new Date().toISOString().split('T')[0],
     hours: 2,
+    reasonCategory: 'Urgent Client Delivery / Rush Order',
     reason: ''
   });
   
@@ -820,14 +821,16 @@ export default function EmployeePortalView() {
                 setOtForm({
                   date: new Date().toISOString().split('T')[0],
                   hours: 2,
+                  reasonCategory: 'Urgent Client Delivery / Rush Order',
                   reason: ''
                 });
                 setShowOTModal(true);
               }}
               className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
+              title="Request Overtime clearance to HR with mandatory reason"
             >
-              <Plus className="h-3.5 w-3.5 text-slate-700" />
-              <span>File Overtime</span>
+              <Clock className="h-3.5 w-3.5 text-slate-700" />
+              <span>Request OT (HR)</span>
             </button>
 
             <button
@@ -896,18 +899,18 @@ export default function EmployeePortalView() {
                 My Overtime Requests ({myOvertime.length})
               </span>
               <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1">
-                <Sun className="h-3 w-3" /> Day Shift Only (No NSD)
+                <Sun className="h-3 w-3" /> HR Authorization Required
               </span>
             </div>
 
             {myOvertime.length === 0 ? (
-              <p className="text-xs text-slate-400 py-3 text-center">No overtime requests submitted yet.</p>
+              <p className="text-xs text-slate-400 py-3 text-center">No overtime requests submitted to HR yet.</p>
             ) : (
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {myOvertime.map(ot => (
                   <div key={ot.id} className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-900">{ot.hours} Hours OT</span>
+                      <span className="font-bold text-slate-900">{ot.hours} Hours OT (@ +30%)</span>
                       <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
                         ot.status === 'Approved'
                           ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
@@ -915,17 +918,24 @@ export default function EmployeePortalView() {
                           ? 'bg-rose-100 text-rose-800 border border-rose-300'
                           : 'bg-amber-100 text-amber-800 border border-amber-300'
                       }`}>
-                        {ot.status}
+                        {ot.status === 'Approved' ? 'HR Approved' : ot.status === 'Rejected' ? 'HR Disapproved' : 'Pending HR'}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-600 font-mono">
-                      Shift Date: {ot.date} · Day Shift Extension
+                    <div className="text-[11px] text-slate-600 font-mono flex items-center justify-between">
+                      <span>Shift Date: {ot.date}</span>
+                      {ot.reasonCategory && (
+                        <span className="text-[10px] text-slate-500 font-sans font-medium">{ot.reasonCategory}</span>
+                      )}
                     </div>
-                    {ot.reason && (
-                      <p className="text-[10px] text-slate-500 italic truncate">&ldquo;{ot.reason}&rdquo;</p>
+                    {(ot.reason || ot.task) && (
+                      <p className="text-[10px] text-slate-600 italic">
+                        <strong>Reason:</strong> &ldquo;{ot.reason || ot.task}&rdquo;
+                      </p>
                     )}
                     {ot.remarks && (
-                      <div className="text-[9px] text-slate-400">Supervisor: {ot.remarks}</div>
+                      <div className="text-[9px] text-slate-500 font-medium bg-slate-50 p-1 rounded border border-slate-200">
+                        {ot.reviewedBy || 'HR'}: {ot.remarks}
+                      </div>
                     )}
                   </div>
                 ))}
@@ -1174,10 +1184,15 @@ export default function EmployeePortalView() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Clock className="h-4 w-4 text-slate-700" />
-                File Overtime (OT) Request
-              </h3>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-slate-700" />
+                  Request Overtime Clearance to HR
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Pre-shift authorization required by HR policy before rendering extended hours
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowOTModal(false)}
@@ -1187,64 +1202,93 @@ export default function EmployeePortalView() {
               </button>
             </div>
 
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed flex items-start gap-2">
-              <Sun className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <strong>Day Shift Extension Policy:</strong> NKB operates strictly on daytime plant shifts. Overtime hours count as regular day extension at +30% per hour (130% regular rate). <strong>Night shifts / Night shift differential (NSD) are not applicable.</strong>
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 text-xs leading-relaxed space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                <span>Mandatory HR Policy: Overtime Request &amp; Reason</span>
               </div>
+              <p className="text-[11px] text-amber-900">
+                Before declaring or rendering any overtime, an official request must be submitted to <strong>HR Management</strong> stating a valid operational reason. Only HR-approved overtime is credited to attendance and payroll (+30% per hour).
+              </p>
             </div>
 
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!otForm.date) return;
-                fileOvertimeRequest({
+                const res = fileOvertimeRequest({
                   staffId: currentStaff?.id,
                   staffName: `${currentStaff?.firstName} ${currentStaff?.lastName}`,
                   employeeId: currentStaff?.employeeId,
                   date: otForm.date,
                   hours: Number(otForm.hours) || 2,
+                  reasonCategory: otForm.reasonCategory,
                   reason: otForm.reason,
                   shift: 'Day Shift Extension (No Night Shift)'
                 });
-                setShowOTModal(false);
+                if (res) {
+                  setShowOTModal(false);
+                }
               }}
               className="space-y-3 text-xs"
             >
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Shift Extension Date</label>
-                <input
-                  type="date"
-                  required
-                  value={otForm.date}
-                  onChange={(e) => setOtForm({ ...otForm, date: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Shift Extension Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={otForm.date}
+                    onChange={(e) => setOtForm({ ...otForm, date: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Estimated Hours (@ +30%)</label>
+                  <input
+                    type="number"
+                    min="0.5"
+                    step="0.5"
+                    max="8"
+                    required
+                    value={otForm.hours}
+                    onChange={(e) => setOtForm({ ...otForm, hours: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    e.g. 2 hrs (5:00 PM – 7:00 PM)
+                  </span>
+                </div>
               </div>
 
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Estimated Overtime Hours (Day Shift)</label>
-                <input
-                  type="number"
-                  min="0.5"
-                  step="0.5"
-                  max="8"
-                  required
-                  value={otForm.hours}
-                  onChange={(e) => setOtForm({ ...otForm, hours: e.target.value })}
+                <label className="text-slate-700 font-bold block mb-1">Reason Category (HR Classification)</label>
+                <select
+                  value={otForm.reasonCategory}
+                  onChange={(e) => setOtForm({ ...otForm, reasonCategory: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">
-                  e.g. 2 hours (5:00 PM – 7:00 PM day shift extension)
-                </span>
+                >
+                  <option value="Urgent Client Delivery / Rush Order">Urgent Client Delivery / Rush Order</option>
+                  <option value="Machine Maintenance &amp; IT Repairs">Machine Maintenance &amp; IT Repairs</option>
+                  <option value="Physical Inventory Audit / Stock Receiving">Physical Inventory Audit / Stock Receiving</option>
+                  <option value="Shift Cover / Unplanned Absence Replacement">Shift Cover / Unplanned Absence Replacement</option>
+                  <option value="Facility Sanitation &amp; Safety Compliance">Facility Sanitation &amp; Safety Compliance</option>
+                  <option value="Special Plant Engineering Project">Special Plant Engineering Project</option>
+                  <option value="Other Operational Task">Other Operational Task</option>
+                </select>
               </div>
 
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Work Justification / Project Tasks</label>
+                <label className="text-slate-700 font-bold block mb-1 flex items-center justify-between">
+                  <span>Detailed Reason / Operational Justification (Required)</span>
+                  <span className="text-[10px] text-slate-500 font-normal">Min 5 characters</span>
+                </label>
                 <textarea
                   rows={3}
                   required
-                  placeholder="e.g. Batch assembly run completion, urgent client delivery order, warehouse inventory sorting..."
+                  minLength={5}
+                  placeholder="Explain specifically why overtime is required for HR review and clearance..."
                   value={otForm.reason}
                   onChange={(e) => setOtForm({ ...otForm, reason: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
@@ -1264,7 +1308,7 @@ export default function EmployeePortalView() {
                   className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm flex items-center gap-1.5"
                 >
                   <Clock className="h-3.5 w-3.5 text-white" />
-                  Submit Overtime Application
+                  Submit Overtime Request to HR
                 </button>
               </div>
             </form>

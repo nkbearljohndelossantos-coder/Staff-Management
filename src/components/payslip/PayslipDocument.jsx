@@ -167,6 +167,14 @@ export default function PayslipDocument({ staff, payRun, item, payItem, onClose 
                   <span>Overtime Pay ({currentItem.otHours || 0} hrs @ +30%)</span>
                   <span className="font-mono font-semibold">{formatCurrency(currentItem.overtimePay || 0)}</span>
                 </div>
+                {currentItem.otHours > 0 && (
+                  <div className="text-[9px] text-emerald-800 bg-emerald-50/80 px-1.5 py-0.5 rounded border border-emerald-200/80 flex items-center justify-between">
+                    <span>↳ HR Authorized &amp; Reason Verified:</span>
+                    <span className="font-medium italic truncate max-w-[200px]" title={(currentItem.otReasons && currentItem.otReasons.join('; ')) || 'Pre-authorized plant task'}>
+                      {(currentItem.otReasons && currentItem.otReasons[0]) || 'HR Authorized'}
+                    </span>
+                  </div>
+                )}
                 {currentItem.cutoffAllowance > 0 && (
                   <div className="flex justify-between">
                     <span>Allowances &amp; De Minimis</span>

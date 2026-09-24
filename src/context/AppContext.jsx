@@ -491,47 +491,61 @@ export function AppProvider({ children }) {
   };
 
   const fileOvertimeRequest = (data) => {
+    const reasonText = (data.reason || data.task || '').trim();
+    if (!reasonText || reasonText.length < 5) {
+      showToast('HR Policy: An official reason/justification is required before requesting overtime.', 'error');
+      return null;
+    }
     const newReq = {
       id: `ot-${Date.now()}`,
-      status: 'Pending',
+      status: data.status || 'Pending',
       submittedAt: new Date().toISOString(),
-      remarks: '',
-      ...data
+      submittedTo: 'HR Management',
+      reasonCategory: data.reasonCategory || 'Operational Task',
+      reviewedBy: data.reviewedBy || null,
+      reviewedAt: data.reviewedAt || null,
+      remarks: data.remarks || '',
+      ...data,
+      reason: reasonText,
+      task: reasonText
     };
     setOvertimeRequests(prev => [newReq, ...prev]);
     addInAppNotification({
-      title: 'Overtime Request Submitted',
-      message: `Overtime request for ${data.hours} hours on ${data.date} sent to supervisor.`,
+      title: 'Overtime Request Submitted to HR',
+      message: `${data.staffName} requested ${data.hours}h OT on ${data.date}. Reason: ${reasonText.substring(0, 50)}${reasonText.length > 50 ? '...' : ''}`,
       type: 'info'
     });
     logSystemEvent({
       category: 'ATTENDANCE',
       action: 'FILE_OVERTIME',
-      details: `Overtime filed by ${data.staffName} (${data.hours} hrs on ${data.date})`
+      details: `Overtime filed by ${data.staffName} (${data.hours} hrs on ${data.date}) for HR clearance. Reason: ${reasonText}`
     });
+    showToast(`Overtime request for ${data.staffName} (${data.hours} hrs) submitted to HR.`);
     return newReq;
   };
 
   const approveOvertimeRequest = (id, remarks = '') => {
     setOvertimeRequests(prev => prev.map(req => {
       if (req.id === id) {
+        const hrName = currentUser?.name ? `${currentUser.name} (HR)` : 'Genevieve Anne A. JURADO (HR)';
         const updated = {
           ...req,
           status: 'Approved',
-          reviewedBy: `${currentUser?.name || 'Supervisor'} (Supervisor)`,
+          reviewedBy: hrName,
           reviewedAt: new Date().toISOString(),
-          remarks: remarks || 'Approved for factory shift completion'
+          remarks: remarks || 'HR Approved with verified operational reason'
         };
         addInAppNotification({
-          title: 'Overtime Approved',
-          message: `Your ${req.hours}h overtime on ${req.date} has been approved.`,
+          title: 'Overtime Approved by HR',
+          message: `Your ${req.hours}h overtime on ${req.date} has been officially approved by HR and credited for payroll.`,
           type: 'success'
         });
         logSystemEvent({
           category: 'ATTENDANCE',
           action: 'APPROVE_OVERTIME',
-          details: `Overtime #${id} for ${req.staffName} approved by ${currentUser?.name || 'Supervisor'}`
+          details: `Overtime #${id} for ${req.staffName} (${req.hours} hrs) approved by ${hrName}. Verified Reason: ${req.reason || req.task}`
         });
+        showToast(`Overtime for ${req.staffName} approved by HR and authorized for payroll.`);
         return updated;
       }
       return req;
@@ -541,23 +555,25 @@ export function AppProvider({ children }) {
   const rejectOvertimeRequest = (id, remarks = '') => {
     setOvertimeRequests(prev => prev.map(req => {
       if (req.id === id) {
+        const hrName = currentUser?.name ? `${currentUser.name} (HR)` : 'HR Management';
         const updated = {
           ...req,
           status: 'Rejected',
-          reviewedBy: `${currentUser?.name || 'Supervisor'} (Supervisor)`,
+          reviewedBy: hrName,
           reviewedAt: new Date().toISOString(),
-          remarks: remarks || 'Overtime not authorized'
+          remarks: remarks || 'Overtime not authorized by HR'
         };
         addInAppNotification({
-          title: 'Overtime Disapproved',
-          message: `Your ${req.hours}h overtime on ${req.date} was not approved.`,
+          title: 'Overtime Disapproved by HR',
+          message: `Your ${req.hours}h overtime on ${req.date} was not approved by HR: ${updated.remarks}`,
           type: 'warning'
         });
         logSystemEvent({
           category: 'ATTENDANCE',
           action: 'REJECT_OVERTIME',
-          details: `Overtime #${id} for ${req.staffName} rejected by ${currentUser?.name || 'Supervisor'}`
+          details: `Overtime #${id} for ${req.staffName} rejected by ${hrName}. Remarks: ${updated.remarks}`
         });
+        showToast(`Overtime request for ${req.staffName} disapproved.`, 'warning');
         return updated;
       }
       return req;
@@ -952,9 +968,22 @@ export function AppProvider({ children }) {
 
     if (existingLog && !existingLog.timeOut) {
       // Clock Out
-      setAttendanceLogs(prev => prev.map(l => l.id === existingLog.id ? { ...l, timeOut: nowTimeStr } : l));
-      showToast(`Clock-Out registered for ${staff.firstName} ${staff.lastName} at ${nowTimeStr}`);
-      return { success: true, action: 'out', staff, time: nowTimeStr };
+      const approvedOT = overtimeRequests.find(
+        o => o.staffId === staff.id && o.date === todayStr && o.status === 'Approved'
+      );
+      const creditedOtHours = approvedOT ? (Number(approvedOT.hours) || 0) : 0;
+      setAttendanceLogs(prev => prev.map(l => l.id === existingLog.id ? { 
+        ...l, 
+        timeOut: nowTimeStr,
+        otHours: creditedOtHours,
+        otApproved: Boolean(approvedOT),
+        otReason: approvedOT ? (approvedOT.reason || approvedOT.task) : null
+      } : l));
+      const otMsg = approvedOT 
+        ? ` (${approvedOT.hours}h OT credited · HR authorized)` 
+        : ` (Reminder: Overtime requires prior HR request with reason)`;
+      showToast(`Clock-Out registered for ${staff.firstName} ${staff.lastName} at ${nowTimeStr}${otMsg}`);
+      return { success: true, action: 'out', staff, time: nowTimeStr, otCredited: creditedOtHours };
     } else {
       // Clock In
       const newLog = {
@@ -1425,8 +1454,24 @@ export function AppProvider({ children }) {
     let netSum = 0;
 
     const calculatedItems = staffList.filter(s => s.status === 'active').map(staff => {
+      // HR Policy: Only HR-Approved overtime requests with valid reasons are credited to payroll
+      const staffApprovedOT = overtimeRequests.filter(req => {
+        if (req.staffId !== staff.id || req.status !== 'Approved') return false;
+        if (run.periodStart && run.periodEnd && req.date) {
+          return req.date >= run.periodStart && req.date <= run.periodEnd;
+        }
+        return true;
+      });
+      const approvedOtHours = staffApprovedOT.reduce((sum, req) => sum + (Number(req.hours) || 0), 0);
+      const otReasons = staffApprovedOT.map(req => req.reason || req.task || 'Operational Task').filter(Boolean);
+
       // Attendance inputs
-      const att = { otHours: 0, lateMinutes: 0, unpaidDays: 0 };
+      const att = { 
+        otHours: approvedOtHours, 
+        lateMinutes: 0, 
+        unpaidDays: 0,
+        otReasons
+      };
 
       // Active Loans for this staff
       const staffActiveLoans = cashLoans.filter(
@@ -1457,7 +1502,9 @@ export function AppProvider({ children }) {
 
       return {
         staffId: staff.id,
-        ...comp
+        ...comp,
+        approvedOtRequests: staffApprovedOT,
+        otReasons
       };
     });
 

@@ -218,12 +218,12 @@ export default function SystemConceptMapView() {
       code: 'ATT-AUDIT',
       owner: 'HR Attendance Auditor',
       roles: ['ceo', 'it_admin', 'hr', 'admin'],
-      summary: 'Aggregates punch logs into payable regular hours, night differentials (10%), and day overtime (+30% per hour / 1.30x rate).',
-      inputs: ['Raw attendance punch logs', 'Shift schedules', 'Approved leave vouchers'],
-      outputs: ['Semi-monthly hours summary', 'Tardiness/Absence deduction feed for Payroll'],
+      summary: 'Aggregates punch logs into payable regular hours and day overtime (+30% per hour / 1.30x rate). Overtime strictly requires pre-shift request to HR with operational reason before declaration.',
+      inputs: ['Raw attendance punch logs', 'Shift schedules', 'HR-approved overtime requests with reasons', 'Approved leave vouchers'],
+      outputs: ['Semi-monthly hours summary', 'Tardiness/Absence deduction feed for Payroll', 'HR authorized overtime feed'],
       storageKey: 'nkb_attendance_summary',
-      formula: 'Regular Hrs = 8/day; OT = (BaseHourly * 1.30) * OTHours; ND = (BaseHourly * 0.10) * NDHours',
-      security: 'HR verifies before passing immutable timesheet batch to Payroll'
+      formula: 'Regular Hrs = 8/day; OT = (BaseHourly * 1.30) * OTHours (Only HR-approved with verified reason); ND = 0 (Day shifts only)',
+      security: 'HR verifies and approves request with reason before passing immutable timesheet batch to Payroll'
     },
 
     // Payroll Nodes

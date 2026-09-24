@@ -258,7 +258,7 @@ export const INITIAL_LEAVE_REQUESTS = [
   }
 ];
 
-// Demo Overtime Requests
+// Demo Overtime Requests (Submitted to HR with mandatory operational reason)
 export const INITIAL_OVERTIME_REQUESTS = [
   {
     id: 'ot-001',
@@ -267,8 +267,11 @@ export const INITIAL_OVERTIME_REQUESTS = [
     employeeId: 'NKB092026-0011',
     date: '2026-09-24',
     hours: 2.5,
-    task: 'Fabrication Line 2 Urgent Assembly Completion',
+    reasonCategory: 'Urgent Client Delivery / Rush Order',
+    reason: 'Fabrication Line 2 Urgent Assembly Completion for rush shipping deadline',
+    task: 'Fabrication Line 2 Urgent Assembly Completion for rush shipping deadline',
     status: 'Pending',
+    submittedTo: 'HR Management',
     submittedAt: '2026-09-23T16:00:00.000Z',
     reviewedBy: null,
     reviewedAt: null,
@@ -281,12 +284,15 @@ export const INITIAL_OVERTIME_REQUESTS = [
     employeeId: 'NKB092026-0048',
     date: '2026-09-22',
     hours: 3.0,
-    task: 'Server Maintenance & Network Turnstile Firmware Update',
+    reasonCategory: 'Machine Maintenance & IT Repairs',
+    reason: 'Server Maintenance & Network Turnstile Firmware Update for factory kiosks',
+    task: 'Server Maintenance & Network Turnstile Firmware Update for factory kiosks',
     status: 'Approved',
+    submittedTo: 'HR Management',
     submittedAt: '2026-09-21T18:00:00.000Z',
     reviewedBy: 'Genevieve Anne A. JURADO (HR)',
     reviewedAt: '2026-09-22T08:00:00.000Z',
-    remarks: 'Approved for plant network maintenance window.'
+    remarks: 'HR Approved: Off-hours firmware update authorized for factory operations.'
   }
 ];
 
