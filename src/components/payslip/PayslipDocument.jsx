@@ -15,7 +15,7 @@ export default function PayslipDocument({ staff, payRun, item, payItem, onClose 
   };
 
   const scheduleLabel = staff.salaryRateType === 'daily'
-    ? 'Daily Rate'
+    ? 'Daily Rate (6 Days/wk · 13 days/cut-off)'
     : (staff.workScheduleType === '5_days' ? '5 Days/wk (261 factor)' : '6 Days/wk (313 factor)');
 
   const dailyRate = currentItem.dailyRate || 0;
@@ -150,7 +150,7 @@ export default function PayslipDocument({ staff, payRun, item, payItem, onClose 
               </div>
               <div className="space-y-1.5 text-slate-700">
                 <div className="flex justify-between">
-                  <span>Basic Salary (15-day cut-off)</span>
+                  <span>Basic Salary (15-day cut-off{staff.salaryRateType === 'daily' ? ' · 13 days' : ''})</span>
                   <span className="font-mono font-semibold">{formatCurrency(currentItem.cutoffBasePay)}</span>
                 </div>
                 {currentItem.absentDeduction > 0 && (

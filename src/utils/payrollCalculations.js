@@ -170,7 +170,8 @@ export function computeFiledSalaryDeductions(filedSalary) {
 export function computeEmployeePayroll(staff, attendance = {}, customAdjustments = {}) {
   const isSemiMonthly = staff.payFrequency !== 'monthly';
   const salaryRateType = staff.salaryRateType || 'monthly';
-  const workScheduleType = staff.workScheduleType || '6_days'; // '5_days' | '6_days'
+  // Daily rate employees are strictly 6 days per week (Monday to Saturday)
+  const workScheduleType = salaryRateType === 'daily' ? '6_days' : (staff.workScheduleType || '6_days');
   const workFactorDays = workScheduleType === '5_days' ? FACTOR_5_DAYS : FACTOR_6_DAYS;
 
   // Determine actual compensation rate
@@ -185,12 +186,9 @@ export function computeEmployeePayroll(staff, attendance = {}, customAdjustments
 
   if (salaryRateType === 'daily') {
     dailyRate = salaryRate;
-    // Monthly equivalent: 26 days for 6-day week, 21.75 days for 5-day week
-    const workingDaysMonth = workScheduleType === '5_days' ? 21.75 : 26;
-    monthlyEquivalent = Math.round(dailyRate * workingDaysMonth);
-    // 15-day semi-monthly cut-off: 13 days for 6-day, 11 days for 5-day
-    const cutoffDays = workScheduleType === '5_days' ? 11 : 13;
-    cutoffBasePay = isSemiMonthly ? Math.round(dailyRate * cutoffDays) : monthlyEquivalent;
+    // Daily rate employees are strictly 6 days per week: 26 working days/month, 13 days per 15-day cut-off
+    monthlyEquivalent = Math.round(dailyRate * 26);
+    cutoffBasePay = isSemiMonthly ? Math.round(dailyRate * 13) : monthlyEquivalent;
   } else {
     // monthly rate
     monthlyEquivalent = salaryRate;

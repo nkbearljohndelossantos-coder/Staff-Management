@@ -240,7 +240,14 @@ export default function StaffDirectory() {
                           <span className="text-[10px] text-slate-500 font-normal">
                             / {rateType === 'daily' ? 'day' : 'mo'}
                           </span>
-                          {rateType !== 'daily' && (
+                          {rateType === 'daily' ? (
+                            <span
+                              className="text-[9px] px-1.5 py-0.5 rounded font-sans font-bold uppercase bg-slate-100 text-slate-700 border border-slate-200"
+                              title="Daily Rate: Strictly 6 Days / Week (13 days/cut-off · 26 days/mo)"
+                            >
+                              6D · 26d/mo
+                            </span>
+                          ) : (
                             <span
                               className="text-[9px] px-1.5 py-0.5 rounded font-sans font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200"
                               title={staff.workScheduleType === '5_days' ? '5 Days Work: 261 days/year factor without weekend' : '6 Days Work: 313 days/year factor without Sunday'}

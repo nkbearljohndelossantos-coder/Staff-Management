@@ -41,17 +41,18 @@ export default function StaffDetailModal({
   if (!staff) return null;
 
   const salaryRateType = staff.salaryRateType || 'monthly';
-  const workScheduleType = staff.workScheduleType || '6_days';
+  const isDaily = salaryRateType === 'daily';
+  const workScheduleType = isDaily ? '6_days' : (staff.workScheduleType || '6_days');
   const workFactorDays = workScheduleType === '5_days' ? FACTOR_5_DAYS : FACTOR_6_DAYS;
   const salaryRate = Number(staff.salaryRate) || Number(staff.baseSalary) || 0;
   const dailyRate = getDailyRate(salaryRate, salaryRateType, workScheduleType);
   const hourlyRate = getHourlyRate(dailyRate);
   const minuteRate = getMinuteRate(dailyRate);
-  const cutoff15Days = salaryRateType === 'daily'
-    ? dailyRate * (workScheduleType === '5_days' ? 11 : 13)
+  const cutoff15Days = isDaily
+    ? dailyRate * 13
     : salaryRate / 2;
-  const monthlyEquivalent = salaryRateType === 'daily'
-    ? Math.round(salaryRate * (workScheduleType === '5_days' ? 21.75 : 26))
+  const monthlyEquivalent = isDaily
+    ? Math.round(salaryRate * 26)
     : salaryRate;
   const filedSalary = Number(staff.filedSalary) || 0;
   const statutory = computeFiledSalaryDeductions(filedSalary);
@@ -233,14 +234,14 @@ export default function StaffDetailModal({
                 <span className="text-[10px] text-slate-500 font-semibold uppercase block">Work Schedule</span>
                 <span className="font-bold text-slate-900 text-xs block">
                   {salaryRateType === 'daily'
-                    ? 'Daily Rate'
+                    ? '6 Days (Mon–Sat)'
                     : workScheduleType === '5_days'
                     ? '5 Days (Mon–Fri)'
                     : '6 Days (Mon–Sat)'}
                 </span>
                 <span className="text-[10px] text-slate-500 block mt-0.5 font-mono">
                   {salaryRateType === 'daily'
-                    ? (workScheduleType === '5_days' ? '21.75 days/mo' : '26 days/mo')
+                    ? '26 days/mo · 13 days/cut-off'
                     : `${workFactorDays} days/yr divisor`}
                 </span>
               </div>
