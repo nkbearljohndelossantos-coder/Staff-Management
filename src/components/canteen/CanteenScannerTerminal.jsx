@@ -23,11 +23,23 @@ import {
   KeyRound,
   ShieldCheck,
   Check,
-  Zap
+  Zap,
+  Volume2,
+  VolumeX,
+  Calculator
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useMultiScreenManager } from '../../utils/useMultiScreenManager';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
+import { 
+  playScanBeep, 
+  playSuccessChime, 
+  playErrorBuzz, 
+  playVoidTone,
+  isAudioMuted,
+  toggleAudioMute
+} from '../../utils/audioFeedback';
+import CanteenZReadingModal from './CanteenZReadingModal';
 
 // Standard fallback catalog for barcode gun recognition
 const STANDARD_SUPPLIES_CATALOG = {
@@ -94,6 +106,10 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   const [voidReason, setVoidReason] = useState('Cashier error / Order modification');
   const [voidError, setVoidError] = useState('');
 
+  // Audio Feedback & Z-Reading Closeout Modal
+  const [soundMuted, setSoundMuted] = useState(() => isAudioMuted());
+  const [showZReadingModal, setShowZReadingModal] = useState(false);
+
   const barcodeInputRef = useRef(null);
   const supervisorInputRef = useRef(null);
   const customerInputRef = useRef(null);
@@ -101,46 +117,30 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   // Progressive Escape dismissal:
   // 1. Suggestions: Clear customer search query first if populated (Priority 80)
   useEscapeKey('canteen-customer-search-query', ESCAPE_PRIORITY.SUGGESTION, showCustomerModal && Boolean(customerSearchQuery), () => setCustomerSearchQuery(''));
-  // 2. Modals: Close customer modal or void modal (Priority 40)
+  // 2. Modals: Close customer modal, void modal, or z-reading modal (Priority 40)
   useEscapeKey('canteen-customer-modal', ESCAPE_PRIORITY.MODAL, showCustomerModal, () => setShowCustomerModal(false));
   useEscapeKey('canteen-void-modal', ESCAPE_PRIORITY.MODAL, showVoidModal, () => setShowVoidModal(false));
+  useEscapeKey('canteen-z-reading-modal', ESCAPE_PRIORITY.MODAL, showZReadingModal, () => setShowZReadingModal(false));
   // 3. Docked mini-tabs / floating panels: Dismiss lastScanned item banner (Priority 10)
   useEscapeKey('canteen-scanned-banner', ESCAPE_PRIORITY.DOCKED_TAB, Boolean(lastScanned), () => setLastScanned(null));
 
   // Focus barcode input on mount and after actions
   useEffect(() => {
     barcodeInputRef.current?.focus();
-  }, [showCustomerModal, showVoidModal]);
+  }, [showCustomerModal, showVoidModal, showZReadingModal]);
 
-  // Audio Beep Synthesizer using Web Audio API
+  // Audio Feedback Synthesizer using Web Audio API
   const playBeep = (type = 'success') => {
-    try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      if (type === 'success') {
-        osc.frequency.setValueAtTime(1400, ctx.currentTime);
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.08);
-      } else if (type === 'error') {
-        osc.frequency.setValueAtTime(300, ctx.currentTime);
-        gain.gain.setValueAtTime(0.2, ctx.currentTime);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.18);
-      } else if (type === 'void') {
-        osc.frequency.setValueAtTime(650, ctx.currentTime);
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.12);
-      }
-    } catch {
-      // AudioContext suppressed or unsupported
+    if (type === 'success' || type === 'scan') {
+      playScanBeep();
+    } else if (type === 'checkout') {
+      playSuccessChime();
+    } else if (type === 'void') {
+      playVoidTone();
+    } else if (type === 'error') {
+      playErrorBuzz();
+    } else {
+      playScanBeep();
     }
   };
 
@@ -444,7 +444,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     });
 
     if (res.success) {
-      playBeep('success');
+      playBeep('checkout');
       broadcastPOSDisplayState({
         cart: [],
         lastScannedItem: null,
@@ -530,6 +530,47 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
             }`}>
               {isAutoLaunchEnabled ? 'ON' : 'OFF'}
             </span>
+          </button>
+
+          {/* Audio Feedback Mute Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              const nextMuted = toggleAudioMute();
+              setSoundMuted(nextMuted);
+            }}
+            className={`h-11 px-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer select-none ${
+              !soundMuted 
+                ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-200 hover:bg-cyan-500/30' 
+                : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300'
+            }`}
+            title={soundMuted ? "Audio feedback is muted. Click to enable sound." : "Audio feedback enabled. Click to mute."}
+          >
+            {!soundMuted ? (
+              <>
+                <Volume2 className="h-4 w-4 text-cyan-400" />
+                <span className="hidden sm:inline">Audio:</span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-400 text-slate-950 font-black">ON</span>
+              </>
+            ) : (
+              <>
+                <VolumeX className="h-4 w-4 text-slate-500" />
+                <span className="hidden sm:inline">Audio:</span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 font-bold">MUTED</span>
+              </>
+            )}
+          </button>
+
+          {/* Shift Closeout / Z-Reading Modal Launch Button */}
+          <button
+            type="button"
+            onClick={() => setShowZReadingModal(true)}
+            className="h-11 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-sm select-none"
+            title="Daily POS Shift Closeout &amp; Cashier Z-Reading"
+          >
+            <Calculator className="h-4 w-4 text-cyan-400" />
+            <span className="hidden sm:inline">Shift Closeout /</span>
+            <span>Z-Reading</span>
           </button>
 
           {/* Open / Focus 2nd Monitor Display Button */}
@@ -1203,6 +1244,11 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
 
           </div>
         </div>
+      )}
+
+      {/* Cashier End-of-Day Shift Closeout Z-Reading Modal */}
+      {showZReadingModal && (
+        <CanteenZReadingModal onClose={() => setShowZReadingModal(false)} />
       )}
 
     </div>

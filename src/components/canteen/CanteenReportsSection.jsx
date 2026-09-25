@@ -24,9 +24,11 @@ import {
   Tag,
   ArrowUpDown,
   RotateCcw,
-  Info
+  Info,
+  Calculator
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import CanteenZReadingModal from './CanteenZReadingModal';
 
 export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, onShowCanteenPass }) {
   const { 
@@ -34,18 +36,21 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
     personalPurchaseOrders = [], 
     canteenVoidLogs = [], 
     canteenGatePasses = [], 
+    canteenZReadings = [],
     canteenDrawer = { balance: 0, transactions: [] },
     canteenInventory = [],
     staffList = []
   } = useApp();
 
   // Filters & State
-  const [activeTabFilter, setActiveTabFilter] = useState('ALL'); // 'ALL' | 'SALES' | 'SALARY_DEDUCTION' | 'POS' | 'VOIDS' | 'GATE_PASSES' | 'DRAWER'
+  const [activeTabFilter, setActiveTabFilter] = useState('ALL'); // 'ALL' | 'SALES' | 'SALARY_DEDUCTION' | 'POS' | 'VOIDS' | 'GATE_PASSES' | 'Z_READINGS'
   const [searchQuery, setSearchQuery] = useState('');
   const [datePreset, setDatePreset] = useState('ALL'); // 'ALL' | 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'CUSTOM'
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedReceiptDetail, setSelectedReceiptDetail] = useState(null);
+  const [selectedZReadingDate, setSelectedZReadingDate] = useState(null);
+  const [showZReadingModal, setShowZReadingModal] = useState(false);
 
   // Compute unified transactions array with Effective Claimed Date support
   const unifiedTransactions = useMemo(() => {
@@ -369,6 +374,19 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
 
           <button
             type="button"
+            onClick={() => {
+              setSelectedZReadingDate(null);
+              setShowZReadingModal(true);
+            }}
+            className="h-10 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black flex items-center gap-2 transition cursor-pointer shadow-md"
+            title="Launch Daily Cashier Shift Closeout &amp; Z-Reading"
+          >
+            <Calculator className="h-4 w-4 text-slate-950" />
+            <span>Shift Z-Reading</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleExportCSV}
             className="h-10 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-2 border border-slate-700 transition cursor-pointer"
             title="Export filtered records to CSV / Excel spreadsheet"
@@ -526,6 +544,18 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
             >
               Gate Passes ({canteenGatePasses.length})
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTabFilter('Z_READINGS')}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+                activeTabFilter === 'Z_READINGS'
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              📊 Z-Readings Archive ({canteenZReadings.length})
+            </button>
           </div>
 
           {/* Search Box */}
@@ -630,22 +660,128 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
 
       </div>
 
-      {/* Main Ledger Table */}
-      <div id="printable-report-table" className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Receipt className="h-4 w-4 text-slate-600" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-              Transaction Records Ledger ({filteredList.length} Entries)
-            </h3>
+      {/* Main Ledger Table or Z-Readings Archive */}
+      {activeTabFilter === 'Z_READINGS' ? (
+        <div id="printable-report-table" className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calculator className="h-4 w-4 text-cyan-600" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                Cashier Shift Z-Readings Closeout Archive ({canteenZReadings.length} Reports)
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedZReadingDate(null);
+                setShowZReadingModal(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+            >
+              <Calculator className="h-3.5 w-3.5" />
+              <span>Perform New Z-Reading</span>
+            </button>
           </div>
-          <span className="text-[11px] text-slate-400 font-mono">
-            Immutable Audit Trail · Grouped by Customer Claim Date
-          </span>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-700">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-700">
+              <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-4 py-3.5">Z-Counter No.</th>
+                  <th className="px-4 py-3.5">Shift Date</th>
+                  <th className="px-4 py-3.5">Shift Period</th>
+                  <th className="px-4 py-3.5">Cashier</th>
+                  <th className="px-4 py-3.5 text-right">Gross Sales (₱)</th>
+                  <th className="px-4 py-3.5 text-right">Cash Collected (₱)</th>
+                  <th className="px-4 py-3.5 text-right">Actual Counted (₱)</th>
+                  <th className="px-4 py-3.5 text-center">Variance (Over/Short)</th>
+                  <th className="px-4 py-3.5">Archived Time</th>
+                  <th className="px-4 py-3.5 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {canteenZReadings.length === 0 ? (
+                  <tr>
+                    <td colSpan="10" className="px-4 py-12 text-center text-slate-400">
+                      <Calculator className="h-8 w-8 mx-auto text-slate-300 mb-2" />
+                      <p className="font-bold text-slate-600 text-sm">No archived Z-readings recorded yet</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Click "Perform New Z-Reading" or "Shift Z-Reading" above to reconcile today's cash drawer and generate your official closeout report.
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  canteenZReadings.map((z, idx) => (
+                    <tr key={z.id || idx} className="hover:bg-slate-50 transition">
+                      <td className="px-4 py-3 font-mono font-bold text-slate-900">{z.zCounter}</td>
+                      <td className="px-4 py-3 font-bold text-slate-800">{z.date}</td>
+                      <td className="px-4 py-3 text-slate-600">{z.shiftPeriod || 'Full Day'}</td>
+                      <td className="px-4 py-3 font-medium text-slate-900">{z.cashierName}</td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
+                        ₱{z.grossSales?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-emerald-600">
+                        ₱{z.cashSales?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
+                        ₱{z.actualCountedCash?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          (z.cashVariance || 0) === 0
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : (z.cashVariance || 0) > 0
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {(z.cashVariance || 0) === 0
+                            ? 'Balanced'
+                            : (z.cashVariance || 0) > 0
+                            ? `+₱${z.cashVariance.toFixed(2)} Over`
+                            : `-₱${Math.abs(z.cashVariance).toFixed(2)} Short`}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-400 font-mono text-[11px]">
+                        {new Date(z.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-4 py-3 text-center whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedZReadingDate(z.date);
+                            setShowZReadingModal(true);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-200 text-[11px] font-bold transition cursor-pointer flex items-center gap-1 mx-auto"
+                          title="View & Reprint Thermal Z-Reading Slip"
+                        >
+                          <Receipt className="h-3 w-3" />
+                          <span>View Z-Slip</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* Main Ledger Table */
+        <div id="printable-report-table" className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Receipt className="h-4 w-4 text-slate-600" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                Transaction Records Ledger ({filteredList.length} Entries)
+              </h3>
+            </div>
+            <span className="text-[11px] text-slate-400 font-mono">
+              Immutable Audit Trail · Grouped by Customer Claim Date
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-700">
             <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-4 py-3.5">Date (Claimed / Effective)</th>
@@ -837,6 +973,18 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
         </div>
 
       </div>
+      )}
+
+      {/* Daily Shift Closeout & Cashier Z-Reading Modal */}
+      {showZReadingModal && (
+        <CanteenZReadingModal
+          defaultDate={selectedZReadingDate}
+          onClose={() => {
+            setShowZReadingModal(false);
+            setSelectedZReadingDate(null);
+          }}
+        />
+      )}
 
     </div>
   );

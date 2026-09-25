@@ -28,7 +28,8 @@ import {
   CheckCircle2,
   Filter,
   X,
-  BarChart3
+  BarChart3,
+  Calculator
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CardVoidModal from './CardVoidModal';
@@ -39,6 +40,8 @@ import CanteenReportsSection from './CanteenReportsSection';
 import CanteenPassModal from './CanteenPassModal';
 import ThermalReceiptView from './ThermalReceiptView';
 import BarcodeLabelSheet from './BarcodeLabelSheet';
+import CanteenZReadingModal from './CanteenZReadingModal';
+import { playScanBeep, playErrorBuzz } from '../../utils/audioFeedback';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 // Known Catalog for Automatic Inbound Scan Pre-filling
@@ -155,6 +158,9 @@ export default function CanteenHub() {
   const [selectedGatePass, setSelectedGatePass] = useState(null);
   const [selectedThermalReceipt, setSelectedThermalReceipt] = useState(null);
   const [showBarcodeSheet, setShowBarcodeSheet] = useState(false);
+  const [showZReadingModal, setShowZReadingModal] = useState(false);
+
+  useEscapeKey('canteen-hub-z-reading-modal', ESCAPE_PRIORITY.MODAL, showZReadingModal, () => setShowZReadingModal(false));
 
   // Inbound Inventory Scanner State
   const [inboundScanQuery, setInboundScanQuery] = useState('');
@@ -222,6 +228,7 @@ export default function CanteenHub() {
     const item = catalogMatch || inventoryMatch;
 
     if (item) {
+      playScanBeep();
       setNewItemBarcode(item.barcode || clean);
       setNewItemName(item.name || '');
       setNewItemCompany(item.company || '');
@@ -234,6 +241,7 @@ export default function CanteenHub() {
       setNewItemUnit(item.unit || 'Piece');
       setNewItemExpiry(item.expirationDate || '2026-12-31');
     } else {
+      playScanBeep();
       setNewItemBarcode(clean);
       setNewItemName(`Inbound Supply Item #${clean.slice(-4)}`);
       setNewItemCompany('Direct Supplier Corp');
@@ -260,7 +268,11 @@ export default function CanteenHub() {
 
   // POS Cart Methods
   const handleAddToCart = (item) => {
-    if (item.quantity <= 0) return;
+    if (item.quantity <= 0) {
+      playErrorBuzz();
+      return;
+    }
+    playScanBeep();
     setCart(prev => {
       const existing = prev.find(p => p.id === item.id);
       if (existing) {
@@ -475,6 +487,16 @@ export default function CanteenHub() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowZReadingModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-500/40 text-xs font-bold transition cursor-pointer shadow-sm"
+              title="Daily POS Shift Closeout &amp; Cashier Z-Reading Report"
+            >
+              <Calculator className="h-3.5 w-3.5 text-cyan-400" />
+              <span>📊 Shift Z-Reading</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setShowBarcodeSheet(true)}
@@ -1745,6 +1767,13 @@ export default function CanteenHub() {
         <BarcodeLabelSheet
           inventory={canteenInventory}
           onClose={() => setShowBarcodeSheet(false)}
+        />
+      )}
+
+      {/* Daily Shift Closeout & Cashier Z-Reading Modal */}
+      {showZReadingModal && (
+        <CanteenZReadingModal
+          onClose={() => setShowZReadingModal(false)}
         />
       )}
 

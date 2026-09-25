@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getOfflineQueue, queueOfflineAction, clearOfflineQueue } from '../../utils/offlineSync';
+import { playPunchChime, playErrorBuzz } from '../../utils/audioFeedback';
 
 export default function BarcodeClockInKiosk() {
   const {
@@ -114,6 +115,7 @@ export default function BarcodeClockInKiosk() {
       });
       setOfflinePunchesCount(prev => prev + 1);
       const matched = staffList.find(s => s.barcodeValue === inputVal.trim() || s.employeeId === inputVal.trim());
+      playPunchChime();
       setScanResult({
         staff: matched,
         action: 'Offline Queued',
@@ -128,6 +130,7 @@ export default function BarcodeClockInKiosk() {
 
     const res = clockInOrOut(inputVal.trim());
     if (res.success) {
+      playPunchChime();
       setScanResult({
         staff: res.staff,
         action: res.action,
@@ -136,6 +139,7 @@ export default function BarcodeClockInKiosk() {
       });
       setInputVal('');
     } else {
+      playErrorBuzz();
       setScanResult({
         message: res.message,
         success: false

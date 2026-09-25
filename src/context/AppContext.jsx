@@ -254,6 +254,12 @@ export function AppProvider({ children }) {
     return saved ? JSON.parse(saved) : INITIAL_CANTEEN_VOID_LOGS;
   });
 
+  // Historical Canteen End-of-Day Shift Closeout Z-Readings
+  const [canteenZReadings, setCanteenZReadings] = useState(() => {
+    const saved = localStorage.getItem('nkb_canteen_z_readings');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Systematic Live Product Journeys (5 Stages: Ordered, Receiving Dock, Inventory, Employee Claimed, Voided Back)
   const [productJourneys, setProductJourneys] = useState(() => {
     const saved = localStorage.getItem('nkb_product_journeys');
@@ -775,6 +781,10 @@ export function AppProvider({ children }) {
   useEffect(() => {
     localStorage.setItem('nkb_canteen_void_logs', JSON.stringify(canteenVoidLogs));
   }, [canteenVoidLogs]);
+
+  useEffect(() => {
+    localStorage.setItem('nkb_canteen_z_readings', JSON.stringify(canteenZReadings));
+  }, [canteenZReadings]);
 
   useEffect(() => {
     localStorage.setItem('nkb_product_journeys', JSON.stringify(productJourneys));
@@ -1999,6 +2009,25 @@ export function AppProvider({ children }) {
     };
 
     setCanteenReceipts(prev => [newReceipt, ...prev]);
+
+    // If Cash payment, record cash drawer transaction
+    if (paymentMethod === 'Cash') {
+      setCanteenDrawer(prev => ({
+        balance: (prev?.balance || 0) + total,
+        transactions: [
+          {
+            id: `ctx-${Date.now()}`,
+            type: 'CASH_SALE',
+            amount: total,
+            receiptNo,
+            description: `POS Cash Sale - Receipt #${receiptNo}`,
+            timestamp: actualEncodedAt
+          },
+          ...(prev?.transactions || [])
+        ]
+      }));
+    }
+
     showToast(
       gatePassRecord
         ? `Receipt #${receiptNo} & Gate Pass #${gatePassRecord.gatePassNo} generated! ₱${total.toLocaleString()} recorded.`
@@ -2049,6 +2078,24 @@ export function AppProvider({ children }) {
       return inv;
     }));
 
+    // If Cash payment, reverse cash from drawer
+    if (receipt.paymentMethod === 'Cash') {
+      setCanteenDrawer(prev => ({
+        balance: Math.max(0, (prev?.balance || 0) - (receipt.total || 0)),
+        transactions: [
+          {
+            id: `ctx-${Date.now()}`,
+            type: 'VOID_REFUND',
+            amount: -(receipt.total || 0),
+            receiptNo,
+            description: `POS Void Refund - Receipt #${receiptNo}`,
+            timestamp: new Date().toISOString()
+          },
+          ...(prev?.transactions || [])
+        ]
+      }));
+    }
+
     // 3. Log into Canteen Void Audit Trail
     const voidLog = {
       id: `void-${Date.now()}`,
@@ -2070,6 +2117,22 @@ export function AppProvider({ children }) {
     setCanteenVoidLogs(prev => [voidLog, ...prev]);
     showToast(`Receipt #${receiptNo} VOIDED via ${authMethod}. ${receipt.items.length} items returned to stock!`, 'success');
     return { success: true, voidLog };
+  };
+
+  // Finalize and archive daily POS Shift Z-Reading
+  const saveZReading = (zReadingData) => {
+    const nextCounterNumber = canteenZReadings.length + 1;
+    const zCounter = zReadingData.zCounter || `Z-${new Date().getFullYear()}-${String(nextCounterNumber).padStart(4, '0')}`;
+    const newEntry = {
+      id: zReadingData.id || `z-${Date.now()}`,
+      zCounter,
+      createdAt: new Date().toISOString(),
+      closedBy: currentUser?.name || 'Canteen Cashier',
+      ...zReadingData
+    };
+    setCanteenZReadings(prev => [newEntry, ...prev]);
+    showToast(`Z-Reading #${zCounter} shift closeout successfully finalized & archived!`);
+    return newEntry;
   };
 
   // Confirm Canteen Salary Deduction by HR (deducted to bank payroll, then charged to COOP budget)
@@ -2560,6 +2623,7 @@ export function AppProvider({ children }) {
       exportedAt: new Date().toISOString(),
       exportedBy: currentUser ? `${currentUser.name} (${currentUser.role})` : 'IT Admin',
       canteenReceipts,
+      canteenZReadings,
       canteenInventory,
       canteenCategories,
       personalPurchaseOrders,
@@ -2599,6 +2663,7 @@ export function AppProvider({ children }) {
         return { success: false, message: 'Invalid backup file' };
       }
       if (Array.isArray(backupJson.canteenReceipts)) setCanteenReceipts(backupJson.canteenReceipts);
+      if (Array.isArray(backupJson.canteenZReadings)) setCanteenZReadings(backupJson.canteenZReadings);
       if (Array.isArray(backupJson.canteenInventory)) setCanteenInventory(backupJson.canteenInventory);
       if (Array.isArray(backupJson.canteenCategories)) setCanteenCategories(backupJson.canteenCategories);
       if (Array.isArray(backupJson.personalPurchaseOrders)) setPersonalPurchaseOrders(backupJson.personalPurchaseOrders);
@@ -2711,6 +2776,8 @@ export function AppProvider({ children }) {
         createPersonalPurchaseOrder,
         fulfillPurchaseOrder,
         canteenReceipts,
+        canteenZReadings,
+        saveZReading,
         recordCanteenSale,
         voidTransactionWithCard,
         canteenVoidLogs,
