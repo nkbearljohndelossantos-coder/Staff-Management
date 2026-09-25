@@ -710,7 +710,7 @@ export default function CanteenHub() {
                       <td colSpan="10" className="px-4 py-12 text-center text-slate-400 text-xs">
                         <Boxes className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                         <p className="font-bold text-slate-600 text-sm">
-                          {inventorySearch ? 'No supply items match your search filter.' : 'All supply items have been removed from canteen inventory.'}
+                          {inventorySearch ? 'No supply items match your search filter.' : 'No supply items found in inventory.'}
                         </p>
                         <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
                           Canteen inventory is completely clean. Use the "Encode Supply Item" button above to intake and record new supplies.

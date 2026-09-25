@@ -33,7 +33,7 @@ import { scanForAnomalies, saveAnomalyEvaluation, computeExecutiveRiskSummary, g
 const AppContext = createContext(null);
 
 
-const SCHEMA_VERSION = 'v8_production_clean_no_demos';
+const SCHEMA_VERSION = 'v9_canteen_inventory_355_items';
 if (typeof window !== 'undefined') {
   if (localStorage.getItem('nkb_schema_version') !== SCHEMA_VERSION) {
     [
@@ -51,6 +51,7 @@ if (typeof window !== 'undefined') {
       'nkb_canteen_gate_passes',
       'nkb_canteen_void_logs',
       'nkb_canteen_inventory',
+      'nkb_canteen_categories',
       'nkb_canteen_pos_display_sync',
       'nkb_product_journeys',
       'nkb_hr_payruns',
@@ -158,10 +159,16 @@ export function AppProvider({ children }) {
     return saved ? JSON.parse(saved) : INITIAL_CASH_ADVANCES;
   });
 
-  // Canteen Inventory Supplies (Clean - All supply items removed as requested)
+  // Canteen Inventory Supplies (Official 355 products from Canteen_Inventory.xlsx)
   const [canteenInventory, setCanteenInventory] = useState(() => {
     const saved = localStorage.getItem('nkb_canteen_inventory');
-    return saved ? JSON.parse(saved) : [...INITIAL_CANTEEN_INVENTORY];
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return [...INITIAL_CANTEEN_INVENTORY];
   });
 
   // Canteen Supply Categories (Customizable, Add/Delete categories)

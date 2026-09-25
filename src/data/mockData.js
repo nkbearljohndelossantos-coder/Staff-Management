@@ -1,4 +1,5 @@
 import generatedStaffData from './generatedStaff.json';
+import canteenInventoryData from './canteenInventory.json';
 
 export const INITIAL_DEPARTMENTS = [
   ...generatedStaffData.departments
@@ -86,21 +87,14 @@ export const INITIAL_CANTEEN_DRAWER = {
 
 export const INITIAL_CASH_ADVANCES = [];
 
-// Canteen Inventory Supplies Catalog (Clean - No supply items)
-export const INITIAL_CANTEEN_INVENTORY = [];
+// Canteen Inventory Supplies Catalog (Official 355 products from Canteen_Inventory.xlsx)
+export const INITIAL_CANTEEN_INVENTORY = [
+  ...canteenInventoryData.products
+];
 
 // Default Canteen Supply Categories
 export const DEFAULT_CANTEEN_CATEGORIES = [
-  'Beverages & Dairy',
-  'Instant Meals',
-  'Bakery & Bread',
-  'Canned Goods',
-  'Snacks & Confectionery',
-  'Food & Pantry',
-  'Personal Care & Hygiene',
-  'Cleaning & Sanitation',
-  'Office & Shop Supplies',
-  'General Supplies'
+  ...canteenInventoryData.categories
 ];
 
 // NKB Manufactured Products (Factory manufactured goods catalog)
