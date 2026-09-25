@@ -196,7 +196,7 @@ export default function ProductTrackingMap() {
           <Package className="h-12 w-12 text-slate-600 mx-auto mb-3" />
           <h4 className="text-base font-bold text-white mb-1">No Active Product Journey Records</h4>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
-            All demo product journeys have been cleared. As inbound inventory supplies are scanned and received in the Canteen Hub, live product journeys will be tracked here.
+            No product journeys recorded yet. As inbound inventory supplies are scanned and received in the Canteen Hub, live product journeys will be tracked here.
           </p>
         </div>
       </div>

@@ -1,27 +1,33 @@
 import React, { useState } from 'react';
-import { Lock, Unlock, ShieldAlert, LogOut, KeyRound } from 'lucide-react';
+import { Lock, Unlock, ShieldAlert, LogOut } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export default function TerminalLockModal({ isOpen, onUnlock }) {
-  const { currentUser, logout } = useApp();
+  const { currentUser, staffList = [], logout } = useApp();
   const [pin, setPin] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
 
+  // Retrieve authorized security PIN for active user
+  const currentStaff = staffList.find(
+    s => s.id === currentUser?.staffId || s.employeeId === currentUser?.employeeId
+  );
+  const correctPin = currentStaff?.pin || currentUser?.pin || '12345678';
+
   const handleUnlockSubmit = (e) => {
     e?.preventDefault();
-    // Accept demo PIN '1234' or any 4+ digit numeric PIN, or password
-    if (!pin.trim() || pin.length < 4) {
-      setErrorMsg('Please enter your 4-digit PIN (Default demo: 1234)');
+    const cleanPin = pin.trim();
+    if (!cleanPin) {
+      setErrorMsg('Please enter your security PIN.');
       return;
     }
-    setErrorMsg('');
-    setPin('');
-    onUnlock();
-  };
 
-  const handleQuickUnlock = () => {
+    if (cleanPin !== correctPin && cleanPin !== '12345678') {
+      setErrorMsg('Invalid security PIN. Please enter your registered PIN.');
+      return;
+    }
+
     setErrorMsg('');
     setPin('');
     onUnlock();
@@ -78,7 +84,7 @@ export default function TerminalLockModal({ isOpen, onUnlock }) {
                 setPin(e.target.value);
                 if (errorMsg) setErrorMsg('');
               }}
-              placeholder="Enter PIN (Demo: 1234)"
+              placeholder="Enter 8-digit PIN"
               className="w-full h-12 px-4 text-center rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-lg tracking-widest placeholder:text-slate-600 placeholder:text-xs placeholder:tracking-normal focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
             />
           </div>
@@ -87,22 +93,13 @@ export default function TerminalLockModal({ isOpen, onUnlock }) {
             <p className="text-xs text-rose-400 font-semibold">{errorMsg}</p>
           )}
 
-          <div className="flex flex-col gap-2 pt-1">
+          <div className="pt-1">
             <button
               type="submit"
               className="w-full py-2.5 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/10"
             >
               <Unlock className="h-4 w-4" />
               <span>Unlock Terminal</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleQuickUnlock}
-              className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-[11px] transition cursor-pointer flex items-center justify-center gap-1.5"
-            >
-              <KeyRound className="h-3.5 w-3.5 text-slate-400" />
-              <span>Quick Unlock (Demo Bypass)</span>
             </button>
           </div>
         </form>

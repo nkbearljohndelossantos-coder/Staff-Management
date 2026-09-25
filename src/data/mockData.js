@@ -227,77 +227,9 @@ export const PRODUCT_JOURNEY_STAGES = [
 // No demo product journeys
 export const INITIAL_PRODUCT_JOURNEYS = [];
 
-// Demo Leave Requests
-export const INITIAL_LEAVE_REQUESTS = [
-  {
-    id: 'leave-001',
-    staffId: 'nkb-staff-001',
-    staffName: 'Katherine A. BELLA',
-    employeeId: 'NKB092026-0001',
-    type: 'Vacation Leave',
-    startDate: '2026-10-05',
-    endDate: '2026-10-07',
-    days: 3,
-    reason: 'Annual executive board planning conference',
-    status: 'Approved',
-    submittedAt: '2026-09-20T08:30:00.000Z',
-    reviewedBy: 'Norvin L. BELLA (COO)',
-    reviewedAt: '2026-09-21T09:00:00.000Z',
-    remarks: 'Approved for corporate planning.'
-  },
-  {
-    id: 'leave-002',
-    staffId: 'nkb-staff-011',
-    staffName: 'Merry Jean I. ALONZO',
-    employeeId: 'NKB092026-0011',
-    type: 'Sick Leave',
-    startDate: '2026-09-25',
-    endDate: '2026-09-25',
-    days: 1,
-    reason: 'Medical dental appointment',
-    status: 'Pending',
-    submittedAt: '2026-09-23T14:15:00.000Z',
-    reviewedBy: null,
-    reviewedAt: null,
-    remarks: ''
-  }
-];
+// Active Leave Requests (Clean - Starts empty for production)
+export const INITIAL_LEAVE_REQUESTS = [];
 
-// Demo Overtime Requests (Submitted to HR with mandatory operational reason)
-export const INITIAL_OVERTIME_REQUESTS = [
-  {
-    id: 'ot-001',
-    staffId: 'nkb-staff-011',
-    staffName: 'Merry Jean I. ALONZO',
-    employeeId: 'NKB092026-0011',
-    date: '2026-09-24',
-    hours: 2.5,
-    reasonCategory: 'Urgent Client Delivery / Rush Order',
-    reason: 'Fabrication Line 2 Urgent Assembly Completion for rush shipping deadline',
-    task: 'Fabrication Line 2 Urgent Assembly Completion for rush shipping deadline',
-    status: 'Pending',
-    submittedTo: 'HR Management',
-    submittedAt: '2026-09-23T16:00:00.000Z',
-    reviewedBy: null,
-    reviewedAt: null,
-    remarks: ''
-  },
-  {
-    id: 'ot-002',
-    staffId: 'nkb-staff-048',
-    staffName: 'Carl Laurence B. PATAGNAN',
-    employeeId: 'NKB092026-0048',
-    date: '2026-09-22',
-    hours: 3.0,
-    reasonCategory: 'Machine Maintenance & IT Repairs',
-    reason: 'Server Maintenance & Network Turnstile Firmware Update for factory kiosks',
-    task: 'Server Maintenance & Network Turnstile Firmware Update for factory kiosks',
-    status: 'Approved',
-    submittedTo: 'HR Management',
-    submittedAt: '2026-09-21T18:00:00.000Z',
-    reviewedBy: 'Genevieve Anne A. JURADO (HR)',
-    reviewedAt: '2026-09-22T08:00:00.000Z',
-    remarks: 'HR Approved: Off-hours firmware update authorized for factory operations.'
-  }
-];
+// Active Overtime Requests (Clean - Starts empty for production)
+export const INITIAL_OVERTIME_REQUESTS = [];
 

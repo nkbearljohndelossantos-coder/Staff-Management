@@ -147,21 +147,6 @@ export default function BarcodeClockInKiosk() {
     }, 5000);
   };
 
-  const handleSimulateScan = (staff) => {
-    const res = clockInOrOut(staff.barcodeValue || staff.employeeId);
-    if (res.success) {
-      setScanResult({
-        staff: res.staff,
-        action: res.action,
-        time: res.time,
-        success: true
-      });
-    }
-    setTimeout(() => {
-      setScanResult(null);
-    }, 5000);
-  };
-
   // Approvals counts
   const pendingLeavesCount = leaveRequests.filter(l => l.status === 'Pending').length;
   const pendingOTCount = overtimeRequests.filter(o => o.status === 'Pending').length;
@@ -337,27 +322,6 @@ export default function BarcodeClockInKiosk() {
                   Compatible with USB handheld barcode scanners, wedge scanners, and manual numeric keypad entry.
                 </p>
               </form>
-
-              {/* Quick 1-Click Scan Simulator for Demo */}
-              <div className="mt-5 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-center">
-                <p className="text-[11px] font-bold text-slate-700 mb-2 flex items-center justify-center gap-1">
-                  <Sparkles className="h-3.5 w-3.5 text-slate-500" />
-                  Quick Simulate Badge Scan:
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  {staffList.slice(0, 8).map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => handleSimulateScan(s)}
-                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
-                      {s.firstName} ({s.employeeId})
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               {/* Live Scan Notification Toast */}
               {scanResult && (

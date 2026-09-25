@@ -35,7 +35,6 @@ export default function CommandPalette({ isOpen, onClose }) {
     canteenInventory,
     exportFullSystemBackup,
     openDigitalId,
-    switchDemoRole,
     isSuperAdmin
   } = useApp();
 
@@ -114,52 +113,6 @@ export default function CommandPalette({ isOpen, onClose }) {
       }
     }
   ];
-
-  // Super admin demo switches
-  if (isSuperAdmin) {
-    actionItems.push(
-      {
-        id: 'switch-ceo',
-        label: 'Switch to CEO Role (Katherine A. BELLA)',
-        icon: Sparkles,
-        category: 'Demo Roles',
-        perform: () => {
-          switchDemoRole('ceo');
-          onClose();
-        }
-      },
-      {
-        id: 'switch-it',
-        label: 'Switch to IT Admin Role (Carl Laurence B. PATAGNAN)',
-        icon: Database,
-        category: 'Demo Roles',
-        perform: () => {
-          switchDemoRole('it_admin');
-          onClose();
-        }
-      },
-      {
-        id: 'switch-hr',
-        label: 'Switch to HR Manager Role (Genevieve Anne A. JURADO)',
-        icon: Users,
-        category: 'Demo Roles',
-        perform: () => {
-          switchDemoRole('hr');
-          onClose();
-        }
-      },
-      {
-        id: 'switch-canteen',
-        label: 'Switch to Canteen Admin (Nannette MANUEL)',
-        icon: Utensils,
-        category: 'Demo Roles',
-        perform: () => {
-          switchDemoRole('canteen');
-          onClose();
-        }
-      }
-    );
-  }
 
   // Filtered results
   const filteredResults = useMemo(() => {

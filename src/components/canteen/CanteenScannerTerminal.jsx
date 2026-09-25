@@ -631,46 +631,6 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                 Record Item
               </button>
             </form>
-
-            {/* Quick Demo Barcode Buttons */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 text-[11px]">
-              <span className="text-slate-400 font-bold uppercase text-[9px]">Tap to Scan Sample:</span>
-              <button
-                type="button"
-                onClick={() => { setBarcodeQuery('4800016644012'); }}
-                className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10px] cursor-pointer"
-              >
-                Milk (₱98)
-              </button>
-              <button
-                type="button"
-                onClick={() => { setBarcodeQuery('4800016600216'); }}
-                className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10px] cursor-pointer"
-              >
-                Corned Beef (₱92)
-              </button>
-              <button
-                type="button"
-                onClick={() => { setBarcodeQuery('4800841200115'); }}
-                className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10px] cursor-pointer"
-              >
-                Noodles (₱38)
-              </button>
-              <button
-                type="button"
-                onClick={() => { setBarcodeQuery('4807770270014'); }}
-                className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10px] cursor-pointer"
-              >
-                C2 Tea (₱30)
-              </button>
-              <button
-                type="button"
-                onClick={() => { setBarcodeQuery('4800552109923'); }}
-                className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10px] cursor-pointer"
-              >
-                Water (₱18)
-              </button>
-            </div>
           </div>
 
           {/* Recently Scanned Item Highlight Card */}
@@ -827,7 +787,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                   <ScanBarcode className="h-8 w-8 mx-auto text-slate-300" />
                   <p className="font-bold text-slate-500">Cart is empty</p>
                   <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
-                    Scan items using barcode scanner or select sample pills on the left.
+                    Scan items using a USB barcode scanner or search inventory.
                   </p>
                 </div>
               ) : (
@@ -1026,35 +986,9 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
               ) : (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
-                  <span>Please scan the customer's employee badge to confirm their employee ID code.</span>
+                  <span>Please scan the customer's employee badge or type their ID above.</span>
                 </div>
               )}
-
-              {/* Quick Pick Sample Employees from Masterlist */}
-              <div>
-                <span className="text-[10px] font-extrabold uppercase text-slate-400 block mb-1.5">
-                  Or Quick Select Customer from Masterlist:
-                </span>
-                <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
-                  {staffList.slice(0, 6).map(s => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => { setSelectedStaff(s); playBeep('success'); }}
-                      className={`text-left p-2 rounded-xl border text-xs transition cursor-pointer flex items-center gap-2 ${
-                        selectedStaff?.id === s.id
-                          ? 'bg-slate-900 text-white border-slate-900'
-                          : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-800'
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="font-bold truncate">{s.firstName} {s.lastName}</div>
-                        <div className="text-[10px] font-mono opacity-70">{s.employeeId}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               {/* Late Encoding Checkbox & Customer Claimed Date */}
               <div className="p-3.5 rounded-2xl border border-amber-200 bg-amber-50/60 space-y-2">

@@ -33,7 +33,7 @@ import { scanForAnomalies, saveAnomalyEvaluation, computeExecutiveRiskSummary, g
 const AppContext = createContext(null);
 
 
-const SCHEMA_VERSION = 'v7_clean_canteen_inventory_dual_monitor';
+const SCHEMA_VERSION = 'v8_production_clean_no_demos';
 if (typeof window !== 'undefined') {
   if (localStorage.getItem('nkb_schema_version') !== SCHEMA_VERSION) {
     [
@@ -55,7 +55,11 @@ if (typeof window !== 'undefined') {
       'nkb_product_journeys',
       'nkb_hr_payruns',
       'nkb_hr_current_user',
-      'nkb_canteen_pos'
+      'nkb_canteen_pos',
+      'nkb_hr_leave_requests',
+      'nkb_hr_overtime_requests',
+      'nkb_notifications',
+      'nkb_it_anomaly_evaluations'
     ].forEach(key => localStorage.removeItem(key));
     localStorage.setItem('nkb_schema_version', SCHEMA_VERSION);
   }
@@ -867,70 +871,6 @@ export function AppProvider({ children }) {
   const logout = () => {
     setCurrentUser(null);
     showToast('Logged out successfully.');
-  };
-
-  // Quick switch role - STRICTLY RESTRICTED TO SUPER ADMINS (CEO and IT Admin)
-  const switchDemoRole = (role) => {
-    // Non-superadmins cannot switch accounts or assume other roles!
-    if (currentUser && !isSuperAdmin) {
-      showToast('Access Denied: Only IT Admin or CEO can switch accounts or assume another role.', 'error');
-      return { success: false, message: 'Access Denied' };
-    }
-
-    let sample;
-    if (role === 'ceo') {
-      sample = staffList.find(s => s.role === 'ceo') || staffList[0];
-    } else if (role === 'it_admin') {
-      sample = staffList.find(s => s.role === 'it_admin' || s.employeeId === 'NKB092026-0048');
-    } else if (role === 'admin') {
-      sample = staffList.find(s => s.role === 'admin' && s.role !== 'it_admin') || staffList[1];
-    } else if (role === 'hr') {
-      sample = staffList.find(s => s.role === 'hr') || staffList.find(s => s.departmentName && s.departmentName.includes('HR'));
-    } else if (role === 'finance' || role === 'accounting') {
-      sample = staffList.find(s => s.role === 'accounting') || staffList.find(s => s.departmentName && s.departmentName.includes('Accounting'));
-    } else if (role === 'canteen') {
-      sample = staffList.find(s => s.employeeId === 'NKB052026-0024') || staffList.find(s => s.role === 'canteen');
-    } else {
-      sample = staffList.find(s => s.role === 'employee') || staffList[2];
-    }
-
-    const resolvedRole = 
-      role === 'ceo' ? 'ceo' :
-      role === 'it_admin' ? 'it_admin' :
-      role === 'admin' ? 'admin' :
-      role === 'hr' ? 'hr' :
-      (role === 'finance' || role === 'accounting') ? 'accounting' :
-      role === 'canteen' ? 'canteen' : 'employee';
-
-    const userObj = {
-      staffId: sample?.id || 'emp-nkb052026-0001',
-      name: sample ? `${sample.firstName} ${sample.lastName}` : 'Katherine A. BELLA',
-      email: sample?.email || 'katherinea.bella@nkb.com',
-      role: resolvedRole,
-      employeeId: sample?.employeeId || 'NKB052026-0001',
-      avatar: sample?.avatar
-    };
-    setCurrentUser(userObj);
-    if (resolvedRole === 'employee') {
-      setActiveTab('employeePortal');
-    } else if (resolvedRole === 'canteen') {
-      setActiveTab('canteenHub');
-    } else if (resolvedRole === 'accounting') {
-      setActiveTab('payroll');
-    } else if (resolvedRole === 'it_admin') {
-      setActiveTab('itAdminHub');
-    } else if (resolvedRole === 'hr' || resolvedRole === 'admin' || resolvedRole === 'ceo') {
-      setActiveTab('staff');
-    }
-    const roleLabel = 
-      resolvedRole === 'ceo' ? `CEO (${userObj.name})` :
-      resolvedRole === 'it_admin' ? `IT Admin (${userObj.name})` :
-      resolvedRole === 'admin' ? `COO (${userObj.name})` :
-      resolvedRole === 'hr' ? `HR Manager (${userObj.name})` :
-      resolvedRole === 'accounting' ? `Accounting & Finance (${userObj.name})` :
-      resolvedRole === 'canteen' ? `Canteen Admin (${userObj.name})` :
-      `Employee ESS (${userObj.name})`;
-    showToast(`Switched active account to: ${roleLabel}`);
   };
 
   // Staff CRUD
@@ -2698,7 +2638,6 @@ export function AppProvider({ children }) {
         loginStaff,
         loginBarcode,
         logout,
-        switchDemoRole,
         staffList,
         addStaff,
         updateStaff,
