@@ -17,7 +17,10 @@ import {
   Calendar,
   Layers,
   ArrowUpRight,
-  ExternalLink
+  ExternalLink,
+  Gift,
+  Award,
+  Sparkles
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { detectSystemAnomalies, computeExecutiveRiskSummary } from '../../utils/anomalyDetector';
@@ -128,6 +131,80 @@ export default function ExecutiveDashboardView() {
       status: latestRun?.status || 'Draft'
     };
   }, [payRuns]);
+
+  // 7. Accrued 13th Month Pay Liability Reserve (YTD as of Sept 2026)
+  const total13thMonthReserve = useMemo(() => {
+    return staffList.reduce((sum, s) => {
+      const basic = Number(s.salaryRate || s.baseSalary || 25000);
+      return sum + Math.round((basic * 9) / 12);
+    }, 0);
+  }, [staffList]);
+
+  // 8. Upcoming Celebrations & Milestones (Birthdays and Work Anniversaries)
+  const celebrations = useMemo(() => {
+    const today = new Date();
+    const currentYear = 2026;
+
+    const upcomingBirthdays = [];
+    const upcomingAnniversaries = [];
+
+    staffList.forEach(s => {
+      if (s.birthday) {
+        try {
+          const parts = s.birthday.split('-');
+          if (parts.length === 3) {
+            const bMonth = parseInt(parts[1], 10) - 1;
+            const bDay = parseInt(parts[2], 10);
+            const thisYearBday = new Date(currentYear, bMonth, bDay);
+            const diffDays = Math.ceil((thisYearBday - today) / (1000 * 60 * 60 * 24));
+            if (diffDays >= -1 && diffDays <= 30) {
+              upcomingBirthdays.push({
+                id: s.id,
+                name: `${s.firstName} ${s.lastName}`,
+                department: s.department || 'Plant Operations',
+                dateStr: thisYearBday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                daysRemaining: diffDays,
+                age: currentYear - parseInt(parts[0], 10)
+              });
+            }
+          }
+        } catch {}
+      }
+
+      const hireDateStr = s.dateHired || s.hireDate;
+      if (hireDateStr) {
+        try {
+          const parts = hireDateStr.split('-');
+          if (parts.length === 3) {
+            const hYear = parseInt(parts[0], 10);
+            const hMonth = parseInt(parts[1], 10) - 1;
+            const hDay = parseInt(parts[2], 10);
+            const thisYearAnniv = new Date(currentYear, hMonth, hDay);
+            const diffDays = Math.ceil((thisYearAnniv - today) / (1000 * 60 * 60 * 24));
+            const years = currentYear - hYear;
+            if (diffDays >= -1 && diffDays <= 30 && years > 0) {
+              upcomingAnniversaries.push({
+                id: s.id,
+                name: `${s.firstName} ${s.lastName}`,
+                department: s.department || 'Plant Operations',
+                dateStr: thisYearAnniv.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                daysRemaining: diffDays,
+                years
+              });
+            }
+          }
+        } catch {}
+      }
+    });
+
+    upcomingBirthdays.sort((a, b) => a.daysRemaining - b.daysRemaining);
+    upcomingAnniversaries.sort((a, b) => a.daysRemaining - b.daysRemaining);
+
+    return {
+      upcomingBirthdays,
+      upcomingAnniversaries
+    };
+  }, [staffList]);
 
   // Print executive summary
   const handlePrintExecutiveSummary = () => {
@@ -349,6 +426,117 @@ export default function ExecutiveDashboardView() {
           </div>
         </div>
 
+      </div>
+
+      {/* SECTION: CORPORATE ACCRUALS & WORKFORCE CELEBRATIONS */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 13th Month Pay Accrual Reserve Card */}
+        <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 rounded-3xl border border-indigo-900/50 p-6 text-white shadow-sm flex flex-col justify-between relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+            <Sparkles className="w-32 h-32 text-indigo-400" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-indigo-300 mb-2">
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-indigo-400" /> Statutory 13th Month Accrual Reserve
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">
+                YTD Accrued
+              </span>
+            </div>
+            <div className="text-3xl font-black text-white font-mono mt-1">
+              ₱{total13thMonthReserve.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-xs text-indigo-200/70 mt-1">
+              Cumulative DOLE statutory reserve ({staffList.length} active staff · 9/12 months completed as of Sept 2026).
+            </p>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-indigo-800/40">
+            <div className="flex justify-between items-center text-xs mb-1.5">
+              <span className="text-indigo-300 font-medium">Annual Funding Progress</span>
+              <span className="font-mono font-bold text-white">75.0% (9 of 12 Mos)</span>
+            </div>
+            <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden border border-indigo-900/50">
+              <div className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full transition-all duration-500" style={{ width: '75%' }}></div>
+            </div>
+            <div className="text-[11px] text-indigo-300/60 mt-2 flex items-center justify-between">
+              <span>Matures Dec 24, 2026</span>
+              <span>Projected: ₱{(total13thMonthReserve * 12 / 9).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Celebrations & Milestones: Birthdays & Work Anniversaries */}
+        <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-2">
+                <Gift className="h-5 w-5 text-pink-500" />
+                <h3 className="text-base font-black text-slate-900">Workforce Celebrations &amp; Milestones</h3>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">Upcoming birthdays &amp; service anniversaries within next 30 days</p>
+            </div>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
+              {celebrations.upcomingBirthdays.length + celebrations.upcomingAnniversaries.length} Upcoming
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            {/* Birthdays */}
+            <div className="bg-pink-50/50 rounded-2xl p-4 border border-pink-100">
+              <div className="flex items-center gap-2 text-xs font-bold text-pink-800 uppercase tracking-wide mb-3">
+                <Gift className="h-4 w-4 text-pink-600" /> Upcoming Birthdays ({celebrations.upcomingBirthdays.length})
+              </div>
+              {celebrations.upcomingBirthdays.length === 0 ? (
+                <div className="text-xs text-slate-400 py-3 text-center">No birthdays in the next 30 days</div>
+              ) : (
+                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                  {celebrations.upcomingBirthdays.slice(0, 4).map((b) => (
+                    <div key={b.id} className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-pink-100 text-xs shadow-2xs">
+                      <div>
+                        <div className="font-bold text-slate-800">{b.name}</div>
+                        <div className="text-[10px] text-slate-400">{b.department}</div>
+                      </div>
+                      <div className="text-right">
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 font-bold text-[10px]">
+                          {b.daysRemaining === 0 ? 'Today! 🎉' : b.daysRemaining === 1 ? 'Tomorrow' : b.dateStr}
+                        </span>
+                        {b.age && <div className="text-[10px] text-slate-400 mt-0.5">Turns {b.age}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Service Anniversaries */}
+            <div className="bg-amber-50/50 rounded-2xl p-4 border border-amber-100">
+              <div className="flex items-center gap-2 text-xs font-bold text-amber-800 uppercase tracking-wide mb-3">
+                <Award className="h-4 w-4 text-amber-600" /> Work Anniversaries ({celebrations.upcomingAnniversaries.length})
+              </div>
+              {celebrations.upcomingAnniversaries.length === 0 ? (
+                <div className="text-xs text-slate-400 py-3 text-center">No work anniversaries in next 30 days</div>
+              ) : (
+                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                  {celebrations.upcomingAnniversaries.slice(0, 4).map((a) => (
+                    <div key={a.id} className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-amber-100 text-xs shadow-2xs">
+                      <div>
+                        <div className="font-bold text-slate-800">{a.name}</div>
+                        <div className="text-[10px] text-slate-400">{a.department}</div>
+                      </div>
+                      <div className="text-right">
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
+                          {a.years} Year{a.years > 1 ? 's' : ''} ({a.dateStr})
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* SECTION: IT-EVALUATED SECURITY & ANOMALY EXECUTIVE BRIEFING */}

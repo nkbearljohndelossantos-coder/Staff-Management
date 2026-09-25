@@ -13,9 +13,13 @@ import {
   Sun,
   ShieldCheck,
   Filter,
-  Plus
+  Plus,
+  Wifi,
+  WifiOff,
+  RefreshCw
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { getOfflineQueue, queueOfflineAction, clearOfflineQueue } from '../../utils/offlineSync';
 
 export default function BarcodeClockInKiosk() {
   const {
@@ -28,12 +32,16 @@ export default function BarcodeClockInKiosk() {
     overtimeRequests = [],
     fileOvertimeRequest,
     approveOvertimeRequest,
-    rejectOvertimeRequest
+    rejectOvertimeRequest,
+    batchApproveOvertimeRequests
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState('kiosk'); // 'kiosk' | 'approvals'
   const [approvalCategory, setApprovalCategory] = useState('all'); // 'all' | 'leaves' | 'overtime'
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'Pending' | 'Approved' | 'Rejected'
+  const [selectedOtIds, setSelectedOtIds] = useState([]);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [offlinePunchesCount, setOfflinePunchesCount] = useState(() => getOfflineQueue().length);
   
   // HR Manual OT Declaration Modal State
   const [showHRFileOTModal, setShowHRFileOTModal] = useState(false);
@@ -62,9 +70,61 @@ export default function BarcodeClockInKiosk() {
     return () => clearInterval(timer);
   }, []);
 
+  const syncOfflinePunches = () => {
+    const queue = getOfflineQueue();
+    if (!queue || queue.length === 0) return;
+    let synced = 0;
+    queue.forEach(item => {
+      if (item.barcode) {
+        clockInOrOut(item.barcode, item.pin);
+        synced++;
+      }
+    });
+    clearOfflineQueue();
+    setOfflinePunchesCount(0);
+  };
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      syncOfflinePunches();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const handleScanSubmit = (e) => {
     e.preventDefault();
     if (!inputVal.trim()) return;
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      queueOfflineAction({
+        action: 'CLOCK_PUNCH',
+        barcode: inputVal.trim(),
+        timestamp: new Date().toISOString()
+      });
+      setOfflinePunchesCount(prev => prev + 1);
+      const matched = staffList.find(s => s.barcodeValue === inputVal.trim() || s.employeeId === inputVal.trim());
+      setScanResult({
+        staff: matched,
+        action: 'Offline Queued',
+        time: new Date().toLocaleTimeString(),
+        message: `Offline Mode: Punch for ${matched ? `${matched.firstName} ${matched.lastName}` : inputVal.trim()} queued locally. Will sync when reconnected.`,
+        success: true
+      });
+      setInputVal('');
+      setTimeout(() => setScanResult(null), 5000);
+      return;
+    }
 
     const res = clockInOrOut(inputVal.trim());
     if (res.success) {
@@ -194,9 +254,36 @@ export default function BarcodeClockInKiosk() {
           </button>
         </div>
 
-        <div className="text-xs text-slate-500 flex items-center gap-1.5">
-          <Sun className="h-3.5 w-3.5 text-amber-500" />
-          <span>Shift Policy: <strong>Day Shift Only (8 AM - 5 PM)</strong> · No Night Shift</span>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Network Sync Status Indicator */}
+          {isOnline ? (
+            <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold flex items-center gap-1.5 shadow-2xs">
+              <Wifi className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Online (Live Sync)</span>
+            </span>
+          ) : (
+            <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold flex items-center gap-1.5 shadow-2xs">
+              <WifiOff className="h-3.5 w-3.5 text-amber-600" />
+              <span>Offline ({offlinePunchesCount} Queued)</span>
+            </span>
+          )}
+
+          {offlinePunchesCount > 0 && (
+            <button
+              type="button"
+              onClick={syncOfflinePunches}
+              className="px-2.5 py-1 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition shadow-xs"
+              title="Flush locally queued clock-ins to attendance ledger"
+            >
+              <RefreshCw className="h-3 w-3 text-cyan-400" />
+              <span>Sync Queue ({offlinePunchesCount})</span>
+            </button>
+          )}
+
+          <div className="text-xs text-slate-500 flex items-center gap-1.5">
+            <Sun className="h-3.5 w-3.5 text-amber-500" />
+            <span>Shift Policy: <strong>Day Shift Only (8 AM - 5 PM)</strong> · No Night Shift</span>
+          </div>
         </div>
       </div>
 
@@ -593,117 +680,186 @@ export default function BarcodeClockInKiosk() {
           )}
 
           {/* Overtime Applications Table */}
-          {(approvalCategory === 'all' || approvalCategory === 'overtime') && (
-            <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm space-y-3">
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-slate-600" />
-                    Employee Overtime Applications &amp; HR Authorizations
-                  </h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Mandatory: Overtime must be pre-requested to HR with reason before declaration and payroll credit
-                  </p>
-                </div>
-                <span className="text-xs text-slate-500">{filteredOT.length} records</span>
-              </div>
+          {(approvalCategory === 'all' || approvalCategory === 'overtime') && (() => {
+            const pendingOT = filteredOT.filter(o => o.status === 'Pending');
+            const todayStr = new Date().toISOString().split('T')[0];
 
-              {filteredOT.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-6">No overtime applications found matching filter.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-700">
-                    <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
-                      <tr>
-                        <th className="py-3 px-4">Employee</th>
-                        <th className="py-3 px-4">Shift &amp; Date</th>
-                        <th className="py-3 px-4">OT Hours (@ +30%)</th>
-                        <th className="py-3 px-4">Reason / Operational Justification (Required)</th>
-                        <th className="py-3 px-4">Status</th>
-                        <th className="py-3 px-4 text-right">HR Clearance Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {filteredOT.map((req) => (
-                        <tr key={req.id} className="hover:bg-slate-50/80 transition">
-                          <td className="py-3 px-4">
-                            <div className="font-bold text-slate-900">{req.staffName}</div>
-                            <div className="text-[10px] font-mono text-slate-500">{req.employeeId}</div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="font-mono text-slate-900 font-bold">{req.date}</div>
-                            <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1">
-                              <Sun className="h-3 w-3" /> Day Extension (No NSD)
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 font-mono text-slate-900 font-bold">
-                            {req.hours} Hours
-                          </td>
-                          <td className="py-3 px-4 max-w-sm">
-                            {req.reasonCategory && (
-                              <span className="text-[10px] font-bold text-slate-800 block uppercase tracking-wider mb-0.5">
-                                {req.reasonCategory}
-                              </span>
-                            )}
-                            <p className="text-slate-600 text-xs leading-snug" title={req.reason || req.task}>
-                              {req.reason || req.task || 'Operational plant shift completion'}
-                            </p>
-                            {req.remarks && (
-                              <p className="text-[10px] text-slate-400 mt-1 italic">
-                                Note: {req.remarks}
-                              </p>
-                            )}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                              req.status === 'Approved'
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                : req.status === 'Rejected'
-                                ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                                : 'bg-amber-100 text-amber-800 border border-amber-300'
-                            }`}>
-                              {req.status === 'Approved' ? 'HR Authorized' : req.status === 'Rejected' ? 'HR Disapproved' : 'Pending HR'}
-                            </span>
-                            {req.reviewedBy && (
-                              <div className="text-[9px] text-slate-400 mt-0.5">
-                                by {req.reviewedBy}
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            {req.status === 'Pending' ? (
-                              <div className="flex items-center justify-end gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => approveOvertimeRequest(req.id, 'HR Approved with verified operational reason')}
-                                  className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition cursor-pointer"
-                                  title="Authorize Overtime as HR"
-                                >
-                                  <Check className="h-3.5 w-3.5" />
-                                  <span>Approve (HR)</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setRejectItem({ type: 'ot', id: req.id, staffName: req.staffName })}
-                                  className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
-                                  title="Disapprove Overtime"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                  <span>Reject</span>
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-slate-400 font-medium">HR Evaluation Final</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            return (
+              <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm space-y-3">
+                <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-slate-600" />
+                      Employee Overtime Applications &amp; HR Authorizations
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Mandatory: Overtime must be pre-requested to HR with reason before declaration and payroll credit
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {selectedOtIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          batchApproveOvertimeRequests(selectedOtIds, 'HR Batch Approved with verified operational reason');
+                          setSelectedOtIds([]);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        <span>Batch Approve Selected ({selectedOtIds.length})</span>
+                      </button>
+                    )}
+                    <span className="text-xs text-slate-500">{filteredOT.length} records</span>
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
+
+                {filteredOT.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-6">No overtime applications found matching filter.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-slate-700">
+                      <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                        <tr>
+                          <th className="py-3 px-3 w-8">
+                            <input
+                              type="checkbox"
+                              checked={pendingOT.length > 0 && selectedOtIds.length === pendingOT.length}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedOtIds(pendingOT.map(req => req.id));
+                                } else {
+                                  setSelectedOtIds([]);
+                                }
+                              }}
+                              className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                              title="Select all pending for batch approval"
+                            />
+                          </th>
+                          <th className="py-3 px-3">Employee</th>
+                          <th className="py-3 px-3">Shift &amp; Date</th>
+                          <th className="py-3 px-3">OT Hours (@ +30%)</th>
+                          <th className="py-3 px-3">Reason / Operational Justification (Required)</th>
+                          <th className="py-3 px-3">Status</th>
+                          <th className="py-3 px-3 text-right">HR Clearance Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {filteredOT.map((req) => {
+                          const isRetro = req.isRetroactive || (req.date && req.date < todayStr);
+                          const isFatigueAlert = Number(req.hours) > 4;
+
+                          return (
+                            <tr key={req.id} className="hover:bg-slate-50/80 transition">
+                              <td className="py-3 px-3">
+                                {req.status === 'Pending' ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedOtIds.includes(req.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedOtIds(prev => [...prev, req.id]);
+                                      } else {
+                                        setSelectedOtIds(prev => prev.filter(id => id !== req.id));
+                                      }
+                                    }}
+                                    className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                                  />
+                                ) : (
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-slate-300" />
+                                )}
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="font-bold text-slate-900">{req.staffName}</div>
+                                <div className="text-[10px] font-mono text-slate-500">{req.employeeId}</div>
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="font-mono text-slate-900 font-bold">{req.date}</div>
+                                <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1">
+                                  <Sun className="h-3 w-3" /> Day Extension (No NSD)
+                                </span>
+                                {isRetro && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 block mt-1 w-fit">
+                                    ⚠️ Retroactive Request
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 font-mono text-slate-900 font-bold">
+                                <div>{req.hours} Hours</div>
+                                {isFatigueAlert && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-800 border border-rose-300 block mt-1 w-fit">
+                                    ⚠️ &gt;4h DOLE Alert
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 max-w-sm">
+                                {req.reasonCategory && (
+                                  <span className="text-[10px] font-bold text-slate-800 block uppercase tracking-wider mb-0.5">
+                                    {req.reasonCategory}
+                                  </span>
+                                )}
+                                <p className="text-slate-600 text-xs leading-snug" title={req.reason || req.task}>
+                                  {req.reason || req.task || 'Operational plant shift completion'}
+                                </p>
+                                {req.remarks && (
+                                  <p className="text-[10px] text-slate-400 mt-1 italic">
+                                    Note: {req.remarks}
+                                  </p>
+                                )}
+                              </td>
+                              <td className="py-3 px-3">
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                  req.status === 'Approved'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                    : req.status === 'Rejected'
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                    : 'bg-amber-100 text-amber-800 border border-amber-300'
+                                }`}>
+                                  {req.status === 'Approved' ? 'HR Authorized' : req.status === 'Rejected' ? 'HR Disapproved' : 'Pending HR'}
+                                </span>
+                                {req.reviewedBy && (
+                                  <div className="text-[9px] text-slate-400 mt-0.5">
+                                    by {req.reviewedBy}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                {req.status === 'Pending' ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => approveOvertimeRequest(req.id, 'HR Approved with verified operational reason')}
+                                      className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                      title="Authorize Overtime as HR"
+                                    >
+                                      <Check className="h-3.5 w-3.5" />
+                                      <span>Approve (HR)</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setRejectItem({ type: 'ot', id: req.id, staffName: req.staffName })}
+                                      className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                                      title="Disapprove Overtime"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                      <span>Reject</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400 font-medium">HR Evaluation Final</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
         </div>
       )}

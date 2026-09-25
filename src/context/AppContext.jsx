@@ -81,7 +81,12 @@ export function AppProvider({ children }) {
             salaryRateType: s.salaryRateType || 'monthly',
             workScheduleType: s.workScheduleType || '6_days',
             salaryRate: s.salaryRate !== undefined ? s.salaryRate : (s.baseSalary || 0),
-            filedSalary: s.filedSalary !== undefined ? s.filedSalary : 0
+            filedSalary: s.filedSalary !== undefined ? s.filedSalary : 0,
+            sickLeaveTotal: s.sickLeaveTotal !== undefined ? s.sickLeaveTotal : 5,
+            sickLeaveRemaining: s.sickLeaveRemaining !== undefined ? s.sickLeaveRemaining : 5,
+            vacationLeaveTotal: s.vacationLeaveTotal !== undefined ? s.vacationLeaveTotal : 5,
+            vacationLeaveRemaining: s.vacationLeaveRemaining !== undefined ? s.vacationLeaveRemaining : 5,
+            documents: s.documents || []
           }));
         }
       } catch (e) {}
@@ -417,51 +422,91 @@ export function AppProvider({ children }) {
 
   // Leave & Overtime Handlers
   const fileLeaveRequest = (data) => {
+    const staff = staffList.find(s => s.id === data.staffId);
+    const isSick = (data.type || '').toLowerCase().includes('sick');
+    const currentRemaining = isSick
+      ? (staff?.sickLeaveRemaining !== undefined ? staff.sickLeaveRemaining : 5)
+      : (staff?.vacationLeaveRemaining !== undefined ? staff.vacationLeaveRemaining : 5);
+    const requestedDays = Number(data.days) || 1;
+    const isExhausted = currentRemaining <= 0;
+    const hasExcess = requestedDays > currentRemaining;
+
     const newReq = {
       id: `leave-${Date.now()}`,
       status: 'Pending',
       submittedAt: new Date().toISOString(),
-      remarks: '',
+      remarks: isExhausted
+        ? 'Balance exhausted: Filed as Leave Without Pay (LWOP)'
+        : hasExcess
+        ? `Excess ${requestedDays - currentRemaining} day(s) filed as LWOP`
+        : '',
+      isUnpaid: isExhausted,
+      hasExcessUnpaid: hasExcess,
+      balanceAtFiling: currentRemaining,
       ...data
     };
     setLeaveRequests(prev => [newReq, ...prev]);
     addInAppNotification({
       title: 'Leave Request Submitted',
-      message: `Your ${data.type} request for ${data.days} day(s) was sent to HR for approval.`,
-      type: 'info'
+      message: `Your ${data.type} request for ${data.days} day(s) was sent to HR for approval.${isExhausted ? ' (Notice: 0 balance, filed as LWOP)' : ''}`,
+      type: isExhausted ? 'warning' : 'info'
     });
     logSystemEvent({
       category: 'STAFF',
       action: 'FILE_LEAVE',
-      details: `Leave filed by ${data.staffName} (${data.type}, ${data.days} days)`
+      details: `Leave filed by ${data.staffName} (${data.type}, ${data.days} days, remaining balance: ${currentRemaining})`
     });
     return newReq;
   };
 
   const approveLeaveRequest = (id, remarks = '') => {
+    let approvedReq = null;
     setLeaveRequests(prev => prev.map(req => {
       if (req.id === id) {
+        approvedReq = req;
+        const hrName = currentUser?.name ? `${currentUser.name} (HR)` : 'Genevieve Anne A. JURADO (HR)';
         const updated = {
           ...req,
           status: 'Approved',
-          reviewedBy: `${currentUser?.name || 'HR Manager'} (HR)`,
+          reviewedBy: hrName,
           reviewedAt: new Date().toISOString(),
           remarks: remarks || 'Approved by HR'
         };
         addInAppNotification({
           title: 'Leave Request Approved',
-          message: `Your ${req.type} starting ${req.startDate} has been approved.`,
+          message: `Your ${req.type} starting ${req.startDate} has been approved by HR.`,
           type: 'success'
         });
         logSystemEvent({
           category: 'STAFF',
           action: 'APPROVE_LEAVE',
-          details: `Leave #${id} for ${req.staffName} approved by ${currentUser?.name || 'HR'}`
+          details: `Leave #${id} for ${req.staffName} approved by ${hrName}`
         });
         return updated;
       }
       return req;
     }));
+
+    // Deduct days from employee remaining leave balances if not unpaid
+    if (approvedReq && !approvedReq.isUnpaid) {
+      const isSick = (approvedReq.type || '').toLowerCase().includes('sick');
+      const daysToDeduct = Number(approvedReq.days) || 1;
+      setStaffList(prev => prev.map(s => {
+        if (s.id === approvedReq.staffId) {
+          if (isSick) {
+            const current = s.sickLeaveRemaining !== undefined ? s.sickLeaveRemaining : 5;
+            const updated = Math.max(0, current - daysToDeduct);
+            return { ...s, sickLeaveRemaining: updated };
+          } else {
+            const current = s.vacationLeaveRemaining !== undefined ? s.vacationLeaveRemaining : 5;
+            const updated = Math.max(0, current - daysToDeduct);
+            return { ...s, vacationLeaveRemaining: updated };
+          }
+        }
+        return s;
+      }));
+    }
+    showToast(`Leave request approved and employee leave balance updated.`);
   };
 
   const rejectLeaveRequest = (id, remarks = '') => {
@@ -578,6 +623,60 @@ export function AppProvider({ children }) {
       }
       return req;
     }));
+  };
+
+  const batchApproveOvertimeRequests = (requestIds = [], batchRemarks = '') => {
+    if (!Array.isArray(requestIds) || requestIds.length === 0) return;
+    const hrName = currentUser?.name ? `${currentUser.name} (HR)` : 'Genevieve Anne A. JURADO (HR)';
+    setOvertimeRequests(prev => prev.map(req => {
+      if (requestIds.includes(req.id) && req.status === 'Pending') {
+        return {
+          ...req,
+          status: 'Approved',
+          reviewedBy: hrName,
+          reviewedAt: new Date().toISOString(),
+          remarks: batchRemarks || 'HR Batch Authorized with verified operational reason'
+        };
+      }
+      return req;
+    }));
+    logSystemEvent({
+      category: 'ATTENDANCE',
+      action: 'BATCH_APPROVE_OVERTIME',
+      details: `${requestIds.length} overtime request(s) batch authorized by ${hrName}`
+    });
+    showToast(`Batch approved ${requestIds.length} overtime request(s).`, 'success');
+  };
+
+  // Staff Digital Document Management
+  const uploadStaffDocument = (staffId, doc) => {
+    const newDoc = {
+      id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: doc.name || 'Document',
+      size: doc.size || 0,
+      type: doc.type || 'application/pdf',
+      uploadedAt: new Date().toISOString(),
+      dataUrl: doc.dataUrl || ''
+    };
+    setStaffList(prev => prev.map(s => {
+      if (s.id === staffId) {
+        const existingDocs = s.documents || [];
+        return { ...s, documents: [newDoc, ...existingDocs] };
+      }
+      return s;
+    }));
+    showToast(`Document "${newDoc.name}" uploaded successfully.`, 'success');
+    return newDoc;
+  };
+
+  const deleteStaffDocument = (staffId, docId) => {
+    setStaffList(prev => prev.map(s => {
+      if (s.id === staffId) {
+        return { ...s, documents: (s.documents || []).filter(d => d.id !== docId) };
+      }
+      return s;
+    }));
+    showToast('Document removed.');
   };
 
   // Sync with localStorage
@@ -2705,6 +2804,9 @@ export function AppProvider({ children }) {
         fileOvertimeRequest,
         approveOvertimeRequest,
         rejectOvertimeRequest,
+        batchApproveOvertimeRequests,
+        uploadStaffDocument,
+        deleteStaffDocument,
         // Notifications Center
         inAppNotifications,
         addInAppNotification,

@@ -63,6 +63,12 @@ export default function StaffFormModal({ staff, onClose }) {
     hdmfNo: staff?.hdmfNo || '',
     tin: staff?.tin || '',
 
+    // Leave Balances Allocation (Sick Leave & Leave With Pay)
+    sickLeaveTotal: staff?.sickLeaveTotal !== undefined ? staff.sickLeaveTotal : 5,
+    sickLeaveRemaining: staff?.sickLeaveRemaining !== undefined ? staff.sickLeaveRemaining : 5,
+    vacationLeaveTotal: staff?.vacationLeaveTotal !== undefined ? staff.vacationLeaveTotal : 5,
+    vacationLeaveRemaining: staff?.vacationLeaveRemaining !== undefined ? staff.vacationLeaveRemaining : 5,
+
     // Actual Compensation Setup
     salaryRateType: staff?.salaryRateType || 'monthly', // 'daily' | 'monthly'
     workScheduleType: staff?.workScheduleType || '6_days', // '5_days' | '6_days'
@@ -176,6 +182,39 @@ export default function StaffFormModal({ staff, onClose }) {
         bankAccount: (prev.bankAccount.startsWith('N/A') || prev.bankAccount === '') ? '' : prev.bankAccount
       }));
     }
+  };
+
+  // Statutory ID input masks
+  const formatSssNo = (val) => {
+    const digits = val.replace(/\D/g, '').slice(0, 10);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 9) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}-${digits.slice(2, 9)}-${digits.slice(9)}`;
+  };
+
+  const formatPhilHealthNo = (val) => {
+    const digits = val.replace(/\D/g, '').slice(0, 12);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 11) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}-${digits.slice(2, 11)}-${digits.slice(11)}`;
+  };
+
+  const formatHdmfNo = (val) => {
+    const digits = val.replace(/\D/g, '').slice(0, 12);
+    const parts = [];
+    for (let i = 0; i < digits.length; i += 4) {
+      parts.push(digits.slice(i, i + 4));
+    }
+    return parts.join('-');
+  };
+
+  const formatTin = (val) => {
+    const digits = val.replace(/\D/g, '').slice(0, 12);
+    const parts = [];
+    for (let i = 0; i < digits.length; i += 3) {
+      parts.push(digits.slice(i, i + 3));
+    }
+    return parts.join('-');
   };
 
   const statutoryBreakdown = computeFiledSalaryDeductions(formData.filedSalary);
@@ -611,9 +650,12 @@ export default function StaffFormModal({ staff, onClose }) {
 
           {/* Statutory Identification Numbers */}
           <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
-            <h4 className="font-bold text-slate-900 flex items-center gap-1.5">
-              <Shield className="h-3.5 w-3.5 text-slate-600" />
-              Government Statutory Identification Numbers
+            <h4 className="font-bold text-slate-900 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Shield className="h-3.5 w-3.5 text-slate-600" />
+                Government Statutory Identification Numbers
+              </span>
+              <span className="text-[10px] text-slate-500 font-normal">Auto-formatted with official PH masks</span>
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div>
@@ -622,7 +664,7 @@ export default function StaffFormModal({ staff, onClose }) {
                   type="text"
                   placeholder="03-8899001-1"
                   value={formData.sssNo}
-                  onChange={(e) => setFormData({ ...formData, sssNo: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, sssNo: formatSssNo(e.target.value) })}
                   className="w-full h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none font-mono text-xs focus:ring-2 focus:ring-slate-900"
                 />
               </div>
@@ -632,7 +674,7 @@ export default function StaffFormModal({ staff, onClose }) {
                   type="text"
                   placeholder="12-094820192-1"
                   value={formData.philHealthNo}
-                  onChange={(e) => setFormData({ ...formData, philHealthNo: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, philHealthNo: formatPhilHealthNo(e.target.value) })}
                   className="w-full h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none font-mono text-xs focus:ring-2 focus:ring-slate-900"
                 />
               </div>
@@ -642,7 +684,7 @@ export default function StaffFormModal({ staff, onClose }) {
                   type="text"
                   placeholder="1210-9482-0192"
                   value={formData.hdmfNo}
-                  onChange={(e) => setFormData({ ...formData, hdmfNo: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, hdmfNo: formatHdmfNo(e.target.value) })}
                   className="w-full h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none font-mono text-xs focus:ring-2 focus:ring-slate-900"
                 />
               </div>
@@ -652,9 +694,101 @@ export default function StaffFormModal({ staff, onClose }) {
                   type="text"
                   placeholder="100-200-001"
                   value={formData.tin}
-                  onChange={(e) => setFormData({ ...formData, tin: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, tin: formatTin(e.target.value) })}
                   className="w-full h-9 px-3 rounded-lg bg-white border border-slate-300 text-slate-900 outline-none font-mono text-xs focus:ring-2 focus:ring-slate-900"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Annual Leave Balances & Quota Setup */}
+          <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
+            <h4 className="font-bold text-slate-900 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-slate-600" />
+                Annual Leave Balances &amp; Quota Setup
+              </span>
+              <span className="text-[10px] text-slate-500 font-normal">Tracks remaining Sick Leave &amp; Leave With Pay</span>
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Sick Leave Quota */}
+              <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 text-xs">Sick Leave (SL)</span>
+                  <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    {formData.sickLeaveRemaining} of {formData.sickLeaveTotal} Days Left
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-500 text-[10px] uppercase font-bold mb-1">Total Annual Days</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.sickLeaveTotal}
+                      onChange={(e) => {
+                        const total = Math.max(0, Number(e.target.value) || 0);
+                        setFormData(prev => ({
+                          ...prev,
+                          sickLeaveTotal: total,
+                          sickLeaveRemaining: Math.min(prev.sickLeaveRemaining, total)
+                        }));
+                      }}
+                      className="w-full h-8 px-2.5 rounded-lg bg-slate-50 border border-slate-300 text-slate-900 font-mono text-xs text-center font-bold focus:ring-2 focus:ring-slate-900 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 text-[10px] uppercase font-bold mb-1">Remaining Balance</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={formData.sickLeaveTotal}
+                      value={formData.sickLeaveRemaining}
+                      onChange={(e) => setFormData(prev => ({ ...prev, sickLeaveRemaining: Math.max(0, Number(e.target.value) || 0) }))}
+                      className="w-full h-8 px-2.5 rounded-lg bg-white border border-slate-300 text-slate-900 font-mono text-xs text-center font-bold focus:ring-2 focus:ring-slate-900 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Leave With Pay / Vacation Leave Quota */}
+              <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 text-xs">Leave With Pay (VL / SIL)</span>
+                  <span className="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                    {formData.vacationLeaveRemaining} of {formData.vacationLeaveTotal} Days Left
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-slate-500 text-[10px] uppercase font-bold mb-1">Total Annual Days</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.vacationLeaveTotal}
+                      onChange={(e) => {
+                        const total = Math.max(0, Number(e.target.value) || 0);
+                        setFormData(prev => ({
+                          ...prev,
+                          vacationLeaveTotal: total,
+                          vacationLeaveRemaining: Math.min(prev.vacationLeaveRemaining, total)
+                        }));
+                      }}
+                      className="w-full h-8 px-2.5 rounded-lg bg-slate-50 border border-slate-300 text-slate-900 font-mono text-xs text-center font-bold focus:ring-2 focus:ring-slate-900 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 text-[10px] uppercase font-bold mb-1">Remaining Balance</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={formData.vacationLeaveTotal}
+                      value={formData.vacationLeaveRemaining}
+                      onChange={(e) => setFormData(prev => ({ ...prev, vacationLeaveRemaining: Math.max(0, Number(e.target.value) || 0) }))}
+                      className="w-full h-8 px-2.5 rounded-lg bg-white border border-slate-300 text-slate-900 font-mono text-xs text-center font-bold focus:ring-2 focus:ring-slate-900 outline-none"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Calculator, CheckCircle2, FileSpreadsheet, Eye, Lock, Shield } from 'lucide-react';
+import { ArrowLeft, Calculator, CheckCircle2, FileSpreadsheet, Eye, Lock, Shield, Landmark } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import PayslipDocument from '../payslip/PayslipDocument';
+import GovernmentRemittanceModal from './GovernmentRemittanceModal';
 
 export default function PayRunDetails({ payRunId, onBack }) {
   const { payRuns, staffList, calculatePayRun, approvePayRun, disbursePayRun, isAccounting } = useApp();
   const [selectedPayslipItem, setSelectedPayslipItem] = useState(null);
+  const [showGovModal, setShowGovModal] = useState(false);
 
   const payRun = payRuns.find(r => r.id === payRunId);
   if (!payRun) return <div>Pay run not found.</div>;
@@ -115,6 +117,16 @@ export default function PayRunDetails({ payRunId, onBack }) {
               <span>Approval Authority: Finance &amp; Accounting or Super Admin</span>
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => setShowGovModal(true)}
+            disabled={payRun.items.length === 0}
+            className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm transition"
+          >
+            <Landmark className="h-4 w-4 text-indigo-600" />
+            Government Remittance Reports
+          </button>
 
           <button
             type="button"
@@ -263,6 +275,15 @@ export default function PayRunDetails({ payRunId, onBack }) {
           payRun={payRun}
           item={selectedPayslipItem}
           onClose={() => setSelectedPayslipItem(null)}
+        />
+      )}
+
+      {/* Government Statutory Remittances Modal */}
+      {showGovModal && (
+        <GovernmentRemittanceModal
+          payRun={payRun}
+          staffList={staffList}
+          onClose={() => setShowGovModal(false)}
         />
       )}
 

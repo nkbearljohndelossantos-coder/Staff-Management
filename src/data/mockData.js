@@ -43,7 +43,12 @@ export const INITIAL_STAFF = generatedStaffData.staff.map(s => ({
   salaryRateType: s.salaryRateType || 'monthly',
   workScheduleType: s.workScheduleType || '6_days', // '5_days' | '6_days'
   salaryRate: s.salaryRate !== undefined ? s.salaryRate : (s.baseSalary || 0),
-  filedSalary: s.filedSalary !== undefined ? s.filedSalary : 0
+  filedSalary: s.filedSalary !== undefined ? s.filedSalary : 0,
+  sickLeaveTotal: s.sickLeaveTotal !== undefined ? s.sickLeaveTotal : 5,
+  sickLeaveRemaining: s.sickLeaveRemaining !== undefined ? s.sickLeaveRemaining : 5,
+  vacationLeaveTotal: s.vacationLeaveTotal !== undefined ? s.vacationLeaveTotal : 5,
+  vacationLeaveRemaining: s.vacationLeaveRemaining !== undefined ? s.vacationLeaveRemaining : 5,
+  documents: s.documents || []
 }));
 
 // No demo attendance logs

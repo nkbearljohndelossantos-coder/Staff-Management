@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   X,
   User,
@@ -14,8 +14,14 @@ import {
   Mail,
   Phone,
   KeyRound,
-  CreditCard
+  CreditCard,
+  Upload,
+  Download,
+  Trash2,
+  FileText,
+  CheckCircle2
 } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
 import {
   formatCurrency,
   computeFiledSalaryDeductions,
@@ -37,9 +43,14 @@ export default function StaffDetailModal({
   onEdit,
   onOpenDigitalId
 }) {
+  const { uploadStaffDocument, deleteStaffDocument, staffList } = useApp();
+  const fileInputRef = useRef(null);
+
   useEscapeKey('staff-detail-modal', ESCAPE_PRIORITY.MODAL, Boolean(staff), onClose);
 
   if (!staff) return null;
+
+  const currentStaff = staffList.find(s => s.id === staff.id) || staff;
 
   const salaryRateType = staff.salaryRateType || 'monthly';
   const isDaily = salaryRateType === 'daily';
@@ -406,7 +417,158 @@ export default function StaffDetailModal({
             </p>
           </div>
 
-          {/* Section 5: Barcode & Kiosk Integration */}
+          {/* Section 5: Annual Leave Balances Tracking */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                <Calendar className="h-3.5 w-3.5 text-slate-600" />
+                Annual Leave Balances &amp; Entitlements
+              </h4>
+              <span className="text-[10px] text-slate-500 font-medium">PH DOLE Compliant SIL</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Sick Leave Balance */}
+              <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 text-xs">Sick Leave (SL)</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    {currentStaff.sickLeaveRemaining !== undefined ? currentStaff.sickLeaveRemaining : 5} of {currentStaff.sickLeaveTotal !== undefined ? currentStaff.sickLeaveTotal : 5} Days
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-2 rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.round(((currentStaff.sickLeaveRemaining ?? 5) / (currentStaff.sickLeaveTotal || 5)) * 100))}%`
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] text-slate-500">
+                  <span>Used: {Math.max(0, (currentStaff.sickLeaveTotal ?? 5) - (currentStaff.sickLeaveRemaining ?? 5))} days</span>
+                  <span className="font-semibold text-slate-700">Remaining: {currentStaff.sickLeaveRemaining ?? 5} days</span>
+                </div>
+              </div>
+
+              {/* Leave With Pay / Vacation Leave Balance */}
+              <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 text-xs">Leave With Pay (VL / SIL)</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                    {currentStaff.vacationLeaveRemaining !== undefined ? currentStaff.vacationLeaveRemaining : 5} of {currentStaff.vacationLeaveTotal !== undefined ? currentStaff.vacationLeaveTotal : 5} Days
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.round(((currentStaff.vacationLeaveRemaining ?? 5) / (currentStaff.vacationLeaveTotal || 5)) * 100))}%`
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] text-slate-500">
+                  <span>Used: {Math.max(0, (currentStaff.vacationLeaveTotal ?? 5) - (currentStaff.vacationLeaveRemaining ?? 5))} days</span>
+                  <span className="font-semibold text-slate-700">Remaining: {currentStaff.vacationLeaveRemaining ?? 5} days</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 6: Personnel Documents & Digital Records */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+                  <FileText className="h-3.5 w-3.5 text-slate-600" />
+                  Personnel Documents &amp; Digital Attachments
+                </h4>
+                <p className="text-[10px] text-slate-500">Signed contracts, IDs, medical fit-to-work certificates</p>
+              </div>
+
+              <div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 8 * 1024 * 1024) {
+                      alert('File exceeds 8MB limit.');
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      uploadStaffDocument(currentStaff.id, {
+                        name: file.name,
+                        size: Math.round(file.size / 1024),
+                        type: file.type || 'application/pdf',
+                        dataUrl: reader.result
+                      });
+                    };
+                    reader.readAsDataURL(file);
+                    e.target.value = '';
+                  }}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                >
+                  <Upload className="h-3 w-3 text-white" />
+                  <span>Attach Document</span>
+                </button>
+              </div>
+            </div>
+
+            {(!currentStaff.documents || currentStaff.documents.length === 0) ? (
+              <div className="p-4 rounded-xl bg-white border border-slate-200 text-center">
+                <p className="text-slate-400 text-xs">No documents attached yet for this employee.</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Click &ldquo;Attach Document&rdquo; to upload contract or ID scans.</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                {currentStaff.documents.map(doc => (
+                  <div key={doc.id} className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-3 text-xs hover:border-slate-300 transition">
+                    <div className="flex items-center gap-2 truncate">
+                      <div className="p-1.5 rounded-lg bg-slate-100 text-slate-600 shrink-0">
+                        <FileText className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="truncate">
+                        <span className="font-bold text-slate-800 truncate block">{doc.name}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {doc.size} KB · {new Date(doc.uploadedAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {doc.dataUrl && (
+                        <a
+                          href={doc.dataUrl}
+                          download={doc.name}
+                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                          title="Download Document"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => deleteStaffDocument(currentStaff.id, doc.id)}
+                        className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition cursor-pointer"
+                        title="Delete Document"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Section 7: Barcode & Kiosk Integration */}
           <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="p-1.5 rounded-xl bg-white border border-slate-200 shadow-xs shrink-0">

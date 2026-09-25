@@ -858,6 +858,22 @@ export default function EmployeePortalView() {
               <span className="text-[10px] text-slate-500">Subject to HR approval</span>
             </div>
 
+            {/* Leave Balance Counters */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                <div className="text-[10px] text-slate-500 font-bold uppercase">Sick Leave (SL)</div>
+                <div className="text-sm font-black text-slate-900 font-mono mt-0.5">
+                  {currentStaff?.sickLeaveRemaining ?? 5} / {currentStaff?.sickLeaveTotal ?? 5} <span className="text-[10px] font-normal text-slate-500">Days</span>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                <div className="text-[10px] text-slate-500 font-bold uppercase">Leave With Pay (VL)</div>
+                <div className="text-sm font-black text-slate-900 font-mono mt-0.5">
+                  {currentStaff?.vacationLeaveRemaining ?? 5} / {currentStaff?.vacationLeaveTotal ?? 5} <span className="text-[10px] font-normal text-slate-500">Days</span>
+                </div>
+              </div>
+            </div>
+
             {myLeaves.length === 0 ? (
               <p className="text-xs text-slate-400 py-3 text-center">No leave applications filed yet.</p>
             ) : (
@@ -1891,6 +1907,318 @@ export default function EmployeePortalView() {
         <GatePassModal
           gatePass={selectedGatePass}
           onClose={() => setSelectedGatePass(null)}
+        />
+      )}
+
+      {/* Modal: File Leave Application */}
+      {showLeaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-slate-600" />
+                File Leave Application
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowLeaveModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Leave Type</label>
+                <select
+                  value={leaveForm.type}
+                  onChange={(e) => setLeaveForm({ ...leaveForm, type: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                >
+                  <option value="Vacation Leave">Vacation Leave (Leave With Pay / SIL)</option>
+                  <option value="Sick Leave">Sick Leave (SL)</option>
+                  <option value="Emergency Leave">Emergency Leave</option>
+                </select>
+              </div>
+
+              {/* Real-time Leave Balance Check */}
+              {(() => {
+                const isSick = (leaveForm.type || '').toLowerCase().includes('sick');
+                const rem = isSick
+                  ? (currentStaff?.sickLeaveRemaining !== undefined ? currentStaff.sickLeaveRemaining : 5)
+                  : (currentStaff?.vacationLeaveRemaining !== undefined ? currentStaff.vacationLeaveRemaining : 5);
+                const total = isSick
+                  ? (currentStaff?.sickLeaveTotal !== undefined ? currentStaff.sickLeaveTotal : 5)
+                  : (currentStaff?.vacationLeaveTotal !== undefined ? currentStaff.vacationLeaveTotal : 5);
+                const daysNum = Number(leaveForm.days) || 1;
+                const isExhausted = rem <= 0;
+                const hasExcess = daysNum > rem;
+
+                return (
+                  <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                    isExhausted
+                      ? 'bg-rose-50 border-rose-200 text-rose-800'
+                      : hasExcess
+                      ? 'bg-amber-50 border-amber-200 text-amber-800'
+                      : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  }`}>
+                    <div className="flex items-center justify-between font-bold">
+                      <span>Available Balance ({isSick ? 'Sick Leave' : 'Leave With Pay'}):</span>
+                      <span className="font-mono text-sm">{rem} of {total} Days</span>
+                    </div>
+                    {isExhausted ? (
+                      <p className="text-[11px] leading-snug">
+                        ⚠️ <strong>Leave Without Pay (LWOP):</strong> You have 0 paid days remaining. This application will be submitted as an unpaid absence for HR evaluation.
+                      </p>
+                    ) : hasExcess ? (
+                      <p className="text-[11px] leading-snug">
+                        ⚠️ <strong>Partial Unpaid:</strong> You requested {daysNum} days, but have {rem} paid days remaining. {daysNum - rem} day(s) will be treated as Leave Without Pay (LWOP).
+                      </p>
+                    ) : (
+                      <p className="text-[11px] leading-snug">
+                        ✓ <strong>Paid Leave:</strong> {daysNum} day(s) will be deducted from your remaining balance upon HR approval ({rem - daysNum} day(s) left after approval).
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={leaveForm.startDate}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, startDate: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">End Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={leaveForm.endDate}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Duration (Working Days)</label>
+                <input
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  required
+                  value={leaveForm.days}
+                  onChange={(e) => setLeaveForm({ ...leaveForm, days: Number(e.target.value) || 1 })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono text-center font-bold focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Reason / Medical Justification</label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="e.g. Annual personal vacation, fever / medical clinic consultation, family emergency"
+                  value={leaveForm.reason}
+                  onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setShowLeaveModal(false)}
+                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!leaveForm.reason.trim()) {
+                    alert('Please enter a reason for the leave application.');
+                    return;
+                  }
+                  fileLeaveRequest({
+                    staffId: currentStaff.id,
+                    staffName: `${currentStaff.firstName} ${currentStaff.lastName}`,
+                    employeeId: currentStaff.employeeId,
+                    type: leaveForm.type,
+                    startDate: leaveForm.startDate,
+                    endDate: leaveForm.endDate,
+                    days: Number(leaveForm.days) || 1,
+                    reason: leaveForm.reason
+                  });
+                  setShowLeaveModal(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm"
+              >
+                Submit Application to HR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Request Overtime Clearance to HR */}
+      {showOTModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Clock className="h-4 w-4 text-slate-600" />
+                Request Overtime Clearance to HR
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowOTModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <Sun className="h-3.5 w-3.5 text-amber-700" />
+                HR Mandatory Pre-Shift Overtime Policy
+              </div>
+              <p className="text-[11px] text-amber-800">
+                All overtime must be requested to HR with an operational reason before declaration and payroll credit. Overtime is credited at <strong>+30% per hour</strong>.
+              </p>
+            </div>
+
+            {/* DOLE Fatigue Warning if hours > 4 */}
+            {Number(otForm.hours) > 4 && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-rose-800">
+                  <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+                  DOLE Fatigue &amp; Health Advisory Warning
+                </div>
+                <p className="text-[11px] text-rose-700 leading-snug">
+                  Overtime exceeding <strong>4 hours</strong> in a single shift poses safety risks. Please verify emergency operational necessity and ensure adequate rest intervals.
+                </p>
+              </div>
+            )}
+
+            {/* Retroactive Request Warning if date is before today */}
+            {otForm.date < new Date().toISOString().split('T')[0] && (
+              <div className="p-3 rounded-xl bg-orange-50 border border-orange-200 text-orange-900 text-xs">
+                ⚠️ <strong>Retroactive Post-Shift Filing:</strong> The selected shift date has already passed. This voucher will be labeled as a Retroactive Request and subject to strict HR scrutiny.
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Overtime Shift Date</label>
+                <input
+                  type="date"
+                  required
+                  value={otForm.date}
+                  onChange={(e) => setOtForm({ ...otForm, date: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Requested Overtime Hours</label>
+                <input
+                  type="number"
+                  min={0.5}
+                  max={8}
+                  step={0.5}
+                  required
+                  value={otForm.hours}
+                  onChange={(e) => setOtForm({ ...otForm, hours: Number(e.target.value) || 1 })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono text-center font-bold focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Reason Category</label>
+                <select
+                  value={otForm.reasonCategory}
+                  onChange={(e) => setOtForm({ ...otForm, reasonCategory: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                >
+                  <option value="Urgent Client Delivery / Rush Order">Urgent Client Delivery / Rush Order</option>
+                  <option value="Machine Maintenance & IT Repairs">Machine Maintenance & IT Repairs</option>
+                  <option value="Plant Inventory Audit & Receiving">Plant Inventory Audit & Receiving</option>
+                  <option value="Critical Shift Cover / Staff Shortage">Critical Shift Cover / Staff Shortage</option>
+                  <option value="Sanitation & Facility Overhaul">Sanitation & Facility Overhaul</option>
+                  <option value="Special Engineering Project">Special Engineering Project</option>
+                  <option value="Other Operational Necessity">Other Operational Necessity</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">
+                  Operational Justification / Reason <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Explain the specific plant task, production line, or emergency reason requiring overtime clearance..."
+                  value={otForm.reason}
+                  onChange={(e) => setOtForm({ ...otForm, reason: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setShowOTModal(false)}
+                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!otForm.reason || otForm.reason.trim().length < 5) {
+                    alert('Please enter a detailed reason (at least 5 characters).');
+                    return;
+                  }
+                  const isRetro = otForm.date < new Date().toISOString().split('T')[0];
+                  fileOvertimeRequest({
+                    staffId: currentStaff.id,
+                    staffName: `${currentStaff.firstName} ${currentStaff.lastName}`,
+                    employeeId: currentStaff.employeeId,
+                    date: otForm.date,
+                    hours: Number(otForm.hours),
+                    reasonCategory: otForm.reasonCategory,
+                    reason: otForm.reason,
+                    task: otForm.reason,
+                    isRetroactive: isRetro
+                  });
+                  setShowOTModal(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm"
+              >
+                Submit Clearance Request to HR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: BIR Form 2316 Certificate */}
+      {showBIRModal && (
+        <BIR2316Modal
+          staff={currentStaff}
+          payRuns={payRuns}
+          onClose={() => setShowBIRModal(false)}
         />
       )}
 

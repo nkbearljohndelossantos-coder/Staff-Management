@@ -262,9 +262,48 @@ export default function PayslipDocument({ staff, payRun, item, payItem, onClose 
               </p>
             </div>
             <div className="text-2xl font-black font-mono text-white">
-              {formatCurrency(item.netPay)}
+              {formatCurrency(currentItem.netPay)}
             </div>
           </div>
+
+          {/* Statutory Benefits & Leave Entitlements Summary */}
+          {(() => {
+            const basicMonthly = Number(staff.salaryRate || staff.baseSalary || currentItem.salaryRate || 25000);
+            const accrued13th = Math.round((basicMonthly * 9) / 12); // Sept YTD
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 text-xs">
+                {/* Leave Balances Tracking */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase">
+                    <span>Leave Balances (Remaining)</span>
+                    <span className="text-emerald-700">Active</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
+                    <div>
+                      <span className="text-slate-500 text-[10px] block">Sick Leave (SL):</span>
+                      <span className="font-bold text-slate-900">{staff.sickLeaveRemaining ?? 5} / {staff.sickLeaveTotal ?? 5} Days</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 text-[10px] block">Leave w/ Pay (VL):</span>
+                      <span className="font-bold text-slate-900">{staff.vacationLeaveRemaining ?? 5} / {staff.vacationLeaveTotal ?? 5} Days</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* YTD 13th Month Pay Accrual */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase">
+                    <span>13th Month Pay (YTD Accrued)</span>
+                    <span className="text-blue-700">Dec Payout</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="font-mono font-bold text-slate-900 text-sm">{formatCurrency(accrued13th)}</span>
+                    <span className="text-[10px] text-slate-500">Accrued as of cut-off</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Barcode & Verification Footer */}
           <div className="pt-5 mt-5 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
