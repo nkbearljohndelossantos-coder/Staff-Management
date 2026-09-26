@@ -21,6 +21,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { getOfflineQueue, queueOfflineAction, clearOfflineQueue } from '../../utils/offlineSync';
 import { playPunchChime, playErrorBuzz } from '../../utils/audioFeedback';
+import { resolveStaffFromScan } from '../../utils/scanResolver';
 
 export default function BarcodeClockInKiosk() {
   const {
@@ -114,7 +115,7 @@ export default function BarcodeClockInKiosk() {
         timestamp: new Date().toISOString()
       });
       setOfflinePunchesCount(prev => prev + 1);
-      const matched = staffList.find(s => s.barcodeValue === inputVal.trim() || s.employeeId === inputVal.trim());
+      const matched = resolveStaffFromScan(staffList, inputVal);
       playPunchChime();
       setScanResult({
         staff: matched,

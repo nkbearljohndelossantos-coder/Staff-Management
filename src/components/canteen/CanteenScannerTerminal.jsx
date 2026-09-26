@@ -40,6 +40,11 @@ import {
   isAudioMuted,
   toggleAudioMute
 } from '../../utils/audioFeedback';
+import { 
+  resolveStaffFromScan, 
+  cleanScanInput, 
+  isStaffBarcodePattern 
+} from '../../utils/scanResolver';
 import CanteenZReadingModal from './CanteenZReadingModal';
 
 // Standard fallback catalog for barcode gun recognition
@@ -111,6 +116,16 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   const [soundMuted, setSoundMuted] = useState(() => isAudioMuted());
   const [showZReadingModal, setShowZReadingModal] = useState(false);
 
+  // Real-time scan feedback banner for cashier
+  const [scanStatusNotice, setScanStatusNotice] = useState(null);
+
+  // Auto-dismiss scan notice after 6s
+  useEffect(() => {
+    if (!scanStatusNotice) return;
+    const timer = setTimeout(() => setScanStatusNotice(null), 6000);
+    return () => clearTimeout(timer);
+  }, [scanStatusNotice]);
+
   const barcodeInputRef = useRef(null);
   const supervisorInputRef = useRef(null);
   const customerInputRef = useRef(null);
@@ -122,8 +137,9 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   useEscapeKey('canteen-customer-modal', ESCAPE_PRIORITY.MODAL, showCustomerModal, () => setShowCustomerModal(false));
   useEscapeKey('canteen-void-modal', ESCAPE_PRIORITY.MODAL, showVoidModal, () => setShowVoidModal(false));
   useEscapeKey('canteen-z-reading-modal', ESCAPE_PRIORITY.MODAL, showZReadingModal, () => setShowZReadingModal(false));
-  // 3. Docked mini-tabs / floating panels: Dismiss lastScanned item banner (Priority 10)
+  // 3. Docked mini-tabs / floating panels: Dismiss lastScanned item banner or notice (Priority 10)
   useEscapeKey('canteen-scanned-banner', ESCAPE_PRIORITY.DOCKED_TAB, Boolean(lastScanned), () => setLastScanned(null));
+  useEscapeKey('canteen-status-notice', ESCAPE_PRIORITY.DOCKED_TAB, Boolean(scanStatusNotice), () => setScanStatusNotice(null));
 
   // Focus barcode input on mount and after actions
   useEffect(() => {
@@ -165,75 +181,52 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   };
 
   // Resolves staff from barcode gun, digital ID QR, name, or employee ID
-  const resolveStaffFromScan = (inputStr) => {
-    if (!inputStr) return null;
-    const clean = inputStr.trim();
-
-    // 1. Direct barcode value or employee ID match
-    let staff = staffList.find(s => 
-      s.barcodeValue.toUpperCase() === clean.toUpperCase() ||
-      s.employeeId.toUpperCase() === clean.toUpperCase()
-    );
-    if (staff) return staff;
-
-    // 2. JSON formatted scan from Digital ID QR code
-    try {
-      if (clean.startsWith('{') && clean.endsWith('}')) {
-        const parsed = JSON.parse(clean);
-        const targetId = parsed.employeeId || parsed.id || parsed.barcode;
-        if (targetId) {
-          staff = staffList.find(s => 
-            s.employeeId.toUpperCase() === targetId.toUpperCase() || 
-            s.barcodeValue.toUpperCase() === targetId.toUpperCase()
-          );
-          if (staff) return staff;
-        }
-      }
-    } catch {}
-
-    // 3. Colon-separated barcode e.g. "NKB052026-0001:Glen Nobleza" or "NKB-ID:NKB052026-0001"
-    if (clean.includes(':')) {
-      const parts = clean.split(':').map(p => p.trim());
-      for (const p of parts) {
-        staff = staffList.find(s => 
-          s.employeeId.toUpperCase() === p.toUpperCase() || 
-          s.barcodeValue.toUpperCase() === p.toUpperCase()
-        );
-        if (staff) return staff;
-      }
-    }
-
-    // 4. Name match (case-insensitive full name or contains)
-    staff = staffList.find(s => {
-      const fullName = `${s.firstName} ${s.lastName}`.toLowerCase();
-      return fullName === clean.toLowerCase() || fullName.includes(clean.toLowerCase());
-    });
-    return staff || null;
+  const resolveStaff = (inputStr) => {
+    return resolveStaffFromScan(staffList, inputStr);
   };
 
   // Handle Barcode Scan
   const handleBarcodeSubmit = (e) => {
     e.preventDefault();
-    const clean = barcodeQuery.trim();
+    const clean = cleanScanInput(barcodeQuery);
     if (!clean) return;
 
-    // 1. Check if user scanned an employee badge (supports Name + ID + unlimited uses)
-    const foundStaff = resolveStaffFromScan(clean);
+    // 1. Check if user scanned an employee badge (supports Name, ID, QR code, Code 128, etc.)
+    const foundStaff = resolveStaff(clean);
     if (foundStaff) {
       setSelectedStaff(foundStaff);
       playBeep('success');
       setBarcodeQuery('');
+      setScanStatusNotice({
+        type: 'staff',
+        message: `Customer Identified: ${foundStaff.firstName} ${foundStaff.lastName} (${foundStaff.employeeId}) · Unlimited Pass Verified`,
+        timestamp: Date.now()
+      });
       return;
     }
 
-    // 2. Check in canteenInventory
+    // 2. Guard: If barcode matches employee badge patterns but wasn't found in masterlist, DO NOT add to cart!
+    if (isStaffBarcodePattern(clean)) {
+      playBeep('error');
+      setScanStatusNotice({
+        type: 'error',
+        message: `Employee ID / Badge "${clean}" was not recognized in the Employee Masterlist.`,
+        timestamp: Date.now()
+      });
+      alert(`Employee Badge or ID "${clean}" was not recognized in the Employee Masterlist.\n\nPlease verify the employee ID card or select staff manually.`);
+      setBarcodeQuery('');
+      barcodeInputRef.current?.focus();
+      return;
+    }
+
+    // 3. Check in canteenInventory
     let matchedItem = canteenInventory.find(i => 
-      i.barcode === clean || 
-      i.id === clean || 
-      i.name.toLowerCase().includes(clean.toLowerCase())
+      (i.barcode && cleanScanInput(i.barcode).toUpperCase() === clean.toUpperCase()) || 
+      (i.id && i.id.toUpperCase() === clean.toUpperCase()) || 
+      (i.name && i.name.toLowerCase().includes(clean.toLowerCase()))
     );
 
-    // 3. Fallback to standard supply catalog
+    // 4. Fallback to standard supply catalog
     if (!matchedItem && STANDARD_SUPPLIES_CATALOG[clean]) {
       const std = STANDARD_SUPPLIES_CATALOG[clean];
       matchedItem = {
@@ -248,21 +241,21 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       };
     }
 
-    // 4. Fallback: if not found, create a generic item from the code
+    // 5. If item not found in inventory or catalog: DO NOT generate dummy items!
     if (!matchedItem) {
-      matchedItem = {
-        id: `prod-scanned-${clean.slice(-6)}`,
-        barcode: clean,
-        name: `Scanned Item #${clean.slice(-6)}`,
-        brand: 'Canteen Item',
-        company: 'NKB Canteen',
-        sellingPrice: 25.00,
-        size: 'Unit',
-        category: 'Food & Pantry'
-      };
+      playBeep('error');
+      setScanStatusNotice({
+        type: 'error',
+        message: `Unrecognized Barcode "${clean}". Item not found in Canteen Inventory or Catalog.`,
+        timestamp: Date.now()
+      });
+      alert(`Barcode "${clean}" was not found in Canteen Inventory or Catalog.\n\nPlease register this product in Canteen Inventory before scanning.`);
+      setBarcodeQuery('');
+      barcodeInputRef.current?.focus();
+      return;
     }
 
-    // Add to cart
+    // Add valid merchandise item to cart
     playBeep('success');
     const unitPrice = Number(matchedItem.sellingPrice || matchedItem.unitPrice || 0);
 
@@ -408,15 +401,21 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
 
   const handleCustomerScanSubmit = (e) => {
     e.preventDefault();
-    const clean = customerSearchQuery.trim();
+    const clean = cleanScanInput(customerSearchQuery);
     if (!clean) return;
 
-    const found = resolveStaffFromScan(clean);
+    const found = resolveStaff(clean);
 
     if (found) {
       setSelectedStaff(found);
       setCustomerSearchQuery('');
       playBeep('success');
+      setScanStatusNotice({
+        type: 'staff',
+        message: `Customer Verified: ${found.firstName} ${found.lastName} (${found.employeeId})`,
+        timestamp: Date.now()
+      });
+      setShowCustomerModal(false);
     } else {
       playBeep('error');
       alert(`Employee ID, Name, or Barcode "${clean}" not recognized in Masterlist.`);
@@ -645,6 +644,34 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
           
           {/* Active Barcode Scanner Input */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+            {scanStatusNotice && (
+              <div className={`p-3 rounded-xl border flex items-center justify-between text-xs font-bold animate-in fade-in zoom-in-95 duration-200 ${
+                scanStatusNotice.type === 'staff' 
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950' 
+                  : 'bg-rose-50 border-rose-300 text-rose-950'
+              }`}>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {scanStatusNotice.type === 'staff' ? (
+                    <div className="p-1 rounded-lg bg-emerald-600 text-white shrink-0">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </div>
+                  ) : (
+                    <div className="p-1 rounded-lg bg-rose-600 text-white shrink-0">
+                      <AlertCircle className="h-4 w-4" />
+                    </div>
+                  )}
+                  <span className="truncate">{scanStatusNotice.message}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setScanStatusNotice(null)}
+                  className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-black/5 transition cursor-pointer shrink-0"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
                 <ScanBarcode className="h-4 w-4 text-slate-900" />
@@ -909,13 +936,32 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setShowCustomerModal(true)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold shrink-0 cursor-pointer"
-                >
-                  {selectedStaff ? 'Change ID' : 'Scan ID'}
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {selectedStaff && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedStaff(null);
+                        setScanStatusNotice({
+                          type: 'staff',
+                          message: 'Customer unlinked from current transaction.',
+                          timestamp: Date.now()
+                        });
+                      }}
+                      title="Clear Selected Customer"
+                      className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomerModal(true)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold shrink-0 cursor-pointer"
+                  >
+                    {selectedStaff ? 'Change ID' : 'Scan ID'}
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-slate-200">

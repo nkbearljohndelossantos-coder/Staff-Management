@@ -25,6 +25,7 @@ import {
   INITIAL_OVERTIME_REQUESTS
 } from '../data/mockData';
 import { generateNextEmployeeId, formatBarcodeValue } from '../utils/idGenerator';
+import { resolveStaffFromScan, cleanScanInput } from '../utils/scanResolver';
 import { computeEmployeePayroll } from '../utils/payrollCalculations';
 import { logAuditEvent, getAuditLogs } from '../utils/auditLogger';
 import { getOfflineQueue, clearOfflineQueue, initOfflineSyncListener } from '../utils/offlineSync';
@@ -833,13 +834,10 @@ export function AppProvider({ children }) {
   };
 
   const loginBarcode = (barcodeOrId, pin) => {
-    const cleanVal = barcodeOrId.trim().toUpperCase();
-    const found = staffList.find(
-      s => s.barcodeValue.toUpperCase() === cleanVal || s.employeeId.toUpperCase() === cleanVal
-    );
+    const found = resolveStaffFromScan(staffList, barcodeOrId);
 
     if (!found) {
-      return { success: false, message: 'Barcode / Employee ID not recognized.' };
+      return { success: false, message: 'Barcode / Employee ID not recognized in Staff Masterlist.' };
     }
 
     if (pin && found.pin && found.pin !== pin) {
@@ -982,13 +980,10 @@ export function AppProvider({ children }) {
 
   // Attendance Clock In / Out
   const clockInOrOut = (barcodeOrId) => {
-    const cleanVal = barcodeOrId.trim().toUpperCase();
-    const staff = staffList.find(
-      s => s.barcodeValue.toUpperCase() === cleanVal || s.employeeId.toUpperCase() === cleanVal
-    );
+    const staff = resolveStaffFromScan(staffList, barcodeOrId);
 
     if (!staff) {
-      return { success: false, message: 'Invalid barcode or ID. Staff record not found.' };
+      return { success: false, message: 'Invalid barcode or ID. Staff record not found in Masterlist.' };
     }
 
     const todayStr = new Date().toISOString().split('T')[0];
@@ -1713,11 +1708,12 @@ export function AppProvider({ children }) {
 
   const verifySupervisorBarcode = (barcodeOrId) => {
     if (!barcodeOrId) return { valid: false, message: 'Barcode or Employee ID is required.' };
-    const clean = barcodeOrId.trim().toUpperCase();
+    const clean = cleanScanInput(barcodeOrId).toUpperCase();
+    const supervisor = resolveStaffFromScan(staffList, clean);
 
     // 1. Canteen Administrator (Nannette MANUEL / NKB052026-0024)
     if (clean === 'NKB052026-0024' || clean === 'NKBCANTEEN' || clean.includes('MANUEL')) {
-      const supervisor = staffList.find(s => s.employeeId === 'NKB052026-0024') || {
+      const sup = supervisor || staffList.find(s => s.employeeId === 'NKB052026-0024') || {
         firstName: 'Nannette',
         lastName: 'MANUEL',
         employeeId: 'NKB052026-0024',
@@ -1726,15 +1722,15 @@ export function AppProvider({ children }) {
       return {
         valid: true,
         type: 'canteen_admin',
-        supervisorName: `${supervisor.firstName} ${supervisor.lastName}`,
-        badgeId: supervisor.employeeId,
-        title: supervisor.positionTitle || 'Canteen Administrator'
+        supervisorName: `${sup.firstName} ${sup.lastName}`,
+        badgeId: sup.employeeId,
+        title: sup.positionTitle || 'Canteen Administrator'
       };
     }
 
     // 2. IT Admin (Carl Laurence B. PATAGNAN / NKB092026-0048)
     if (clean === 'NKB092026-0048' || clean.includes('PATAGNAN')) {
-      const supervisor = staffList.find(s => s.employeeId === 'NKB092026-0048') || {
+      const sup = supervisor || staffList.find(s => s.employeeId === 'NKB092026-0048') || {
         firstName: 'Carl Laurence B.',
         lastName: 'PATAGNAN',
         employeeId: 'NKB092026-0048',
@@ -1743,15 +1739,15 @@ export function AppProvider({ children }) {
       return {
         valid: true,
         type: 'it_admin',
-        supervisorName: `${supervisor.firstName} ${supervisor.lastName}`,
-        badgeId: supervisor.employeeId,
+        supervisorName: `${sup.firstName} ${sup.lastName}`,
+        badgeId: sup.employeeId,
         title: 'IT Systems Administrator (Super Admin)'
       };
     }
 
     // 3. CEO (Katherine A. BELLA / NKB052026-0001)
     if (clean === 'NKB052026-0001' || clean.includes('BELLA')) {
-      const supervisor = staffList.find(s => s.employeeId === 'NKB052026-0001') || {
+      const sup = supervisor || staffList.find(s => s.employeeId === 'NKB052026-0001') || {
         firstName: 'Katherine A.',
         lastName: 'BELLA',
         employeeId: 'NKB052026-0001',
@@ -1760,24 +1756,20 @@ export function AppProvider({ children }) {
       return {
         valid: true,
         type: 'ceo',
-        supervisorName: `${supervisor.firstName} ${supervisor.lastName}`,
-        badgeId: supervisor.employeeId,
+        supervisorName: `${sup.firstName} ${sup.lastName}`,
+        badgeId: sup.employeeId,
         title: 'Chief Executive Officer (CEO)'
       };
     }
 
     // 4. Any staff with canteen or admin role matching barcode/ID
-    const found = staffList.find(
-      s => (s.barcodeValue && s.barcodeValue.toUpperCase() === clean) ||
-           (s.employeeId && s.employeeId.toUpperCase() === clean)
-    );
-    if (found && (found.role === 'canteen' || found.role === 'it_admin' || found.role === 'ceo' || found.role === 'admin')) {
+    if (supervisor && (supervisor.role === 'canteen' || supervisor.role === 'it_admin' || supervisor.role === 'ceo' || supervisor.role === 'admin')) {
       return {
         valid: true,
-        type: found.role,
-        supervisorName: `${found.firstName} ${found.lastName}`,
-        badgeId: found.employeeId,
-        title: found.positionTitle || 'Authorized Administrator'
+        type: supervisor.role,
+        supervisorName: `${supervisor.firstName} ${supervisor.lastName}`,
+        badgeId: supervisor.employeeId,
+        title: supervisor.positionTitle || 'Authorized Administrator'
       };
     }
 
