@@ -184,12 +184,17 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   // Broadcast current register state to 2nd monitor whenever cart, orderType, payment, or customer changes
   useEffect(() => {
     const total = cart.reduce((acc, it) => acc + (it.unitPrice * (it.quantity || 1)), 0);
+    const customerPayload = selectedStaff ? {
+      ...selectedStaff,
+      name: selectedStaff.name || `${selectedStaff.firstName || ''} ${selectedStaff.lastName || ''}`.trim() || selectedStaff.rawName || 'Employee'
+    } : null;
+
     broadcastPOSDisplayState({
       cart,
       lastScannedItem: lastScanned,
       orderType,
       paymentMethod,
-      customer: selectedStaff,
+      customer: customerPayload,
       grandTotal: total,
       status: cart.length > 0 ? 'SCANNING' : 'IDLE'
     });
@@ -609,7 +614,10 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
         cart: [],
         lastScannedItem: null,
         grandTotal: 0,
-        customer: selectedStaff,
+        customer: selectedStaff ? {
+          ...selectedStaff,
+          name: selectedStaff.name || `${selectedStaff.firstName || ''} ${selectedStaff.lastName || ''}`.trim() || selectedStaff.rawName || 'Employee'
+        } : null,
         status: 'COMPLETED',
         completedReceipt: res.receipt
       });

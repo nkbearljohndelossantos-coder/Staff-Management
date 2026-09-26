@@ -130,6 +130,20 @@ export default function CanteenCustomerDisplay() {
 
   const totalItemsCount = cart.reduce((acc, it) => acc + (it.quantity || 1), 0);
 
+  const customerFullName = customer ? (
+    customer.name ||
+    [customer.firstName, customer.lastName].filter(Boolean).join(' ') ||
+    customer.rawName ||
+    customer.employeeId ||
+    'Staff Member'
+  ) : '';
+
+  const customerInitials = customer ? (
+    ((customer.firstName?.[0] || '') + (customer.lastName?.[0] || '')).toUpperCase() ||
+    customerFullName.slice(0, 2).toUpperCase() ||
+    'ID'
+  ) : '';
+
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col justify-between selection:bg-slate-700 selection:text-white overflow-hidden p-4 sm:p-6 lg:p-8 select-none">
       
@@ -255,7 +269,7 @@ export default function CanteenCustomerDisplay() {
                   Payment Confirmed · Transaction Completed
                 </p>
                 <p className="text-sm font-medium mt-0.5">
-                  Receipt #{completedReceipt.receiptNo} · Official record generated for {completedReceipt.customerName}.
+                  Receipt #{completedReceipt.receiptNo} · Official record generated for {completedReceipt.customerName || customerFullName || 'Employee'}.
                 </p>
               </div>
             </div>
@@ -330,40 +344,65 @@ export default function CanteenCustomerDisplay() {
           <div className="space-y-5">
             
             {/* Customer Identification Card */}
-            <div className="rounded-2xl bg-slate-900 border border-slate-800 p-5 shadow-lg">
+            <div className={`rounded-2xl border p-5 shadow-lg transition-all duration-300 ${
+              customer 
+                ? 'bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/40 border-emerald-500/40 ring-1 ring-emerald-500/20' 
+                : 'bg-slate-900 border-slate-800'
+            }`}>
               <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-xs text-slate-400">
                 <span className="font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                  <UserCheck className="h-4 w-4 text-white" />
+                  <UserCheck className={`h-4 w-4 ${customer ? 'text-emerald-400' : 'text-white'}`} />
                   Customer Employee Identification
                 </span>
-                <span className="text-[10px] font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-                  {customer ? 'Verified' : 'Required'}
+                <span className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+                  customer 
+                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40' 
+                    : 'bg-slate-950 text-slate-400 border border-slate-800'
+                }`}>
+                  {customer ? (
+                    <>
+                      <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                      Verified
+                    </>
+                  ) : (
+                    'Required at Checkout'
+                  )}
                 </span>
               </div>
 
               {customer ? (
-                <div className="mt-4 flex items-center gap-4 animate-in fade-in duration-200">
+                <div className="mt-4 flex items-center gap-4 animate-in fade-in zoom-in-95 duration-200">
                   {customer.avatar ? (
                     <img
                       src={customer.avatar}
-                      alt={customer.name}
-                      className="w-14 h-14 rounded-2xl object-cover border-2 border-white/20 shadow-md bg-slate-950"
+                      alt={customerFullName}
+                      className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-400/40 shadow-lg bg-slate-950 shrink-0"
                     />
                   ) : (
-                    <div className="w-14 h-14 rounded-2xl bg-slate-950 border-2 border-slate-800 flex items-center justify-center text-white font-bold text-xl">
-                      {customer.name?.charAt(0) || 'E'}
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-900/60 to-slate-900 border-2 border-emerald-400/40 flex items-center justify-center text-emerald-300 font-black text-xl shadow-lg shrink-0 font-mono tracking-wider">
+                      {customerInitials}
                     </div>
                   )}
-                  <div>
-                    <h4 className="text-lg font-black text-white">{customer.name}</h4>
-                    <p className="text-xs font-mono font-bold text-slate-400 mt-0.5">
-                      {customer.employeeId}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-1.5">
-                      <span className="px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-[10px] font-semibold text-slate-300">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1 mb-0.5">
+                      <span>Customer Name</span>
+                    </div>
+                    <h4 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-snug truncate">
+                      {customerFullName}
+                    </h4>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                      <span className="px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-[11px] font-mono font-bold text-slate-300">
+                        {customer.employeeId || 'ID Verified'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-[11px] font-semibold text-slate-300 truncate max-w-[200px]">
                         {customer.departmentName || customer.department || 'Production & Manufacturing'}
                       </span>
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400">
+                      {customer.positionTitle && (
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-950/60 border border-emerald-500/30 text-[10px] font-bold text-emerald-300">
+                          {customer.positionTitle}
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/20">
                         <CheckCircle2 className="h-3 w-3" /> Badge Verified
                       </span>
                     </div>
@@ -371,13 +410,13 @@ export default function CanteenCustomerDisplay() {
                 </div>
               ) : (
                 <div className="mt-4 p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-3.5 text-slate-400">
-                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                    <ScanBarcode className="h-5 w-5 text-slate-400 animate-pulse" />
+                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 shrink-0">
+                    <ScanBarcode className="h-6 w-6 text-slate-400 animate-pulse" />
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-slate-300">Awaiting Employee Badge Scan</div>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Please scan your employee barcode badge or provide your Employee ID at checkout.
+                    <div className="text-xs font-bold text-slate-200">Awaiting Employee Badge Scan</div>
+                    <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                      Please scan your employee barcode badge or provide your Employee ID at the counter to identify your name and complete checkout.
                     </p>
                   </div>
                 </div>
