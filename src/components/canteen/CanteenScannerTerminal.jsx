@@ -27,7 +27,10 @@ import {
   Volume2,
   VolumeX,
   Calculator,
-  Clock
+  Clock,
+  Package,
+  Tag,
+  Sparkles
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useMultiScreenManager } from '../../utils/useMultiScreenManager';
@@ -129,9 +132,15 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   const barcodeInputRef = useRef(null);
   const supervisorInputRef = useRef(null);
   const customerInputRef = useRef(null);
+  const suggestionsBoxRef = useRef(null);
+
+  // Product suggestions & autocomplete states
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   // Progressive Escape dismissal:
-  // 1. Suggestions: Clear customer search query first if populated (Priority 80)
+  // 1. Suggestions: Dismiss product suggestions dropdown or clear customer search (Priority 80)
+  useEscapeKey('canteen-product-suggestions', ESCAPE_PRIORITY.SUGGESTION, showSuggestions, () => setShowSuggestions(false));
   useEscapeKey('canteen-customer-search-query', ESCAPE_PRIORITY.SUGGESTION, showCustomerModal && Boolean(customerSearchQuery), () => setCustomerSearchQuery(''));
   // 2. Modals: Close customer modal, void modal, or z-reading modal (Priority 40)
   useEscapeKey('canteen-customer-modal', ESCAPE_PRIORITY.MODAL, showCustomerModal, () => setShowCustomerModal(false));
@@ -140,6 +149,17 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   // 3. Docked mini-tabs / floating panels: Dismiss lastScanned item banner or notice (Priority 10)
   useEscapeKey('canteen-scanned-banner', ESCAPE_PRIORITY.DOCKED_TAB, Boolean(lastScanned), () => setLastScanned(null));
   useEscapeKey('canteen-status-notice', ESCAPE_PRIORITY.DOCKED_TAB, Boolean(scanStatusNotice), () => setScanStatusNotice(null));
+
+  // Dismiss suggestions dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (suggestionsBoxRef.current && !suggestionsBoxRef.current.contains(e.target) && !barcodeInputRef.current?.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   // Focus barcode input on mount and after actions
   useEffect(() => {
@@ -185,9 +205,174 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     return resolveStaffFromScan(staffList, inputStr);
   };
 
+  // Live product suggestions based on barcode, product name, brand, or category
+  const productSuggestions = React.useMemo(() => {
+    const q = (barcodeQuery || '').trim().toLowerCase();
+    if (!q) return [];
+
+    const cleanQ = cleanScanInput(q).toLowerCase();
+    const cleanAlnum = q.replace(/[^a-z0-9]/g, '');
+    const inventoryList = Array.isArray(canteenInventory) ? canteenInventory : [];
+
+    const matches = inventoryList.filter(item => {
+      const bCode = (item.barcode || '').toLowerCase();
+      const bAlnum = bCode.replace(/[^a-z0-9]/g, '');
+      const name = (item.name || '').toLowerCase();
+      const brand = (item.brand || '').toLowerCase();
+      const cat = (item.category || '').toLowerCase();
+      const id = (item.id || '').toLowerCase();
+
+      return (
+        bCode.includes(cleanQ) ||
+        (cleanAlnum.length >= 3 && bAlnum.includes(cleanAlnum)) ||
+        name.includes(q) ||
+        brand.includes(q) ||
+        cat.includes(q) ||
+        id.includes(q)
+      );
+    });
+
+    // Also search STANDARD_SUPPLIES_CATALOG
+    Object.entries(STANDARD_SUPPLIES_CATALOG).forEach(([code, std]) => {
+      if (matches.length >= 12) return;
+      const bCode = code.toLowerCase();
+      const name = std.name.toLowerCase();
+      const brand = (std.brand || '').toLowerCase();
+      const cat = (std.category || '').toLowerCase();
+
+      if (
+        (bCode.includes(cleanQ) || name.includes(q) || brand.includes(q) || cat.includes(q)) &&
+        !matches.some(m => m.barcode === code)
+      ) {
+        matches.push({
+          id: `prod-${code}`,
+          barcode: code,
+          name: std.name,
+          brand: std.brand,
+          company: std.company,
+          sellingPrice: std.sellingPrice,
+          size: std.size,
+          category: std.category,
+          quantity: 50,
+          stockStatus: 'In Stock'
+        });
+      }
+    });
+
+    // Rank: exact barcode > barcode starts with > name starts with > contains
+    return matches.sort((a, b) => {
+      const aBar = (a.barcode || '').toLowerCase();
+      const bBar = (b.barcode || '').toLowerCase();
+      const aName = (a.name || '').toLowerCase();
+      const bName = (b.name || '').toLowerCase();
+
+      if (aBar === cleanQ) return -1;
+      if (bBar === cleanQ) return 1;
+      if (aBar.startsWith(cleanQ) && !bBar.startsWith(cleanQ)) return -1;
+      if (!aBar.startsWith(cleanQ) && bBar.startsWith(cleanQ)) return 1;
+      if (aName.startsWith(q) && !bName.startsWith(q)) return -1;
+      if (!aName.startsWith(q) && bName.startsWith(q)) return 1;
+      return 0;
+    }).slice(0, 8);
+  }, [barcodeQuery, canteenInventory]);
+
+  // Top quick suggestions for fast checkout identification
+  const popularQuickPicks = React.useMemo(() => {
+    if (!Array.isArray(canteenInventory) || canteenInventory.length === 0) {
+      return Object.entries(STANDARD_SUPPLIES_CATALOG).slice(0, 6).map(([code, item]) => ({
+        id: `prod-${code}`,
+        barcode: code,
+        name: item.name,
+        sellingPrice: item.sellingPrice,
+        brand: item.brand,
+        category: item.category
+      }));
+    }
+    const staples = ['water', 'coffee', 'bread', 'noodles', 'snack', 'biscuit'];
+    const candidates = canteenInventory.filter(item => {
+      const n = (item.name || '').toLowerCase();
+      return staples.some(s => n.includes(s));
+    });
+    return (candidates.length >= 6 ? candidates : canteenInventory).slice(0, 6);
+  }, [canteenInventory]);
+
+  // Centralized helper to add product to cart with audio & display feedback
+  const addItemToCart = (item) => {
+    if (!item) return;
+    playBeep('success');
+    const unitPrice = Number(item.sellingPrice || item.unitPrice || 0);
+
+    setLastScanned({
+      name: item.name,
+      brand: item.brand || 'NKB',
+      barcode: item.barcode,
+      unitPrice: unitPrice,
+      size: item.size || item.unit || 'Unit'
+    });
+
+    setCart(prev => {
+      const idx = prev.findIndex(p => (item.barcode && p.barcode === item.barcode) || p.id === item.id);
+      if (idx !== -1) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], quantity: (copy[idx].quantity || 1) + 1 };
+        return copy;
+      }
+      return [
+        ...prev,
+        {
+          id: item.id || `item-${Date.now()}`,
+          barcode: item.barcode || '',
+          name: item.name,
+          brand: item.brand || 'NKB',
+          size: item.size || item.unit || '',
+          unitPrice: unitPrice,
+          quantity: 1
+        }
+      ];
+    });
+
+    setScanStatusNotice({
+      type: 'staff',
+      message: `Added: ${item.name} · ₱${unitPrice.toFixed(2)}`,
+      timestamp: Date.now()
+    });
+
+    setBarcodeQuery('');
+    setShowSuggestions(false);
+    setHighlightedIndex(-1);
+    barcodeInputRef.current?.focus();
+  };
+
+  // Keyboard navigation for product suggestions dropdown
+  const handleKeyDown = (e) => {
+    if (!showSuggestions || productSuggestions.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev < productSuggestions.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev > 0 ? prev - 1 : productSuggestions.length - 1));
+    } else if (e.key === 'Enter') {
+      if (highlightedIndex >= 0 && productSuggestions[highlightedIndex]) {
+        e.preventDefault();
+        addItemToCart(productSuggestions[highlightedIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+    }
+  };
+
   // Handle Barcode Scan
   const handleBarcodeSubmit = (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+
+    // If an item is highlighted via keyboard in suggestions, select it
+    if (highlightedIndex >= 0 && productSuggestions[highlightedIndex]) {
+      addItemToCart(productSuggestions[highlightedIndex]);
+      return;
+    }
+
     const clean = cleanScanInput(barcodeQuery);
     if (!clean) return;
 
@@ -197,6 +382,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       setSelectedStaff(foundStaff);
       playBeep('success');
       setBarcodeQuery('');
+      setShowSuggestions(false);
       setScanStatusNotice({
         type: 'staff',
         message: `Customer Identified: ${foundStaff.firstName} ${foundStaff.lastName} (${foundStaff.employeeId}) · Unlimited Pass Verified`,
@@ -215,6 +401,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       });
       alert(`Employee Badge or ID "${clean}" was not recognized in the Employee Masterlist.\n\nPlease verify the employee ID card or select staff manually.`);
       setBarcodeQuery('');
+      setShowSuggestions(false);
       barcodeInputRef.current?.focus();
       return;
     }
@@ -241,8 +428,14 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       };
     }
 
-    // 5. If item not found in inventory or catalog: DO NOT generate dummy items!
+    // 5. If item not found in inventory or catalog:
     if (!matchedItem) {
+      // If user typed search terms and there are suggestions, pick the top suggestion
+      if (productSuggestions.length > 0) {
+        addItemToCart(productSuggestions[0]);
+        return;
+      }
+
       playBeep('error');
       setScanStatusNotice({
         type: 'error',
@@ -251,45 +444,12 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       });
       alert(`Barcode "${clean}" was not found in Canteen Inventory or Catalog.\n\nPlease register this product in Canteen Inventory before scanning.`);
       setBarcodeQuery('');
+      setShowSuggestions(false);
       barcodeInputRef.current?.focus();
       return;
     }
 
-    // Add valid merchandise item to cart
-    playBeep('success');
-    const unitPrice = Number(matchedItem.sellingPrice || matchedItem.unitPrice || 0);
-
-    setLastScanned({
-      name: matchedItem.name,
-      brand: matchedItem.brand || 'NKB',
-      barcode: matchedItem.barcode,
-      unitPrice: unitPrice,
-      size: matchedItem.size || 'Unit'
-    });
-
-    setCart(prev => {
-      const idx = prev.findIndex(p => p.barcode === matchedItem.barcode || p.id === matchedItem.id);
-      if (idx !== -1) {
-        const copy = [...prev];
-        copy[idx] = { ...copy[idx], quantity: (copy[idx].quantity || 1) + 1 };
-        return copy;
-      }
-      return [
-        ...prev,
-        {
-          id: matchedItem.id || `item-${Date.now()}`,
-          barcode: matchedItem.barcode || clean,
-          name: matchedItem.name,
-          brand: matchedItem.brand || 'NKB',
-          size: matchedItem.size || '',
-          unitPrice: unitPrice,
-          quantity: 1
-        }
-      ];
-    });
-
-    setBarcodeQuery('');
-    barcodeInputRef.current?.focus();
+    addItemToCart(matchedItem);
   };
 
   const handleUpdateQuantity = (id, delta) => {
@@ -677,29 +837,160 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                 <ScanBarcode className="h-4 w-4 text-slate-900" />
                 Scan Item Barcode (Physical Barcode Gun or Manual Code)
               </label>
-              <span className="text-[10px] font-mono text-slate-400">Press ENTER to record</span>
+
+              {/* Exact or single product identified live pill */}
+              {productSuggestions.length === 1 && barcodeQuery.trim().length >= 2 ? (
+                <span className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                  <Check className="h-3 w-3 text-emerald-600" />
+                  Identified: {productSuggestions[0].name.slice(0, 22)}... (₱{Number(productSuggestions[0].sellingPrice).toFixed(2)})
+                </span>
+              ) : (
+                <span className="text-[10px] font-mono text-slate-400">Press ENTER or click suggestion to record</span>
+              )}
             </div>
 
-            <form onSubmit={handleBarcodeSubmit} className="flex gap-2">
-              <div className="relative flex-1">
-                <ScanBarcode className="absolute left-3.5 top-3 h-5 w-5 text-slate-400" />
-                <input
-                  ref={barcodeInputRef}
-                  type="text"
-                  value={barcodeQuery}
-                  onChange={(e) => setBarcodeQuery(e.target.value)}
-                  placeholder="Scan product barcode (e.g. 4800016644012)..."
-                  className="w-full h-11 pl-11 pr-4 rounded-xl border-2 border-slate-200 focus:border-slate-900 text-sm font-mono text-slate-900 placeholder-slate-400 focus:outline-none transition shadow-inner bg-slate-50 focus:bg-white"
-                />
+            <form onSubmit={handleBarcodeSubmit} className="relative">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <ScanBarcode className="absolute left-3.5 top-3 h-5 w-5 text-slate-400" />
+                  <input
+                    ref={barcodeInputRef}
+                    type="text"
+                    value={barcodeQuery}
+                    onChange={(e) => {
+                      setBarcodeQuery(e.target.value);
+                      setShowSuggestions(true);
+                      setHighlightedIndex(-1);
+                    }}
+                    onFocus={() => {
+                      if (barcodeQuery.trim()) setShowSuggestions(true);
+                    }}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Scan barcode or type name (e.g. 4800016644012, Colgate, Bread, Coffee)..."
+                    className="w-full h-11 pl-11 pr-8 rounded-xl border-2 border-slate-200 focus:border-slate-900 text-sm font-mono text-slate-900 placeholder-slate-400 focus:outline-none transition shadow-inner bg-slate-50 focus:bg-white"
+                  />
+                  {barcodeQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBarcodeQuery('');
+                        setShowSuggestions(false);
+                        setHighlightedIndex(-1);
+                        barcodeInputRef.current?.focus();
+                      }}
+                      className="absolute right-2.5 top-3 p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  className="h-11 px-5 sm:px-6 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition cursor-pointer shadow-sm flex items-center gap-2 shrink-0"
+                >
+                  <Plus className="h-4 w-4 text-white" />
+                  Record Item
+                </button>
               </div>
-              <button
-                type="submit"
-                className="h-11 px-6 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition cursor-pointer shadow-sm flex items-center gap-2"
-              >
-                <Plus className="h-4 w-4 text-white" />
-                Record Item
-              </button>
+
+              {/* Suggestions Popover Dropdown */}
+              {showSuggestions && productSuggestions.length > 0 && (
+                <div 
+                  ref={suggestionsBoxRef}
+                  className="absolute left-0 right-0 top-full mt-1.5 bg-white border-2 border-slate-900 rounded-2xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-100 max-h-80 overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
+                >
+                  <div className="px-3.5 py-2 bg-slate-900 text-white flex items-center justify-between text-[11px] font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <Package className="h-3.5 w-3.5 text-cyan-400" />
+                      Product Suggestions ({productSuggestions.length})
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
+                      Use ↑↓ to navigate · ENTER or click to select
+                    </span>
+                  </div>
+
+                  {productSuggestions.map((item, idx) => (
+                    <div
+                      key={item.id || item.barcode}
+                      onClick={() => addItemToCart(item)}
+                      onMouseEnter={() => setHighlightedIndex(idx)}
+                      className={`p-3 flex items-center justify-between gap-3 cursor-pointer transition ${
+                        highlightedIndex === idx ? 'bg-cyan-50/90 border-l-4 border-l-cyan-600' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-xs text-slate-900 truncate">
+                            {item.name}
+                          </span>
+                          {item.brand && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold shrink-0">
+                              {item.brand}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 mt-1">
+                          <span className="flex items-center gap-1 font-mono text-slate-700 font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            <ScanBarcode className="h-3 w-3 text-slate-500" />
+                            {item.barcode}
+                          </span>
+                          {item.category && <span>· {item.category}</span>}
+                          {item.quantity !== undefined && (
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                              item.quantity > 10 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : item.quantity > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            }`}>
+                              {item.quantity > 10 ? `${item.quantity} in stock` : item.quantity > 0 ? `Low: ${item.quantity}` : 'Out of stock'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="text-right">
+                          <div className="text-sm font-black font-mono text-slate-950">
+                            ₱{Number(item.sellingPrice || 0).toFixed(2)}
+                          </div>
+                          <div className="text-[9px] text-slate-400 uppercase font-semibold">
+                            {item.size || item.unit || 'Unit'}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addItemToCart(item);
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                        >
+                          <Plus className="h-3 w-3" />
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </form>
+
+            {/* Quick Identification Suggestion Chips */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1">
+                <Sparkles className="h-3 w-3 text-amber-500" />
+                Quick Suggestions:
+              </span>
+              {popularQuickPicks.map(item => (
+                <button
+                  key={item.id || item.barcode}
+                  type="button"
+                  onClick={() => addItemToCart(item)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 text-[11px] font-medium transition cursor-pointer border border-slate-200/80 flex items-center gap-1.5 shadow-2xs"
+                  title={`Barcode: ${item.barcode} · ₱${Number(item.sellingPrice).toFixed(2)}`}
+                >
+                  <span className="font-semibold">{item.name.length > 20 ? `${item.name.slice(0, 20)}...` : item.name}</span>
+                  <span className="font-mono font-bold text-slate-900 text-[10px]">₱{Number(item.sellingPrice).toFixed(2)}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Recently Scanned Item Highlight Card */}
