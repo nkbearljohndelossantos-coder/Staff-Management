@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { 
   Building2, 
   Truck, 
+  Package,
   PackageCheck, 
   Store, 
   ScanBarcode, 

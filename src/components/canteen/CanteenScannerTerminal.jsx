@@ -26,7 +26,8 @@ import {
   Zap,
   Volume2,
   VolumeX,
-  Calculator
+  Calculator,
+  Clock
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useMultiScreenManager } from '../../utils/useMultiScreenManager';
