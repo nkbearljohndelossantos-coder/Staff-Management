@@ -33,47 +33,23 @@ import { scanForAnomalies, saveAnomalyEvaluation, computeExecutiveRiskSummary, g
 const AppContext = createContext(null);
 
 
-const SCHEMA_VERSION = 'v9_canteen_inventory_355_items';
+// DATA PRESERVATION POLICY:
+// NEVER wipe, truncate, reset, or delete user-uploaded data or local transactions upon updates.
+// All user modifications, staff edits, inventory updates, and transaction records remain permanently preserved.
 if (typeof window !== 'undefined') {
-  if (localStorage.getItem('nkb_schema_version') !== SCHEMA_VERSION) {
-    [
-      'nkb_hr_staff',
-      'nkb_hr_departments',
-      'nkb_hr_positions',
-      'nkb_hr_attendance',
-      'nkb_hr_coop_balances',
-      'nkb_hr_coop_ledger',
-      'nkb_hr_coop_withdrawals',
-      'nkb_hr_cash_loans',
-      'nkb_hr_canteen_drawer',
-      'nkb_hr_cash_advances',
-      'nkb_canteen_receipts',
-      'nkb_canteen_gate_passes',
-      'nkb_canteen_void_logs',
-      'nkb_canteen_inventory',
-      'nkb_canteen_categories',
-      'nkb_canteen_pos_display_sync',
-      'nkb_product_journeys',
-      'nkb_hr_payruns',
-      'nkb_hr_current_user',
-      'nkb_canteen_pos',
-      'nkb_hr_leave_requests',
-      'nkb_hr_overtime_requests',
-      'nkb_notifications',
-      'nkb_it_anomaly_evaluations'
-    ].forEach(key => localStorage.removeItem(key));
-    localStorage.setItem('nkb_schema_version', SCHEMA_VERSION);
+  if (!localStorage.getItem('nkb_system_initialized')) {
+    localStorage.setItem('nkb_system_initialized', 'true');
   }
 }
 
 export function AppProvider({ children }) {
-  // Load from localStorage or fallback to initial mock data, ensuring all 92 Masterlist staff exist
+  // Load from localStorage, strictly preserving all user records and edits
   const [staffList, setStaffList] = useState(() => {
     const saved = localStorage.getItem('nkb_hr_staff');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.length === INITIAL_STAFF.length && parsed.some(s => s.employeeId === 'NKBCANTEEN') && parsed.every(s => s.baseSalary === 0)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map(s => ({
             ...s,
             dateHired: s.dateHired || s.hireDate || '2026-05-01',
