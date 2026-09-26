@@ -311,10 +311,20 @@ export default function CanteenCustomerDisplay() {
                       <tr key={item.id || idx} className="hover:bg-slate-850/60 transition">
                         <td className="px-4 py-3.5">
                           <div className="font-bold text-white text-sm">{item.name}</div>
-                          <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 mt-0.5">
                             <span className="font-semibold text-slate-300">{item.brand || 'NKB'}</span>
                             {item.size && <span>· {item.size}</span>}
                             {item.barcode && <span className="font-mono text-[10px] text-slate-500">[{item.barcode}]</span>}
+                            {item.discountPercent > 0 && (
+                              <span className="px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                                -{item.discountPercent}% Discount
+                              </span>
+                            )}
+                            {item.notes && (
+                              <span className="text-[10px] text-cyan-300 italic">
+                                Note: {item.notes}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-3 py-3.5 text-center font-bold text-white text-sm">

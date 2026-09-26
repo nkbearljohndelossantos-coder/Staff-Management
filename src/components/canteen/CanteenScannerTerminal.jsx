@@ -49,6 +49,7 @@ import {
   isStaffBarcodePattern 
 } from '../../utils/scanResolver';
 import CanteenZReadingModal from './CanteenZReadingModal';
+import CanteenItemScanModal from './CanteenItemScanModal';
 
 // Standard fallback catalog for barcode gun recognition
 const STANDARD_SUPPLIES_CATALOG = {
@@ -138,7 +139,29 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
+  // Canteen Item Scan & Details Pop-up Modal State
+  const [showItemScanModal, setShowItemScanModal] = useState(false);
+  const [editingCartItem, setEditingCartItem] = useState(null);
+
+  // Global F2 shortcut to open Canteen Item Scan Pop-up
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if (e.key === 'F2') {
+        e.preventDefault();
+        setEditingCartItem(null);
+        setShowItemScanModal(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
+
   // Progressive Escape dismissal:
+  // 0. Item Scan Modal (Priority 40)
+  useEscapeKey('canteen-item-scan-modal', ESCAPE_PRIORITY.MODAL, showItemScanModal, () => {
+    setShowItemScanModal(false);
+    setEditingCartItem(null);
+  });
   // 1. Suggestions: Dismiss product suggestions dropdown or clear customer search (Priority 80)
   useEscapeKey('canteen-product-suggestions', ESCAPE_PRIORITY.SUGGESTION, showSuggestions, () => setShowSuggestions(false));
   useEscapeKey('canteen-customer-search-query', ESCAPE_PRIORITY.SUGGESTION, showCustomerModal && Boolean(customerSearchQuery), () => setCustomerSearchQuery(''));
@@ -346,6 +369,74 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     setShowSuggestions(false);
     setHighlightedIndex(-1);
     barcodeInputRef.current?.focus();
+  };
+
+  // Handler for confirmed item from CanteenItemScanModal
+  const handleConfirmItemFromModal = (itemData) => {
+    if (!itemData) return;
+    playBeep('success');
+    const unitPrice = Number(itemData.unitPrice || 0);
+
+    setLastScanned({
+      name: itemData.name,
+      brand: itemData.brand || 'NKB',
+      barcode: itemData.barcode,
+      unitPrice: unitPrice,
+      size: itemData.size || 'Unit'
+    });
+
+    setCart(prev => {
+      // If editing existing item by id
+      const editIdx = prev.findIndex(p => p.id === itemData.id);
+      if (editIdx !== -1) {
+        const copy = [...prev];
+        copy[editIdx] = {
+          ...copy[editIdx],
+          ...itemData
+        };
+        return copy;
+      }
+
+      // Check if existing product by barcode (non-custom, without special notes/discounts)
+      if (itemData.barcode && !itemData.isCustom) {
+        const existingIdx = prev.findIndex(p => p.barcode === itemData.barcode && !p.notes && !p.discountPercent);
+        if (existingIdx !== -1 && !itemData.notes && !itemData.discountPercent) {
+          const copy = [...prev];
+          copy[existingIdx] = {
+            ...copy[existingIdx],
+            quantity: (copy[existingIdx].quantity || 1) + (itemData.quantity || 1)
+          };
+          return copy;
+        }
+      }
+
+      return [
+        ...prev,
+        {
+          id: itemData.id || `item-${Date.now()}`,
+          barcode: itemData.barcode || '',
+          name: itemData.name,
+          brand: itemData.brand || 'NKB',
+          size: itemData.size || '',
+          unitPrice: unitPrice,
+          originalPrice: itemData.originalPrice || unitPrice,
+          discountPercent: itemData.discountPercent || 0,
+          quantity: itemData.quantity || 1,
+          orderType: itemData.orderType || orderType,
+          category: itemData.category || '',
+          notes: itemData.notes || '',
+          isCustom: Boolean(itemData.isCustom)
+        }
+      ];
+    });
+
+    setScanStatusNotice({
+      type: 'staff',
+      message: `${editingCartItem ? 'Updated' : 'Recorded'}: ${itemData.quantity}x ${itemData.name} · ₱${(unitPrice * itemData.quantity).toFixed(2)}`,
+      timestamp: Date.now()
+    });
+
+    setEditingCartItem(null);
   };
 
   // Keyboard navigation for product suggestions dropdown
@@ -729,6 +820,21 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
             )}
           </button>
 
+          {/* Canteen Item Scanner & Detail Entry Pop-up Launch Button (F2) */}
+          <button
+            type="button"
+            onClick={() => {
+              setEditingCartItem(null);
+              setShowItemScanModal(true);
+            }}
+            className="h-11 px-3.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white border border-cyan-400/50 text-xs font-black flex items-center gap-2 transition cursor-pointer shadow-md select-none"
+            title="Open Canteen Items Scanner & Detail Pop-up Screen (F2)"
+          >
+            <ScanBarcode className="h-4 w-4 text-cyan-200" />
+            <span className="hidden sm:inline">Items Pop-up</span>
+            <kbd className="px-1.5 py-0.5 rounded bg-cyan-800 text-cyan-200 font-mono text-[10px]">F2</kbd>
+          </button>
+
           {/* Shift Closeout / Z-Reading Modal Launch Button */}
           <button
             type="button"
@@ -840,21 +946,38 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
               </div>
             )}
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
                 <ScanBarcode className="h-4 w-4 text-slate-900" />
                 Scan Item Barcode (Physical Barcode Gun or Manual Code)
               </label>
 
-              {/* Exact or single product identified live pill */}
-              {productSuggestions.length === 1 && barcodeQuery.trim().length >= 2 ? (
-                <span className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
-                  <Check className="h-3 w-3 text-emerald-600" />
-                  Identified: {productSuggestions[0].name.slice(0, 22)}... (₱{Number(productSuggestions[0].sellingPrice).toFixed(2)})
-                </span>
-              ) : (
-                <span className="text-[10px] font-mono text-slate-400">Press ENTER or click suggestion to record</span>
-              )}
+              <div className="flex items-center gap-2">
+                {/* Launch Item Scanner Pop-up Screen Button (F2) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingCartItem(null);
+                    setShowItemScanModal(true);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-300 text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  title="Open screen-fitted items lookup & details pop-up (F2)"
+                >
+                  <Package className="h-3.5 w-3.5 text-cyan-600" />
+                  <span>Items Pop-up</span>
+                  <kbd className="px-1.5 py-0.2 rounded bg-cyan-200/80 text-cyan-950 font-mono text-[9px]">F2</kbd>
+                </button>
+
+                {/* Exact or single product identified live pill */}
+                {productSuggestions.length === 1 && barcodeQuery.trim().length >= 2 ? (
+                  <span className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                    <Check className="h-3 w-3 text-emerald-600" />
+                    Identified: {productSuggestions[0].name.slice(0, 22)}... (₱{Number(productSuggestions[0].sellingPrice).toFixed(2)})
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono text-slate-400 hidden sm:inline">Press ENTER to record</span>
+                )}
+              </div>
             </div>
 
             <form onSubmit={handleBarcodeSubmit} className="relative">
@@ -1160,13 +1283,33 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                 </div>
               ) : (
                 cart.map(item => (
-                  <div key={item.id} className="py-3 px-2 flex items-center justify-between gap-3 hover:bg-slate-50/80 rounded-xl transition">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-bold text-xs text-slate-900 truncate">{item.name}</div>
-                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                  <div key={item.id} className="py-3 px-2 flex items-center justify-between gap-3 hover:bg-slate-50/80 rounded-xl transition group">
+                    <div 
+                      onClick={() => {
+                        setEditingCartItem(item);
+                        setShowItemScanModal(true);
+                      }}
+                      className="min-w-0 flex-1 cursor-pointer"
+                      title="Click to edit item quantity, unit price, discount, or notes [F2]"
+                    >
+                      <div className="font-bold text-xs text-slate-900 truncate hover:text-cyan-700 flex items-center gap-1.5">
+                        <span>{item.name}</span>
+                        {item.discountPercent > 0 && (
+                          <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold">
+                            -{item.discountPercent}%
+                          </span>
+                        )}
+                        {item.isCustom && (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 text-[9px] font-bold">
+                            Custom
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 mt-0.5">
                         <span>{item.brand}</span>
                         {item.size && <span>· {item.size}</span>}
                         <span className="font-mono text-slate-400">₱{item.unitPrice.toFixed(2)}</span>
+                        {item.notes && <span className="italic text-slate-600 bg-slate-100 px-1 rounded truncate max-w-[150px]">"{item.notes}"</span>}
                       </div>
                     </div>
 
@@ -1194,6 +1337,19 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                     <div className="w-16 text-right font-mono font-bold text-xs text-slate-900 shrink-0">
                       ₱{(item.unitPrice * (item.quantity || 1)).toFixed(2)}
                     </div>
+
+                    {/* Edit Details Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCartItem(item);
+                        setShowItemScanModal(true);
+                      }}
+                      title="Edit item details, price, discount, or notes"
+                      className="p-1 rounded-md text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 transition cursor-pointer shrink-0"
+                    >
+                      <Tag className="h-3.5 w-3.5" />
+                    </button>
 
                     {/* Void Item Button (Requires Supervisor Barcode) */}
                     <button
@@ -1596,6 +1752,20 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       {showZReadingModal && (
         <CanteenZReadingModal onClose={() => setShowZReadingModal(false)} />
       )}
+
+      {/* Canteen Item Scanner & Detail Entry Pop-up Modal (F2) */}
+      <CanteenItemScanModal
+        isOpen={showItemScanModal}
+        onClose={() => {
+          setShowItemScanModal(false);
+          setEditingCartItem(null);
+          barcodeInputRef.current?.focus();
+        }}
+        canteenInventory={canteenInventory}
+        onConfirmItem={handleConfirmItemFromModal}
+        initialItem={editingCartItem}
+        defaultOrderType={orderType}
+      />
 
     </div>
   );
