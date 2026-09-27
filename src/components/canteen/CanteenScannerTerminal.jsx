@@ -143,21 +143,40 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   const [showItemScanModal, setShowItemScanModal] = useState(false);
   const [editingCartItem, setEditingCartItem] = useState(null);
 
-  // Global F2 shortcut to open Canteen Item Scan Pop-up
+  // Fast Checkout Keyboard Wizard State
+  // null | 'ORDER_NATURE' | 'PAYMENT_METHOD' | 'CONFIRM'
+  const [checkoutWizardStep, setCheckoutWizardStep] = useState(null);
+  const [lastScannedItemId, setLastScannedItemId] = useState(null);
+
+  // Global F2 (Items Pop-up) & F9 (Fast Checkout) Shortcuts
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
       if (e.key === 'F2') {
         e.preventDefault();
         setEditingCartItem(null);
         setShowItemScanModal(prev => !prev);
+      } else if (e.key === 'F9') {
+        e.preventDefault();
+        if (cart.length > 0) {
+          if (selectedStaff) {
+            setCheckoutWizardStep(prev => prev ? null : 'ORDER_NATURE');
+          } else {
+            initiateCheckout();
+          }
+        }
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, []);
+  }, [cart, selectedStaff]);
 
   // Progressive Escape dismissal:
-  // 0. Item Scan Modal (Priority 40)
+  // 0. Fast Checkout Wizard (Priority 50)
+  useEscapeKey('canteen-checkout-wizard', ESCAPE_PRIORITY.MODAL, Boolean(checkoutWizardStep), () => {
+    setCheckoutWizardStep(null);
+    barcodeInputRef.current?.focus();
+  });
+  // 0b. Item Scan Modal (Priority 40)
   useEscapeKey('canteen-item-scan-modal', ESCAPE_PRIORITY.MODAL, showItemScanModal, () => {
     setShowItemScanModal(false);
     setEditingCartItem(null);
@@ -342,20 +361,26 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       brand: item.brand || 'NKB',
       barcode: item.barcode,
       unitPrice: unitPrice,
-      size: item.size || item.unit || 'Unit'
+      size: item.size || item.unit || 'Unit',
+      quantity: 1
     });
 
     setCart(prev => {
       const idx = prev.findIndex(p => (item.barcode && p.barcode === item.barcode) || p.id === item.id);
       if (idx !== -1) {
         const copy = [...prev];
-        copy[idx] = { ...copy[idx], quantity: (copy[idx].quantity || 1) + 1 };
+        const nextQty = (copy[idx].quantity || 1) + 1;
+        copy[idx] = { ...copy[idx], quantity: nextQty };
+        setLastScannedItemId(copy[idx].id);
+        setLastScanned(prevLs => prevLs ? { ...prevLs, quantity: nextQty } : null);
         return copy;
       }
+      const newId = item.id || `item-${Date.now()}`;
+      setLastScannedItemId(newId);
       return [
         ...prev,
         {
-          id: item.id || `item-${Date.now()}`,
+          id: newId,
           barcode: item.barcode || '',
           name: item.name,
           brand: item.brand || 'NKB',
@@ -378,6 +403,47 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     barcodeInputRef.current?.focus();
   };
 
+  // Set quantity for the most recently scanned item (or specific item id)
+  const setRecentItemQuantity = (newQty, targetId = null) => {
+    const qty = parseInt(newQty, 10);
+    if (isNaN(qty) || qty <= 0) return false;
+
+    let updatedName = '';
+    let updatedPrice = 0;
+
+    setCart(prev => {
+      if (prev.length === 0) return prev;
+      const targetIdx = targetId 
+        ? prev.findIndex(p => p.id === targetId)
+        : (lastScannedItemId ? prev.findIndex(p => p.id === lastScannedItemId) : prev.length - 1);
+      
+      const effectiveIdx = targetIdx !== -1 ? targetIdx : prev.length - 1;
+      const copy = [...prev];
+      const targetItem = copy[effectiveIdx];
+      updatedName = targetItem.name;
+      updatedPrice = targetItem.unitPrice;
+
+      copy[effectiveIdx] = {
+        ...targetItem,
+        quantity: qty
+      };
+      setLastScannedItemId(targetItem.id);
+      return copy;
+    });
+
+    playBeep('success');
+    setLastScanned(prev => prev ? { ...prev, quantity: qty } : null);
+    setScanStatusNotice({
+      type: 'staff',
+      message: `Set Quantity: ${qty}x ${updatedName || 'Item'} (₱${((updatedPrice || 0) * qty).toFixed(2)})`,
+      timestamp: Date.now()
+    });
+    setBarcodeQuery('');
+    setShowSuggestions(false);
+    barcodeInputRef.current?.focus();
+    return true;
+  };
+
   // Handler for confirmed item from CanteenItemScanModal
   const handleConfirmItemFromModal = (itemData) => {
     if (!itemData) return;
@@ -389,7 +455,8 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       brand: itemData.brand || 'NKB',
       barcode: itemData.barcode,
       unitPrice: unitPrice,
-      size: itemData.size || 'Unit'
+      size: itemData.size || 'Unit',
+      quantity: itemData.quantity || 1
     });
 
     setCart(prev => {
@@ -401,6 +468,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
           ...copy[editIdx],
           ...itemData
         };
+        setLastScannedItemId(copy[editIdx].id);
         return copy;
       }
 
@@ -409,18 +477,22 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
         const existingIdx = prev.findIndex(p => p.barcode === itemData.barcode && !p.notes && !p.discountPercent);
         if (existingIdx !== -1 && !itemData.notes && !itemData.discountPercent) {
           const copy = [...prev];
+          const newQ = (copy[existingIdx].quantity || 1) + (itemData.quantity || 1);
           copy[existingIdx] = {
             ...copy[existingIdx],
-            quantity: (copy[existingIdx].quantity || 1) + (itemData.quantity || 1)
+            quantity: newQ
           };
+          setLastScannedItemId(copy[existingIdx].id);
           return copy;
         }
       }
 
+      const newId = itemData.id || `item-${Date.now()}`;
+      setLastScannedItemId(newId);
       return [
         ...prev,
         {
-          id: itemData.id || `item-${Date.now()}`,
+          id: newId,
           barcode: itemData.barcode || '',
           name: itemData.name,
           brand: itemData.brand || 'NKB',
@@ -446,27 +518,62 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     setEditingCartItem(null);
   };
 
-  // Keyboard navigation for product suggestions dropdown
+  // Keyboard navigation for product suggestions dropdown & keyboard quick shortcuts
   const handleKeyDown = (e) => {
-    if (!showSuggestions || productSuggestions.length === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlightedIndex(prev => (prev < productSuggestions.length - 1 ? prev + 1 : 0));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlightedIndex(prev => (prev > 0 ? prev - 1 : productSuggestions.length - 1));
-    } else if (e.key === 'Enter') {
-      if (highlightedIndex >= 0 && productSuggestions[highlightedIndex]) {
+    // 1. Suggestions dropdown navigation
+    if (showSuggestions && productSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
         e.preventDefault();
-        addItemToCart(productSuggestions[highlightedIndex]);
+        setHighlightedIndex(prev => (prev < productSuggestions.length - 1 ? prev + 1 : 0));
+        return;
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setHighlightedIndex(prev => (prev > 0 ? prev - 1 : productSuggestions.length - 1));
+        return;
+      } else if (e.key === 'Enter') {
+        if (highlightedIndex >= 0 && productSuggestions[highlightedIndex]) {
+          e.preventDefault();
+          addItemToCart(productSuggestions[highlightedIndex]);
+          return;
+        }
+      } else if (e.key === 'Escape') {
+        setShowSuggestions(false);
+        return;
       }
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
+    }
+
+    // 2. Physical keypad '+' or '-' when barcode input is empty: increments/decrements last scanned item
+    if (!barcodeQuery && cart.length > 0) {
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        const targetId = lastScannedItemId || cart[cart.length - 1]?.id;
+        handleUpdateQuantity(targetId, 1);
+        playBeep('scan');
+        return;
+      } else if (e.key === '-') {
+        e.preventDefault();
+        const targetId = lastScannedItemId || cart[cart.length - 1]?.id;
+        handleUpdateQuantity(targetId, -1);
+        playBeep('scan');
+        return;
+      }
+    }
+
+    // 3. Fast Checkout Trigger: If barcode input is empty and cashier presses Enter
+    if (!barcodeQuery && e.key === 'Enter') {
+      if (cart.length > 0) {
+        e.preventDefault();
+        if (selectedStaff) {
+          setCheckoutWizardStep('ORDER_NATURE');
+        } else {
+          initiateCheckout();
+        }
+        return;
+      }
     }
   };
 
-  // Handle Barcode Scan
+  // Handle Barcode Scan & Quick Quantity Command
   const handleBarcodeSubmit = (e) => {
     if (e && e.preventDefault) e.preventDefault();
 
@@ -476,8 +583,36 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       return;
     }
 
-    const clean = cleanScanInput(barcodeQuery);
-    if (!clean) return;
+    const raw = (barcodeQuery || '').trim();
+    const clean = cleanScanInput(raw);
+    if (!clean) {
+      // Empty Enter: Trigger checkout wizard if cart has items
+      if (cart.length > 0) {
+        if (selectedStaff) {
+          setCheckoutWizardStep('ORDER_NATURE');
+        } else {
+          initiateCheckout();
+        }
+      }
+      return;
+    }
+
+    // 0. CHECK IF INPUT IS A QUANTITY OVERWRITE COMMAND FOR THE RECENTLY SCANNED ITEM:
+    // Matches formats: "2", "3", "15", "*3", "3*", "x4", "4x", "@5"
+    // (Only applies if cart is not empty and input is short numbers 1-99 or has multiplier syntax)
+    const isPureShortDigits = /^\d{1,2}$/.test(clean); // e.g. "2", "3", "12"
+    const hasMultiplierSyntax = /^[*x@]\s*\d{1,3}$/i.test(raw) || /^\d{1,3}\s*[*x]$/i.test(raw);
+
+    if (cart.length > 0 && (isPureShortDigits || hasMultiplierSyntax)) {
+      const match = raw.match(/\d{1,3}/);
+      if (match) {
+        const parsedQty = parseInt(match[0], 10);
+        if (parsedQty > 0) {
+          setRecentItemQuantity(parsedQty);
+          return;
+        }
+      }
+    }
 
     // 1. Check if user scanned an employee badge (supports Name, ID, QR code, Code 128, etc.)
     const foundStaff = resolveStaff(clean);
@@ -486,11 +621,22 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       playBeep('success');
       setBarcodeQuery('');
       setShowSuggestions(false);
-      setScanStatusNotice({
-        type: 'staff',
-        message: `Customer Identified: ${foundStaff.firstName} ${foundStaff.lastName} (${foundStaff.employeeId}) · Unlimited Pass Verified`,
-        timestamp: Date.now()
-      });
+
+      // If cart already has items, immediately engage Fast Checkout Wizard!
+      if (cart.length > 0) {
+        setCheckoutWizardStep('ORDER_NATURE');
+        setScanStatusNotice({
+          type: 'staff',
+          message: `Customer Verified: ${foundStaff.firstName} ${foundStaff.lastName}. Use ← Left (Dine In) or → Right (Takeout)`,
+          timestamp: Date.now()
+        });
+      } else {
+        setScanStatusNotice({
+          type: 'staff',
+          message: `Customer Identified: ${foundStaff.firstName} ${foundStaff.lastName} (${foundStaff.employeeId}) · Ready for Items Scan`,
+          timestamp: Date.now()
+        });
+      }
       return;
     }
 
@@ -673,17 +819,98 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       setSelectedStaff(found);
       setCustomerSearchQuery('');
       playBeep('success');
-      setScanStatusNotice({
-        type: 'staff',
-        message: `Customer Verified: ${found.firstName} ${found.lastName} (${found.employeeId})`,
-        timestamp: Date.now()
-      });
       setShowCustomerModal(false);
+
+      if (cart.length > 0) {
+        setCheckoutWizardStep('ORDER_NATURE');
+        setScanStatusNotice({
+          type: 'staff',
+          message: `Customer Verified: ${found.firstName} ${found.lastName}. Use ← Left (Dine In) or → Right (Takeout)`,
+          timestamp: Date.now()
+        });
+      } else {
+        setScanStatusNotice({
+          type: 'staff',
+          message: `Customer Verified: ${found.firstName} ${found.lastName} (${found.employeeId})`,
+          timestamp: Date.now()
+        });
+      }
     } else {
       playBeep('error');
       alert(`Employee ID, Name, or Barcode "${clean}" not recognized in Masterlist.`);
     }
   };
+
+  // Global Keyboard Navigation for Fast Checkout Wizard
+  useEffect(() => {
+    if (!checkoutWizardStep) return;
+
+    const handleWizardKeyDown = (e) => {
+      // Allow browser shortcuts (like F11)
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+      if (checkoutWizardStep === 'ORDER_NATURE') {
+        if (e.key === 'ArrowLeft' || e.key === '1') {
+          e.preventDefault();
+          setOrderType('Dine In');
+          playBeep('scan');
+          setCheckoutWizardStep('PAYMENT_METHOD');
+        } else if (e.key === 'ArrowRight' || e.key === '2') {
+          e.preventDefault();
+          setOrderType('Grocery');
+          playBeep('scan');
+          setCheckoutWizardStep('PAYMENT_METHOD');
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          playBeep('scan');
+          setCheckoutWizardStep('PAYMENT_METHOD');
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setCheckoutWizardStep(null);
+          barcodeInputRef.current?.focus();
+        }
+      } else if (checkoutWizardStep === 'PAYMENT_METHOD') {
+        if (e.key === 'ArrowLeft' || e.key === '1') {
+          e.preventDefault();
+          setPaymentMethod('Salary Deduction');
+          playBeep('scan');
+          setCheckoutWizardStep('CONFIRM');
+        } else if (e.key === 'ArrowRight' || e.key === '2') {
+          e.preventDefault();
+          setPaymentMethod('Cash');
+          playBeep('scan');
+          setCheckoutWizardStep('CONFIRM');
+        } else if (e.key === 'ArrowUp' || e.key === 'Backspace') {
+          e.preventDefault();
+          setCheckoutWizardStep('ORDER_NATURE');
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          playBeep('scan');
+          setCheckoutWizardStep('CONFIRM');
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setCheckoutWizardStep(null);
+          barcodeInputRef.current?.focus();
+        }
+      } else if (checkoutWizardStep === 'CONFIRM') {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          setCheckoutWizardStep(null);
+          handleFinalizeCheckout();
+        } else if (e.key === 'ArrowUp' || e.key === 'Backspace' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          setCheckoutWizardStep('PAYMENT_METHOD');
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setCheckoutWizardStep(null);
+          barcodeInputRef.current?.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleWizardKeyDown);
+    return () => window.removeEventListener('keydown', handleWizardKeyDown);
+  }, [checkoutWizardStep, orderType, paymentMethod, cart, selectedStaff]);
 
   // Complete Order
   const handleFinalizeCheckout = () => {
@@ -728,6 +955,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       setClaimedDate('');
       setLateReason('');
       setShowCustomerModal(false);
+      setCheckoutWizardStep(null);
 
       if (onShowReceipt) onShowReceipt(res.receipt);
       if (res.gatePass && onShowGatePass) onShowGatePass(res.gatePass);
@@ -1131,30 +1359,83 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
             </div>
           </div>
 
-          {/* Recently Scanned Item Highlight Card */}
+          {/* Recently Scanned Item Highlight Card with Quick-Quantity Bar */}
           {lastScanned && (
-            <div className="bg-slate-900 border-2 border-slate-800 rounded-2xl p-4 text-white shadow-lg flex items-center justify-between animate-in zoom-in-95 duration-150">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-white text-slate-950 font-black">
-                  <Check className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                    Just Scanned &amp; Recorded
+            <div className="bg-slate-900 border-2 border-slate-800 rounded-2xl p-4 text-white shadow-lg space-y-3 animate-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-white text-slate-950 font-black">
+                    <Check className="h-5 w-5" />
                   </div>
-                  <h3 className="text-base font-black text-white">{lastScanned.name}</h3>
-                  <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-300">
-                    <span className="font-semibold text-slate-200">{lastScanned.brand}</span>
-                    <span>·</span>
-                    <span className="font-mono text-slate-400">{lastScanned.barcode}</span>
+                  <div>
+                    <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                      Just Scanned &amp; Recorded
+                    </div>
+                    <h3 className="text-base font-black text-white">{lastScanned.name}</h3>
+                    <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-300">
+                      <span className="font-semibold text-slate-200">{lastScanned.brand}</span>
+                      <span>·</span>
+                      <span className="font-mono text-slate-400">{lastScanned.barcode}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Unit Price</div>
+                  <div className="text-2xl font-black text-white font-mono">
+                    ₱{lastScanned.unitPrice.toFixed(2)}
                   </div>
                 </div>
               </div>
 
-              <div className="text-right">
-                <div className="text-[10px] uppercase font-bold text-slate-400">Unit Price</div>
-                <div className="text-2xl font-black text-white font-mono">
-                  ₱{lastScanned.unitPrice.toFixed(2)}
+              {/* Accessible Quick-Quantity Bar */}
+              <div className="pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Quantity:</span>
+                  <span className="px-2 py-0.5 rounded-md bg-slate-800 text-emerald-400 font-mono font-bold text-xs">
+                    {cart.find(c => c.id === lastScannedItemId || c.barcode === lastScanned.barcode)?.quantity || lastScanned.quantity || 1}x
+                  </span>
+                  <span className="text-[10px] text-slate-400 hidden sm:inline">(type number or + / -)</span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5, 10].map(n => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setRecentItemQuantity(n)}
+                      className={`px-2 py-1 rounded-lg text-xs font-mono font-bold transition cursor-pointer ${
+                        (cart.find(c => c.id === lastScannedItemId || c.barcode === lastScanned.barcode)?.quantity || 1) === n
+                          ? 'bg-emerald-500 text-slate-950 shadow'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                      }`}
+                      title={`Set quantity to ${n}x`}
+                    >
+                      {n}x
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetId = lastScannedItemId || cart[cart.length - 1]?.id;
+                      if (targetId) handleUpdateQuantity(targetId, 1);
+                    }}
+                    className="p-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold"
+                    title="Increment quantity (+)"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetId = lastScannedItemId || cart[cart.length - 1]?.id;
+                      if (targetId) handleUpdateQuantity(targetId, -1);
+                    }}
+                    className="p-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold"
+                    title="Decrement quantity (-)"
+                  >
+                    -
+                  </button>
                 </div>
               </div>
             </div>
@@ -1185,7 +1466,10 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                   }`}
                 >
                   <Utensils className="h-4 w-4" />
-                  <span>Dine In (Cafeteria Meal)</span>
+                  <span>Dine In (Cafeteria)</span>
+                  <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] font-bold ${orderType === 'Dine In' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                    ← Left / 1
+                  </span>
                 </button>
 
                 <button
@@ -1198,7 +1482,10 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                   }`}
                 >
                   <ShoppingBag className="h-4 w-4" />
-                  <span>Grocery / Takeout (Exit Gate Pass)</span>
+                  <span>Grocery / Takeout</span>
+                  <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] font-bold ${orderType === 'Grocery' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                    Right → / 2
+                  </span>
                 </button>
               </div>
             </div>
@@ -1215,32 +1502,43 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod('Cash')}
-                  className={`p-3.5 rounded-xl border-2 flex items-center justify-center gap-2.5 transition cursor-pointer text-xs font-bold ${
-                    paymentMethod === 'Cash'
-                      ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <Banknote className="h-4 w-4" />
-                  <span>Cash Payment</span>
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => setPaymentMethod('Salary Deduction')}
-                  className={`p-3.5 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition cursor-pointer text-xs font-bold ${
+                  className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition cursor-pointer text-xs font-bold ${
                     paymentMethod === 'Salary Deduction'
                       ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
                       : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <CreditCard className="h-4 w-4" />
                     <span>Salary Deduction</span>
+                    <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] font-bold ${paymentMethod === 'Salary Deduction' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                      ← Left / 1
+                    </span>
                   </div>
                   <span className={`text-[10px] font-normal ${paymentMethod === 'Salary Deduction' ? 'text-slate-300' : 'text-slate-500'}`}>
                     Auto-Paid via Coop
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('Cash')}
+                  className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition cursor-pointer text-xs font-bold ${
+                    paymentMethod === 'Cash'
+                      ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Banknote className="h-4 w-4" />
+                    <span>Cash Payment</span>
+                    <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] font-bold ${paymentMethod === 'Cash' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                      Right → / 2
+                    </span>
+                  </div>
+                  <span className={`text-[10px] font-normal ${paymentMethod === 'Cash' ? 'text-slate-300' : 'text-slate-500'}`}>
+                    Cash at Register
                   </span>
                 </button>
               </div>
@@ -1431,19 +1729,43 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                 <span className="text-2xl font-black font-mono text-slate-950">₱{grandTotal.toFixed(2)}</span>
               </div>
 
-              <button
-                type="button"
-                disabled={cart.length === 0}
-                onClick={initiateCheckout}
-                className={`w-full h-12 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer shadow-md ${
-                  cart.length > 0
-                    ? 'bg-slate-900 hover:bg-slate-800 text-white'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Finish &amp; Complete Checkout
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={cart.length === 0}
+                  onClick={() => {
+                    if (cart.length === 0) return;
+                    if (selectedStaff) {
+                      setCheckoutWizardStep('ORDER_NATURE');
+                    } else {
+                      initiateCheckout();
+                    }
+                  }}
+                  className={`h-12 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer shadow-md ${
+                    cart.length > 0
+                      ? 'bg-blue-600 hover:bg-blue-500 text-white animate-pulse hover:animate-none'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                  title="Fast Keyboard Checkout [F9 or Enter]"
+                >
+                  <span className="px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 font-mono text-[9px] font-bold">F9</span>
+                  <span>Fast Checkout</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={cart.length === 0}
+                  onClick={initiateCheckout}
+                  className={`h-12 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer shadow-md ${
+                    cart.length > 0
+                      ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Manual Finish</span>
+                </button>
+              </div>
             </div>
 
           </div>
@@ -1451,6 +1773,324 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
         </div>
 
       </div>
+
+      {/* MODAL 0: FAST CHECKOUT KEYBOARD WIZARD */}
+      {checkoutWizardStep && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-slate-900 border-2 border-slate-700 w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col text-white animate-in zoom-in-95 duration-150">
+            
+            {/* Header with Step Progress */}
+            <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-blue-600 text-white font-black text-xs">
+                  ⚡ FAST POS
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white tracking-tight flex items-center gap-2">
+                    <span>Ergonomic Keyboard Checkout</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-blue-400 border border-slate-700">
+                      Zero-Mouse Flow
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Use Left / Right Arrow keys on your keyboard
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCheckoutWizardStep(null);
+                  barcodeInputRef.current?.focus();
+                }}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                title="Cancel [Esc]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Stepper Tabs */}
+            <div className="grid grid-cols-3 border-b border-slate-800 bg-slate-950/50 text-center text-xs font-bold divide-x divide-slate-800">
+              <div className={`py-2.5 px-3 flex items-center justify-center gap-1.5 transition ${
+                checkoutWizardStep === 'ORDER_NATURE' 
+                  ? 'bg-blue-600/20 text-blue-300 border-b-2 border-blue-500' 
+                  : 'text-slate-500'
+              }`}>
+                <span className="w-5 h-5 rounded-full bg-slate-800 text-[10px] flex items-center justify-center font-mono font-bold">1</span>
+                <span>Order Nature</span>
+              </div>
+              <div className={`py-2.5 px-3 flex items-center justify-center gap-1.5 transition ${
+                checkoutWizardStep === 'PAYMENT_METHOD' 
+                  ? 'bg-blue-600/20 text-blue-300 border-b-2 border-blue-500' 
+                  : 'text-slate-500'
+              }`}>
+                <span className="w-5 h-5 rounded-full bg-slate-800 text-[10px] flex items-center justify-center font-mono font-bold">2</span>
+                <span>Payment</span>
+              </div>
+              <div className={`py-2.5 px-3 flex items-center justify-center gap-1.5 transition ${
+                checkoutWizardStep === 'CONFIRM' 
+                  ? 'bg-emerald-600/20 text-emerald-300 border-b-2 border-emerald-500' 
+                  : 'text-slate-500'
+              }`}>
+                <span className="w-5 h-5 rounded-full bg-slate-800 text-[10px] flex items-center justify-center font-mono font-bold">3</span>
+                <span>Confirm</span>
+              </div>
+            </div>
+
+            {/* Wizard Body */}
+            <div className="p-6 space-y-5">
+              
+              {/* Customer Identified Header */}
+              {selectedStaff && (
+                <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-950 text-emerald-300 border border-emerald-500/40 flex items-center justify-center font-bold font-mono text-sm shrink-0">
+                      {((selectedStaff.firstName?.[0] || '') + (selectedStaff.lastName?.[0] || '')).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-emerald-400">Customer Verified</div>
+                      <div className="text-sm font-black text-white">{selectedStaff.firstName} {selectedStaff.lastName}</div>
+                      <div className="text-[10px] font-mono text-slate-400">{selectedStaff.employeeId} · {selectedStaff.department || 'Production'}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase text-slate-400 font-bold">Grand Total</div>
+                    <div className="text-xl font-black text-emerald-400 font-mono">₱{grandTotal.toFixed(2)}</div>
+                    <div className="text-[10px] text-slate-500 font-mono">{cart.reduce((a, b) => a + (b.quantity || 1), 0)} items</div>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 1: ORDER NATURE */}
+              {checkoutWizardStep === 'ORDER_NATURE' && (
+                <div className="space-y-4 animate-in fade-in duration-150">
+                  <div className="text-center">
+                    <h4 className="text-lg font-black text-white">Select Order Nature</h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Press <kbd className="px-2 py-0.5 rounded bg-blue-900 border border-blue-600 font-mono text-white text-[11px] font-bold">← Left Arrow (or 1)</kbd> for Dine In, or <kbd className="px-2 py-0.5 rounded bg-blue-900 border border-blue-600 font-mono text-white text-[11px] font-bold">Right Arrow (or 2) →</kbd> for Takeout
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Dine In Card */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderType('Dine In');
+                        playBeep('scan');
+                        setCheckoutWizardStep('PAYMENT_METHOD');
+                      }}
+                      className={`p-5 rounded-2xl border-2 flex flex-col items-center justify-center text-center gap-3 transition cursor-pointer relative ${
+                        orderType === 'Dine In'
+                          ? 'bg-blue-950/60 border-blue-500 shadow-xl ring-2 ring-blue-500/40 text-white'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="px-3 py-1 rounded-full bg-blue-600 text-white font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1 shadow">
+                        <span>← Left Arrow (1)</span>
+                      </div>
+                      <Utensils className="h-10 w-10 text-blue-400" />
+                      <div>
+                        <div className="text-base font-black text-white">Dine In</div>
+                        <div className="text-[11px] text-slate-400 mt-1">Cafeteria pantry consumption</div>
+                      </div>
+                      {orderType === 'Dine In' && (
+                        <div className="text-[10px] font-bold text-blue-300 flex items-center gap-1">
+                          <Check className="h-3.5 w-3.5" /> Selected
+                        </div>
+                      )}
+                    </button>
+
+                    {/* Grocery Takeout Card */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrderType('Grocery');
+                        playBeep('scan');
+                        setCheckoutWizardStep('PAYMENT_METHOD');
+                      }}
+                      className={`p-5 rounded-2xl border-2 flex flex-col items-center justify-center text-center gap-3 transition cursor-pointer relative ${
+                        orderType === 'Grocery'
+                          ? 'bg-blue-950/60 border-blue-500 shadow-xl ring-2 ring-blue-500/40 text-white'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="px-3 py-1 rounded-full bg-slate-800 text-slate-200 border border-slate-700 font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1 shadow">
+                        <span>Right Arrow (2) →</span>
+                      </div>
+                      <ShoppingBag className="h-10 w-10 text-cyan-400" />
+                      <div>
+                        <div className="text-base font-black text-white">Grocery Takeout</div>
+                        <div className="text-[11px] text-slate-400 mt-1">Auto-prints Exit Gate Pass</div>
+                      </div>
+                      {orderType === 'Grocery' && (
+                        <div className="text-[10px] font-bold text-cyan-300 flex items-center gap-1">
+                          <Check className="h-3.5 w-3.5" /> Selected
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2: PAYMENT METHOD */}
+              {checkoutWizardStep === 'PAYMENT_METHOD' && (
+                <div className="space-y-4 animate-in fade-in duration-150">
+                  <div className="text-center">
+                    <h4 className="text-lg font-black text-white">Select Payment Tender</h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Press <kbd className="px-2 py-0.5 rounded bg-blue-900 border border-blue-600 font-mono text-white text-[11px] font-bold">← Left Arrow (or 1)</kbd> for Salary Deduction, or <kbd className="px-2 py-0.5 rounded bg-blue-900 border border-blue-600 font-mono text-white text-[11px] font-bold">Right Arrow (or 2) →</kbd> for Cash
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Salary Deduction Card */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentMethod('Salary Deduction');
+                        playBeep('scan');
+                        setCheckoutWizardStep('CONFIRM');
+                      }}
+                      className={`p-5 rounded-2xl border-2 flex flex-col items-center justify-center text-center gap-3 transition cursor-pointer relative ${
+                        paymentMethod === 'Salary Deduction'
+                          ? 'bg-blue-950/60 border-blue-500 shadow-xl ring-2 ring-blue-500/40 text-white'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="px-3 py-1 rounded-full bg-blue-600 text-white font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1 shadow">
+                        <span>← Left Arrow (1)</span>
+                      </div>
+                      <CreditCard className="h-10 w-10 text-emerald-400" />
+                      <div>
+                        <div className="text-base font-black text-white">Salary Deduction</div>
+                        <div className="text-[11px] text-slate-400 mt-1">Auto-settled on payroll payout</div>
+                      </div>
+                      {paymentMethod === 'Salary Deduction' && (
+                        <div className="text-[10px] font-bold text-emerald-300 flex items-center gap-1">
+                          <Check className="h-3.5 w-3.5" /> Selected
+                        </div>
+                      )}
+                    </button>
+
+                    {/* Cash Tendered Card */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentMethod('Cash');
+                        playBeep('scan');
+                        setCheckoutWizardStep('CONFIRM');
+                      }}
+                      className={`p-5 rounded-2xl border-2 flex flex-col items-center justify-center text-center gap-3 transition cursor-pointer relative ${
+                        paymentMethod === 'Cash'
+                          ? 'bg-blue-950/60 border-blue-500 shadow-xl ring-2 ring-blue-500/40 text-white'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="px-3 py-1 rounded-full bg-slate-800 text-slate-200 border border-slate-700 font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1 shadow">
+                        <span>Right Arrow (2) →</span>
+                      </div>
+                      <Banknote className="h-10 w-10 text-amber-400" />
+                      <div>
+                        <div className="text-base font-black text-white">Cash Payment</div>
+                        <div className="text-[11px] text-slate-400 mt-1">Paid at canteen cash register</div>
+                      </div>
+                      {paymentMethod === 'Cash' && (
+                        <div className="text-[10px] font-bold text-amber-300 flex items-center gap-1">
+                          <Check className="h-3.5 w-3.5" /> Selected
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: CONFIRM & COMPLETE SALE */}
+              {checkoutWizardStep === 'CONFIRM' && (
+                <div className="space-y-4 animate-in fade-in duration-150">
+                  <div className="text-center">
+                    <h4 className="text-lg font-black text-white">Ready to Finalize Purchase</h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Review choices and press <kbd className="px-2.5 py-0.5 rounded bg-emerald-700 font-mono text-white text-xs font-bold">ENTER</kbd> to complete sale
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold">Order Nature</span>
+                        <div className="text-sm font-black text-white mt-0.5 flex items-center gap-1.5">
+                          {orderType === 'Dine In' ? <Utensils className="h-4 w-4 text-blue-400" /> : <ShoppingBag className="h-4 w-4 text-cyan-400" />}
+                          <span>{orderType === 'Dine In' ? 'Dine In (Cafeteria)' : 'Grocery Takeout'}</span>
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold">Payment Method</span>
+                        <div className="text-sm font-black text-white mt-0.5 flex items-center gap-1.5">
+                          {paymentMethod === 'Salary Deduction' ? <CreditCard className="h-4 w-4 text-emerald-400" /> : <Banknote className="h-4 w-4 text-amber-400" />}
+                          <span>{paymentMethod}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Total Purchase:</span>
+                      <span className="font-mono text-2xl font-black text-emerald-400">₱{grandTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCheckoutWizardStep(null);
+                      handleFinalizeCheckout();
+                    }}
+                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-base shadow-xl flex items-center justify-center gap-3 transition cursor-pointer animate-pulse hover:animate-none"
+                  >
+                    <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 font-mono text-xs font-bold border border-emerald-500/40">
+                      ENTER
+                    </span>
+                    <span>Confirm &amp; Complete Transaction</span>
+                  </button>
+                </div>
+              )}
+
+            </div>
+
+            {/* Bottom Keyboard Navigation Bar */}
+            <div className="px-6 py-3 bg-slate-950 border-t border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-2">
+              <div className="flex items-center gap-3">
+                {checkoutWizardStep !== 'ORDER_NATURE' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (checkoutWizardStep === 'CONFIRM') setCheckoutWizardStep('PAYMENT_METHOD');
+                      else if (checkoutWizardStep === 'PAYMENT_METHOD') setCheckoutWizardStep('ORDER_NATURE');
+                    }}
+                    className="flex items-center gap-1 text-slate-300 hover:text-white transition cursor-pointer"
+                  >
+                    <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[10px]">↑ Up</kbd>
+                    <span>Back</span>
+                  </button>
+                )}
+                <span>·</span>
+                <span className="text-[11px] text-slate-400">
+                  <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[10px]">Esc</kbd> Cancel
+                </span>
+              </div>
+
+              <div className="text-[11px] text-blue-400 font-mono font-bold">
+                {checkoutWizardStep === 'ORDER_NATURE' && 'Step 1/3: Left (Dine In) / Right (Takeout)'}
+                {checkoutWizardStep === 'PAYMENT_METHOD' && 'Step 2/3: Left (Salary Deduction) / Right (Cash)'}
+                {checkoutWizardStep === 'CONFIRM' && 'Step 3/3: Press ENTER to finalize'}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* MODAL 1: SCAN CUSTOMER EMPLOYEE ID BADGE */}
       {showCustomerModal && (
