@@ -112,14 +112,14 @@ export function useMultiScreenManager() {
 
     let left = 1920;
     let top = 0;
-    let width = 1280;
-    let height = 850;
+    let width = 1920;
+    let height = 1080;
 
     if (target) {
       left = target.availLeft ?? target.left ?? window.screen.availWidth ?? 1920;
       top = target.availTop ?? target.top ?? 0;
-      width = target.availWidth ?? target.width ?? 1280;
-      height = target.availHeight ?? target.height ?? 850;
+      width = target.availWidth ?? target.width ?? 1920;
+      height = target.availHeight ?? target.height ?? 1080;
     } else if (window.screen?.availWidth) {
       // Fallback: place immediately to the right of the primary display
       left = window.screen.availWidth;
@@ -138,7 +138,8 @@ export function useMultiScreenManager() {
       'location=no',
       'status=no',
       'resizable=yes',
-      'scrollbars=no'
+      'scrollbars=no',
+      'fullscreen=yes'
     ].join(',');
 
     try {
@@ -146,9 +147,12 @@ export function useMultiScreenManager() {
       if (globalCustomerWindow && !globalCustomerWindow.closed) {
         try {
           globalCustomerWindow.focus();
-          // Attempt to move to secondary screen if coordinates changed
+          // Reposition and expand to secondary screen dimensions
           if (left !== undefined && top !== undefined) {
             globalCustomerWindow.moveTo(left, top);
+          }
+          if (width !== undefined && height !== undefined) {
+            globalCustomerWindow.resizeTo(width, height);
           }
         } catch {
           // Cross-origin or restricted window movement
@@ -165,6 +169,8 @@ export function useMultiScreenManager() {
         setIsWindowOpen(true);
         setAutoLaunchBlocked(false);
         try {
+          win.moveTo(left, top);
+          win.resizeTo(width, height);
           win.focus();
         } catch {
           // ignore

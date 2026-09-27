@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   ScanBarcode, 
   Store, 
@@ -49,7 +49,78 @@ export default function CanteenCustomerDisplay() {
   });
 
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(() => {
+    if (typeof document !== 'undefined') {
+      return Boolean(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+    }
+    return false;
+  });
+
+  const getFullscreenElement = () => {
+    if (typeof document === 'undefined') return null;
+    return (
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.mozFullScreenElement ||
+      document.msFullscreenElement ||
+      null
+    );
+  };
+
+  const requestFullScreenSafe = useCallback(async () => {
+    try {
+      if (getFullscreenElement()) {
+        setIsFullscreen(true);
+        return true;
+      }
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) {
+        await elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) {
+        await elem.webkitRequestFullscreen();
+      } else if (elem.mozRequestFullScreen) {
+        await elem.mozRequestFullScreen();
+      } else if (elem.msRequestFullscreen) {
+        await elem.msRequestFullscreen();
+      }
+      setIsFullscreen(true);
+      return true;
+    } catch {
+      // Browser blocked programmatic fullscreen without user activation
+      return false;
+    }
+  }, []);
+
+  const exitFullscreenSafe = useCallback(async () => {
+    try {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        await document.webkitExitFullscreen();
+      } else if (document.mozCancelFullScreen) {
+        await document.mozCancelFullScreen();
+      } else if (document.msExitFullscreen) {
+        await document.msExitFullscreen();
+      }
+      setIsFullscreen(false);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!getFullscreenElement()) {
+      requestFullScreenSafe();
+    } else {
+      exitFullscreenSafe();
+    }
+  }, [requestFullScreenSafe, exitFullscreenSafe]);
+
   const [screenRes, setScreenRes] = useState(() => {
     if (typeof window !== 'undefined' && window.screen) {
       return `${window.screen.width}×${window.screen.height}`;
@@ -68,6 +139,66 @@ export default function CanteenCustomerDisplay() {
     return () => window.removeEventListener('resize', updateRes);
   }, []);
 
+  // Synchronize Fullscreen state across all native browser changes
+  useEffect(() => {
+    const handleFsChange = () => {
+      const active = Boolean(getFullscreenElement());
+      setIsFullscreen(active);
+    };
+
+    document.addEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    document.addEventListener('mozfullscreenchange', handleFsChange);
+    document.addEventListener('MSFullscreenChange', handleFsChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+      document.removeEventListener('mozfullscreenchange', handleFsChange);
+      document.removeEventListener('MSFullscreenChange', handleFsChange);
+    };
+  }, []);
+
+  // Automatically trigger fullscreen on mount, on focus, and on first user gesture
+  useEffect(() => {
+    // 1. Immediate attempt on mount
+    requestFullScreenSafe();
+
+    // 2. Short staggered attempts (some browsers grant fullscreen right after window rendering/focus)
+    const t1 = setTimeout(() => requestFullScreenSafe(), 150);
+    const t2 = setTimeout(() => requestFullScreenSafe(), 600);
+    const t3 = setTimeout(() => requestFullScreenSafe(), 1200);
+
+    const onFocus = () => {
+      requestFullScreenSafe();
+    };
+    window.addEventListener('focus', onFocus);
+
+    // 3. Fallback gesture listener: modern browsers require a user gesture if headless programmatic request is blocked.
+    // Tapping, clicking, or pressing any key on the 2nd monitor window instantly enters fullscreen!
+    const handleFirstGesture = () => {
+      if (!getFullscreenElement()) {
+        requestFullScreenSafe();
+      }
+    };
+
+    window.addEventListener('click', handleFirstGesture, { capture: true });
+    window.addEventListener('touchstart', handleFirstGesture, { capture: true, passive: true });
+    window.addEventListener('pointerdown', handleFirstGesture, { capture: true });
+    window.addEventListener('keydown', handleFirstGesture, { capture: true });
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('click', handleFirstGesture, { capture: true });
+      window.removeEventListener('touchstart', handleFirstGesture, { capture: true });
+      window.removeEventListener('pointerdown', handleFirstGesture, { capture: true });
+      window.removeEventListener('keydown', handleFirstGesture, { capture: true });
+    };
+  }, [requestFullScreenSafe]);
+
   // Live Clock
   useEffect(() => {
     const timer = setInterval(() => {
@@ -82,9 +213,12 @@ export default function CanteenCustomerDisplay() {
     try {
       bc = new BroadcastChannel('nkb_canteen_pos_channel');
       bc.onmessage = (event) => {
-        if (event.data) {
-          setDisplayState(event.data);
+        if (!event.data) return;
+        if (event.data.type === 'REQUEST_FULLSCREEN') {
+          requestFullScreenSafe();
+          return;
         }
+        setDisplayState(event.data);
       };
     } catch (e) {
       console.warn('BroadcastChannel unavailable:', e);
@@ -106,15 +240,7 @@ export default function CanteenCustomerDisplay() {
       if (bc) bc.close();
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
-    }
-  };
+  }, [requestFullScreenSafe]);
 
   const {
     cart = [],
@@ -145,8 +271,44 @@ export default function CanteenCustomerDisplay() {
   ) : '';
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col justify-between selection:bg-slate-700 selection:text-white overflow-hidden p-4 sm:p-6 lg:p-8 select-none">
+    <div 
+      onClick={() => {
+        if (!isFullscreen) {
+          requestFullScreenSafe();
+        }
+      }}
+      className="min-h-screen bg-slate-950 text-white font-sans flex flex-col justify-between selection:bg-slate-700 selection:text-white overflow-hidden p-4 sm:p-6 lg:p-8 select-none relative"
+    >
       
+      {/* Floating Auto-Fullscreen Prompt Banner (Visible only when not in fullscreen mode) */}
+      {!isFullscreen && (
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            requestFullScreenSafe();
+          }}
+          className="mb-4 px-4 py-3 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white shadow-2xl flex flex-wrap items-center justify-between cursor-pointer border border-blue-400/40 hover:brightness-110 transition duration-150 animate-pulse hover:animate-none"
+        >
+          <div className="flex items-center gap-3 text-xs sm:text-sm font-bold">
+            <Maximize2 className="h-5 w-5 shrink-0 text-white" />
+            <div>
+              <span className="font-extrabold uppercase tracking-wider text-blue-200 mr-2">[Auto-Fullscreen Ready]</span>
+              <span>Click anywhere on this screen to engage True Fullscreen (or Press F11)</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              requestFullScreenSafe();
+            }}
+            className="px-4 py-1.5 rounded-xl bg-white text-slate-950 font-black text-xs shadow-lg hover:bg-slate-100 transition cursor-pointer shrink-0 mt-2 sm:mt-0"
+          >
+            Expand Fullscreen Now
+          </button>
+        </div>
+      )}
+
       {/* Top Header Bar */}
       <header className="flex items-center justify-between pb-5 border-b border-slate-800">
         <div className="flex items-center gap-3.5">

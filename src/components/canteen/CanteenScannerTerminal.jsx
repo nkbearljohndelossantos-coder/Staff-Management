@@ -226,6 +226,13 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   // Launch / Focus Customer Display on Second Monitor
   const handleOpenSecondMonitor = () => {
     openCustomerDisplay();
+    try {
+      const bc = new BroadcastChannel('nkb_canteen_pos_channel');
+      bc.postMessage({ type: 'REQUEST_FULLSCREEN' });
+      setTimeout(() => bc.close(), 100);
+    } catch {
+      // BroadcastChannel unsupported
+    }
   };
 
   // Resolves staff from barcode gun, digital ID QR, name, or employee ID
