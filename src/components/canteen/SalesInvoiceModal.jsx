@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   FileSpreadsheet, 
   X, 
@@ -133,20 +133,38 @@ export default function SalesInvoiceModal({ isOpen, onClose }) {
   const handleItemFieldChange = (index, field, value) => {
     setItems(prev => {
       const next = [...prev];
-      next[index] = {
-        ...next[index],
-        [field]: value
-      };
+      const updatedItem = { ...next[index], [field]: value };
+      next[index] = updatedItem;
+      const isLast = index === prev.length - 1;
+      const hasName = updatedItem.name && updatedItem.name.trim() !== '';
+      const hasQty = parseFloat(updatedItem.quantity) > 0;
+      if (isLast && hasName && hasQty) {
+        next.push(createBlankItem());
+      }
       return next;
     });
   };
 
-  const handleAddLineItem = () => {
+const handleAddLineItem = () => {
     const newItem = createBlankItem();
     // Default company from invoice supplier if available
     if (supplier) newItem.company = supplier;
     setItems(prev => [...prev, newItem]);
   };
+
+  // Shortcut: Ctrl+Enter adds a new line item
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleAddLineItem();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, supplier]);
 
   const handleRemoveLineItem = (index) => {
     if (items.length <= 1) return;
@@ -435,14 +453,7 @@ export default function SalesInvoiceModal({ isOpen, onClose }) {
                 </h4>
               </div>
 
-              <button
-                type="button"
-                onClick={handleAddLineItem}
-                className="h-8 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-              >
-                <Plus className="h-4 w-4" />
-                <span>+ Add Line Item</span>
-              </button>
+              
             </div>
 
             {/* Item Line Cards */}
@@ -564,15 +575,18 @@ export default function SalesInvoiceModal({ isOpen, onClose }) {
                         <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
                           Category <span className="text-rose-500">*</span>
                         </label>
-                        <select
+                        <input
+                          type="text"
+                          list={`category-options-${index}`}
                           value={item.category}
                           onChange={(e) => handleItemFieldChange(index, 'category', e.target.value)}
-                          className="w-full h-9 px-3 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                        >
+                          className="w-full h-9 px-3 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <datalist id={`category-options-${index}`}>
                           {(canteenCategories || []).map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
+                            <option key={cat} value={cat} />
                           ))}
-                        </select>
+                        </datalist>
                       </div>
 
                       {/* Brand */}
