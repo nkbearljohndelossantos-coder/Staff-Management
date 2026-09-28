@@ -69,8 +69,15 @@ export default function SalesInvoiceModal({ isOpen, onClose }) {
   const [items, setItems] = useState([createBlankItem()]);
   const [activeItemSearchIdx, setActiveItemSearchIdx] = useState(null);
 
+  const handleAddLineItem = () => {
+    const newItem = createBlankItem();
+    // Default company from invoice supplier if available
+    if (supplier) newItem.company = supplier;
+    setItems(prev => [...prev, newItem]);
+  };
+
   // Reset or initialize on open
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen) {
       setInvoiceNumber(`SI-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
       setSupplier('');
@@ -84,7 +91,19 @@ export default function SalesInvoiceModal({ isOpen, onClose }) {
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  // Shortcut: Ctrl+Enter adds a new line item
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleAddLineItem();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, supplier]);
 
   // Catalog item lookup for autocomplete
   const handleItemSearchChange = (index, query) => {
@@ -144,27 +163,6 @@ export default function SalesInvoiceModal({ isOpen, onClose }) {
       return next;
     });
   };
-
-const handleAddLineItem = () => {
-    const newItem = createBlankItem();
-    // Default company from invoice supplier if available
-    if (supplier) newItem.company = supplier;
-    setItems(prev => [...prev, newItem]);
-  };
-
-  // Shortcut: Ctrl+Enter adds a new line item
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        handleAddLineItem();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, supplier]);
 
   const handleRemoveLineItem = (index) => {
     if (items.length <= 1) return;
@@ -243,6 +241,8 @@ const handleAddLineItem = () => {
       onClose();
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">

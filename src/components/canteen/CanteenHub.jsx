@@ -3293,10 +3293,12 @@ export default function CanteenHub() {
       )}
 
       {/* Sales Invoice Encoding Modal */}
-      <SalesInvoiceModal
-        isOpen={showSalesInvoiceModal}
-        onClose={() => setShowSalesInvoiceModal(false)}
-      />
+      {showSalesInvoiceModal && (
+        <SalesInvoiceModal
+          isOpen={showSalesInvoiceModal}
+          onClose={() => setShowSalesInvoiceModal(false)}
+        />
+      )}
 
       {/* Sales Invoice Detail / Voucher Modal */}
       {selectedInvoiceDetail && (
