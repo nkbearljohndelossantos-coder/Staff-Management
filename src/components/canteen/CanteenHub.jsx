@@ -147,7 +147,8 @@ export const POPULAR_SUPPLY_SUGGESTIONS = [
 
 export const SUGGESTED_COMPANIES = [
   'San Miguel Foods', 'Monde Nissin', 'Universal Robina Corp', 'Nestlé Philippines', 
-  'Century Pacific Food', 'Gardenia Bakeries', 'Coca-Cola Beverages PH', 'Peerless Products'
+  'Century Pacific Food', 'Gardenia Bakeries', 'Coca-Cola Beverages PH', 'Peerless Products',
+  "JTI Int'l Phils.", 'Optimized Customer Solutions Inc.', 'Rosario Ang', 'Calyan Marketing'
 ];
 
 export const SUGGESTED_BRANDS = [
@@ -1211,12 +1212,11 @@ export default function CanteenHub() {
                 <table className="w-full text-left text-xs text-slate-700">
                   <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
                     <tr>
-                      <th className="px-4 py-3.5">Invoice # &amp; Supplier</th>
-                      <th className="px-4 py-3.5 text-center">Date</th>
+                      <th className="px-4 py-3.5">Supplier</th>
+                      <th className="px-4 py-3.5 text-center">Date &amp; Ref. No.</th>
                       <th className="px-4 py-3.5 text-center">Items</th>
                       <th className="px-4 py-3.5 text-center">Total Units</th>
                       <th className="px-4 py-3.5 text-right">Total Amount</th>
-                      <th className="px-4 py-3.5 text-center">Payment</th>
                       <th className="px-4 py-3.5 text-center">Status</th>
                       <th className="px-3 py-3.5 text-center">Action</th>
                     </tr>
@@ -1224,7 +1224,7 @@ export default function CanteenHub() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredInvoices.length === 0 ? (
                       <tr>
-                        <td colSpan="8" className="px-4 py-12 text-center text-slate-400 text-xs">
+                        <td colSpan="7" className="px-4 py-12 text-center text-slate-400 text-xs">
                           <FileText className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                           <p className="font-bold text-slate-600 text-sm">
                             {invoiceSearch ? 'No invoices match your search.' : 'No Sales Invoices recorded yet.'}
@@ -1238,14 +1238,14 @@ export default function CanteenHub() {
                       filteredInvoices.map(inv => (
                         <tr key={inv.id} className="hover:bg-slate-50/80 transition cursor-pointer" onClick={() => setSelectedInvoiceDetail(inv)}>
                           <td className="px-4 py-3">
-                            <div className="font-mono font-black text-indigo-700 text-sm">{inv.invoiceNumber}</div>
-                            <div className="text-[11px] text-slate-600 font-medium mt-0.5">{inv.supplier}</div>
+                            <div className="font-bold text-slate-900">{inv.supplier}</div>
                             {inv.notes && (
                               <div className="text-[10px] text-slate-400 italic mt-0.5 line-clamp-1">{inv.notes}</div>
                             )}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <div className="font-semibold text-slate-800">{inv.receivedDate || inv.purchaseDate}</div>
+                            <div className="font-mono text-[10px] text-indigo-600 font-bold mt-0.5">{inv.invoiceNumber}</div>
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span className="font-mono font-bold text-slate-800">{inv.itemsCount || (inv.items || []).length}</span>
@@ -1255,11 +1255,6 @@ export default function CanteenHub() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <span className="font-mono font-black text-slate-900">₱{(inv.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-700">
-                              {inv.paymentMethod || 'Company Fund'}
-                            </span>
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">

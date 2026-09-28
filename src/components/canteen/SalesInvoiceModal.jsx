@@ -327,7 +327,7 @@ export default function SalesInvoiceModal({ isOpen, onClose }) {
                 {/* Common Vendor Quick Chips */}
                 <div className="flex flex-wrap items-center gap-1.5 mt-2">
                   <span className="text-[10px] uppercase font-bold text-slate-400">Quick Select:</span>
-                  {SUGGESTED_COMPANIES.slice(0, 6).map((comp, idx) => (
+                  {SUGGESTED_COMPANIES.map((comp, idx) => (
                     <button
                       key={idx}
                       type="button"
