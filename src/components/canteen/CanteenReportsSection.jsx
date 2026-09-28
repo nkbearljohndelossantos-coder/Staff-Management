@@ -77,6 +77,8 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
         ? claimed 
         : (r.date || r.actualEncodedAt || new Date().toISOString());
 
+      const isITAction = r.status === 'VOIDED' || Boolean(r.unvoidedBy) || (r.voidedBy && r.voidedBy.toLowerCase().includes('it')) || (r.cashierName && r.cashierName.toLowerCase().includes('it'));
+
       list.push({
         id: r.receiptNo,
         timestamp: r.date || r.actualEncodedAt || new Date().toISOString(),
@@ -97,6 +99,7 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
         itemsCount: r.items?.reduce((acc, i) => acc + (i.quantity || 1), 0) || 0,
         cashier: r.cashierName || 'Canteen Cashier',
         status: r.status || 'COMPLETED',
+        isITAdminAction: isITAction,
         rawRecord: r,
         gatePassNo: r.gatePassNo
       });
@@ -128,12 +131,17 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
         itemsCount: po.items?.reduce((acc, i) => acc + (i.quantity || 1), 0) || 0,
         cashier: po.fulfilledBy || 'Canteen Hub',
         status: po.status || 'Fulfilled',
+        isITAdminAction: false,
         rawRecord: po
       });
     });
 
     // 3. Supervisor Voids
     canteenVoidLogs.forEach(v => {
+      const isITVoid = (v.voidedBy && v.voidedBy.toLowerCase().includes('it')) || 
+                       (v.authMethod && v.authMethod.toLowerCase().includes('it')) || 
+                       (v.authRole && v.authRole.toLowerCase().includes('it'));
+
       list.push({
         id: v.id,
         timestamp: v.timestamp,
@@ -153,6 +161,7 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
         itemsCount: v.quantity || v.itemCount || 1,
         cashier: v.voidedBy || 'Supervisor',
         status: 'VOIDED',
+        isITAdminAction: isITVoid,
         reason: v.reason,
         rawRecord: v
       });
@@ -184,13 +193,46 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
         itemsCount: gp.items?.reduce((acc, i) => acc + (i.quantity || 1), 0) || 0,
         cashier: gp.issuedBy || 'Gate Issuer',
         status: gp.gateStatus || 'Issued',
+        isITAdminAction: gp.securityGuard?.toLowerCase().includes('it') || gp.issuedBy?.toLowerCase().includes('it'),
         rawRecord: gp
+      });
+    });
+
+    // 5. Canteen Cash Drawer & IT Admin Register Entries
+    (canteenDrawer?.transactions || []).forEach(tx => {
+      const isVoidRefund = tx.type === 'VOID_REFUND';
+      const isIT = (tx.operator || tx.performedBy || '').toLowerCase().includes('it') ||
+                   (tx.operator || tx.performedBy || '').toLowerCase().includes('patagnan') ||
+                   (tx.operator || tx.performedBy || '').toLowerCase().includes('admin');
+
+      list.push({
+        id: tx.id,
+        timestamp: tx.timestamp || new Date().toISOString(),
+        effectiveDate: tx.timestamp || new Date().toISOString(),
+        isLateEncoded: false,
+        claimedDate: null,
+        actualEncodedAt: tx.timestamp,
+        lateReason: null,
+        type: `Cash Drawer: ${tx.type?.replace(/_/g, ' ') || 'TRANSACTION'}`,
+        category: 'DRAWER',
+        reference: tx.receiptNo || tx.id?.slice(-10) || 'DRAWER-TX',
+        customerName: tx.operator || tx.performedBy || 'Cash Drawer System',
+        staffId: null,
+        paymentMethod: 'Cash Fund',
+        orderType: tx.type || 'Drawer',
+        amount: Number(tx.amount) || 0,
+        itemsSummary: tx.description || tx.note || `Drawer Fund: ${tx.type?.replace(/_/g, ' ')}`,
+        itemsCount: 1,
+        cashier: tx.operator || tx.performedBy || 'Cashier / IT Admin',
+        status: isVoidRefund ? 'REFUND' : 'POSTED',
+        isITAdminAction: isIT,
+        rawRecord: tx
       });
     });
 
     // Sort by effective claimed date descending
     return list.sort((a, b) => new Date(b.effectiveDate || b.timestamp) - new Date(a.effectiveDate || a.timestamp));
-  }, [canteenReceipts, personalPurchaseOrders, canteenVoidLogs, canteenGatePasses]);
+  }, [canteenReceipts, personalPurchaseOrders, canteenVoidLogs, canteenGatePasses, canteenDrawer]);
 
   // Date range preset handlers
   const handleApplyPreset = (preset) => {
@@ -244,6 +286,16 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
       if (activeTabFilter === 'POS' && item.category !== 'PO') return false;
       if (activeTabFilter === 'VOIDS' && item.category !== 'VOID') return false;
       if (activeTabFilter === 'GATE_PASSES' && item.category !== 'GATE_PASS') return false;
+      if (activeTabFilter === 'DRAWER' && item.category !== 'DRAWER') return false;
+      if (activeTabFilter === 'IT_ADMIN') {
+        const isIT = item.isITAdminAction || 
+                     item.status === 'VOIDED' || 
+                     item.category === 'DRAWER' ||
+                     (item.cashier && item.cashier.toLowerCase().includes('it')) ||
+                     (item.rawRecord?.voidedBy && item.rawRecord.voidedBy.toLowerCase().includes('it')) ||
+                     Boolean(item.rawRecord?.unvoidedBy);
+        if (!isIT) return false;
+      }
 
       // 2. Date Range Filter:
       // Uses the customer claimed date when late encoded, otherwise standard transaction date
@@ -284,6 +336,12 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
     const totalVoids = filteredList.filter(r => r.category === 'VOID').reduce((acc, v) => acc + Math.abs(v.amount || 0), 0);
     const voidsCount = filteredList.filter(r => r.category === 'VOID').length;
     const gatePassesCount = filteredList.filter(r => r.category === 'GATE_PASS').length;
+    const itAdminActionsCount = unifiedTransactions.filter(t => 
+      t.isITAdminAction || t.status === 'VOIDED' || t.category === 'DRAWER' ||
+      (t.cashier && t.cashier.toLowerCase().includes('it')) ||
+      (t.rawRecord?.voidedBy && t.rawRecord.voidedBy.toLowerCase().includes('it'))
+    ).length;
+    const drawerTransactionsCount = unifiedTransactions.filter(t => t.category === 'DRAWER').length;
 
     return {
       totalSales,
@@ -293,9 +351,11 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
       totalItems,
       totalVoids,
       voidsCount,
-      gatePassesCount
+      gatePassesCount,
+      itAdminActionsCount,
+      drawerTransactionsCount
     };
-  }, [filteredList]);
+  }, [filteredList, unifiedTransactions]);
 
   // Export to CSV with full Effective Claim Date and Late Encoding metadata
   const handleExportCSV = () => {
@@ -419,7 +479,7 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
       </div>
 
       {/* KPI Financial & Audit Summary Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         {/* Total Sales */}
         <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -430,7 +490,7 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
             ₱{metrics.totalSales.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
           <p className="text-[11px] text-slate-500 font-medium">
-            {metrics.totalTransactions} completed transactions · {metrics.totalItems} items sold
+            {metrics.totalTransactions} sales · {metrics.totalItems} items sold
           </p>
         </div>
 
@@ -444,7 +504,7 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
             ₱{metrics.cashSales.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
           <p className="text-[11px] text-slate-500 font-medium">
-            Cash intake registered at physical counter
+            Cash intake registered at counter
           </p>
         </div>
 
@@ -463,17 +523,32 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
           </p>
         </div>
 
-        {/* Supervisor Voids & Gate Passes */}
+        {/* Cash Drawer Fund (IT & Canteen) */}
         <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <span>Supervisor Voids</span>
+            <span>Drawer Cash Fund</span>
+            <Banknote className="h-4 w-4 text-emerald-600" />
+          </div>
+          <div className="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
+            ₱{(canteenDrawer?.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </div>
+          <p className="text-[11px] text-purple-700 font-semibold flex items-center gap-1">
+            <ShieldAlert className="h-3.5 w-3.5" />
+            {metrics.drawerTransactionsCount} drawer logs &amp; float entries
+          </p>
+        </div>
+
+        {/* Supervisor & IT Voids */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <span>Voids &amp; IT Audits</span>
             <ShieldAlert className="h-4 w-4 text-rose-600" />
           </div>
           <div className="text-xl sm:text-2xl font-black text-slate-950">
             ₱{metrics.totalVoids.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
           <p className="text-[11px] text-slate-500 font-medium">
-            {metrics.voidsCount} void audits · {metrics.activeGatePassesCount} gate passes issued
+            {metrics.voidsCount} voids · {metrics.itAdminActionsCount} IT actions
           </p>
         </div>
       </div>
@@ -494,6 +569,34 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
               }`}
             >
               All Records ({unifiedTransactions.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTabFilter('IT_ADMIN')}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                activeTabFilter === 'IT_ADMIN'
+                  ? 'bg-purple-900 text-white shadow-sm ring-2 ring-purple-400'
+                  : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+              }`}
+              title="Transactions voided, adjusted, or touched by IT Admin"
+            >
+              <ShieldAlert className="h-3.5 w-3.5 text-purple-500" />
+              <span>IT Admin Master Records ({metrics.itAdminActionsCount})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTabFilter('DRAWER')}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                activeTabFilter === 'DRAWER'
+                  ? 'bg-emerald-900 text-white shadow-sm ring-2 ring-emerald-400'
+                  : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+              }`}
+              title="Cash Drawer Fund, Floats, and Remittances"
+            >
+              <Banknote className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Cash Drawer Fund ({metrics.drawerTransactionsCount})</span>
             </button>
 
             <button
@@ -859,7 +962,24 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
 
                       {/* Reference */}
                       <td className="px-4 py-3 font-mono font-bold text-slate-900 whitespace-nowrap">
-                        {item.reference}
+                        <div className="flex items-center gap-1.5">
+                          <span>{item.reference}</span>
+                          {item.isITAdminAction && (
+                            <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-900 border border-purple-200 text-[9px] font-black uppercase tracking-wider" title="Transaction audited, balanced or touched by IT Admin">
+                              IT Master
+                            </span>
+                          )}
+                        </div>
+                        {item.rawRecord?.unvoidedBy && (
+                          <div className="text-[9px] text-blue-600 font-semibold mt-0.5">
+                            ↺ Restored by IT ({item.rawRecord.unvoidedBy})
+                          </div>
+                        )}
+                        {item.rawRecord?.voidedBy && item.status === 'VOIDED' && (
+                          <div className="text-[9px] text-rose-600 font-medium mt-0.5">
+                            Voided by: {item.rawRecord.voidedBy}
+                          </div>
+                        )}
                       </td>
 
                       {/* Record Type */}
@@ -871,6 +991,8 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
                             ? 'bg-blue-50 text-blue-700 border border-blue-200'
                             : item.category === 'VOID'
                             ? 'bg-rose-50 text-rose-700 border border-rose-200 font-black'
+                            : item.category === 'DRAWER'
+                            ? 'bg-purple-50 text-purple-800 border border-purple-200 font-bold'
                             : 'bg-amber-50 text-amber-700 border border-amber-200'
                         }`}>
                           {item.type}
@@ -895,7 +1017,7 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
                         <div className="text-slate-800 line-clamp-2" title={item.itemsSummary}>
                           {item.itemsSummary}
                         </div>
-                        {item.itemsCount > 0 && (
+                        {item.itemsCount > 0 && item.category !== 'DRAWER' && (
                           <span className="text-[10px] text-slate-400 font-medium">
                             {item.itemsCount} total {item.itemsCount === 1 ? 'item' : 'items'}
                           </span>
@@ -914,6 +1036,8 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
                             <Banknote className="h-3.5 w-3.5 text-slate-500" />
                           ) : item.paymentMethod === 'Salary Deduction' ? (
                             <CreditCard className="h-3.5 w-3.5 text-indigo-600" />
+                          ) : item.category === 'DRAWER' ? (
+                            <Banknote className="h-3.5 w-3.5 text-purple-600" />
                           ) : null}
                           <span>{item.paymentMethod}</span>
                         </div>
@@ -922,18 +1046,32 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
                             Auto-Paid via Coop
                           </div>
                         )}
+                        {item.category === 'DRAWER' && (
+                          <div className="text-[9px] text-purple-600 font-semibold">
+                            Drawer Ledger
+                          </div>
+                        )}
                       </td>
 
                       {/* Total Amount */}
                       <td className={`px-4 py-3 text-right font-mono font-bold whitespace-nowrap ${
-                        isVoid ? 'text-rose-600' : 'text-slate-900 text-sm'
+                        isVoid || (item.category === 'DRAWER' && (item.rawRecord?.type === 'VOID_REFUND' || item.amount < 0))
+                          ? 'text-rose-600'
+                          : item.category === 'DRAWER'
+                          ? 'text-emerald-700'
+                          : 'text-slate-900 text-sm'
                       }`}>
-                        {isVoid ? '-' : ''}₱{Math.abs(item.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        {isVoid || (item.category === 'DRAWER' && (item.rawRecord?.type === 'VOID_REFUND' || item.amount < 0)) ? '-' : (item.category === 'DRAWER' && item.amount > 0 ? '+' : '')}₱{Math.abs(item.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </td>
 
                       {/* Cashier / Supervisor */}
                       <td className="px-4 py-3 whitespace-nowrap text-slate-600 font-medium">
-                        {item.cashier}
+                        <div className="flex items-center gap-1">
+                          <span>{item.cashier}</span>
+                          {(item.cashier?.toLowerCase().includes('it') || item.isITAdminAction) && (
+                            <ShieldAlert className="h-3 w-3 text-purple-500 shrink-0" title="IT Admin Verified Record" />
+                          )}
+                        </div>
                       </td>
 
                       {/* Status */}
@@ -943,6 +1081,8 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
                             ? 'bg-slate-900 text-white'
                             : item.status === 'VOIDED'
                             ? 'bg-rose-100 text-rose-800'
+                            : item.category === 'DRAWER'
+                            ? 'bg-purple-100 text-purple-900 font-bold'
                             : 'bg-slate-100 text-slate-700'
                         }`}>
                           {item.status}

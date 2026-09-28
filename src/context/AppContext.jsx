@@ -216,18 +216,21 @@ export function AppProvider({ children }) {
   // Immutable Canteen Receipts
   const [canteenReceipts, setCanteenReceipts] = useState(() => {
     const saved = localStorage.getItem('nkb_canteen_receipts');
-    return saved ? JSON.parse(saved) : INITIAL_CANTEEN_RECEIPTS;
+    let list = saved ? JSON.parse(saved) : INITIAL_CANTEEN_RECEIPTS;
+    // Purge test record GP-2026-47210
+    return list.filter(r => r.gatePassNo !== 'GP-2026-47210' && r.receiptNo !== 'REC-20260928-47210');
   });
 
   // Canteen Gate Passes (Half-A4 PDF security clearance for taking goods out of plant)
   const [canteenGatePasses, setCanteenGatePasses] = useState(() => {
     const saved = localStorage.getItem('nkb_canteen_gate_passes');
     let list = saved ? JSON.parse(saved) : [...INITIAL_CANTEEN_GATE_PASSES];
-    let found47210 = false;
-    list = list.map(gp => {
-      const is47210 = gp.gatePassNo === 'GP-2026-47210' || gp.id === 'GP-2026-47210';
-      if (is47210) found47210 = true;
-      const isCleared = is47210 || 
+    
+    // Purge test record GP-2026-47210
+    list = list.filter(gp => gp.gatePassNo !== 'GP-2026-47210' && gp.id !== 'GP-2026-47210' && gp.receiptNo !== 'REC-20260928-47210');
+
+    return list.map(gp => {
+      const isCleared = 
         gp.gateStatus?.toLowerCase().includes('cleared') || 
         gp.status?.toLowerCase().includes('cleared') || 
         Boolean(gp.clearedAt);
@@ -236,38 +239,12 @@ export function AppProvider({ children }) {
           ...gp,
           gateStatus: 'Cleared at Gate',
           status: 'Cleared at Gate',
-          clearedAt: gp.clearedAt || '2026-09-28T08:30:00.000Z',
+          clearedAt: gp.clearedAt || new Date().toISOString(),
           securityGuard: gp.securityGuard || 'Officer R. Mendoza (Main Gate Post 1)'
         };
       }
       return gp;
     });
-
-    // Ensure GP-2026-47210 exists and is tallied across IT Master Records and Canteen Admin
-    if (!found47210) {
-      list.unshift({
-        id: 'GP-2026-47210',
-        gatePassNo: 'GP-2026-47210',
-        receiptNo: 'REC-20260928-47210',
-        staffId: '1',
-        employeeId: 'NKB-2024-001',
-        staffName: 'Glen Nobleza',
-        departmentName: 'Executive / IT Management',
-        items: [
-          { name: 'Canteen Grocery Package', quantity: 1, unit: 'pkg', unitPrice: 150, total: 150 }
-        ],
-        totalAmount: 150,
-        date: '2026-09-28T08:15:00.000Z',
-        gateStatus: 'Cleared at Gate',
-        status: 'Cleared at Gate',
-        type: 'Gate Pass',
-        orderType: 'Grocery',
-        securityGuard: 'Officer R. Mendoza (Main Gate Post 1)',
-        clearedAt: '2026-09-28T08:30:00.000Z'
-      });
-    }
-
-    return list;
   });
 
   // Canteen Void Logs (Card-based Barcode/QR/RFID audits)
@@ -1662,7 +1639,7 @@ export function AppProvider({ children }) {
     }
     const newItem = {
       id: `prod-${Date.now()}`,
-      barcode: data.barcode || `480${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+      barcode: (data.barcode && data.barcode.trim()) ? data.barcode.trim() : '',
       name: data.name,
       company: data.company || 'Direct Supplier',
       brand: data.brand || 'General',

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   ScanBarcode, 
   Boxes, 
@@ -30,7 +30,13 @@ import {
   Filter,
   X,
   BarChart3,
-  Calculator
+  Calculator,
+  Wand2,
+  RefreshCw,
+  Copy,
+  Check,
+  Layers,
+  Grid
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CardVoidModal from './CardVoidModal';
@@ -42,6 +48,8 @@ import CanteenPassModal from './CanteenPassModal';
 import ThermalReceiptView from './ThermalReceiptView';
 import BarcodeLabelSheet from './BarcodeLabelSheet';
 import CanteenZReadingModal from './CanteenZReadingModal';
+import BarcodeView from '../common/BarcodeView';
+import canteenInventoryData from '../../data/canteenInventory.json';
 import { playScanBeep, playErrorBuzz } from '../../utils/audioFeedback';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
@@ -121,6 +129,37 @@ export const KNOWN_INBOUND_CATALOG = {
   }
 };
 
+export const POPULAR_SUPPLY_SUGGESTIONS = [
+  { name: 'San Miguel Fresh Milk 1L', brand: 'Magnolia Pure Fresh', company: 'San Miguel Dairy Corp', category: 'Beverages & Dairy', size: '1L', unit: 'Bottle', costPrice: 82, sellingPrice: 98, quantity: 45 },
+  { name: 'Purefoods Corned Beef 210g', brand: 'Purefoods', company: 'San Miguel Foods Inc', category: 'Canned Goods', size: '210g', unit: 'Can', costPrice: 74, sellingPrice: 92, quantity: 65 },
+  { name: 'Nissin Cup Noodles Seafood 60g', brand: 'Nissin', company: 'Monde Nissin Corp', category: 'Instant Meals', size: '60g', unit: 'Cup', costPrice: 28.5, sellingPrice: 38, quantity: 120 },
+  { name: 'Gardenia Classic White Bread 600g', brand: 'Gardenia', company: 'Gardenia Bakeries Phils', category: 'Bakery & Bread', size: '600g', unit: 'Loaf', costPrice: 65, sellingPrice: 78, quantity: 24 },
+  { name: 'C2 Green Tea Apple 500ml', brand: 'URC C2', company: 'Universal Robina Corp', category: 'Beverages', size: '500ml', unit: 'Bottle', costPrice: 22, sellingPrice: 30, quantity: 80 },
+  { name: 'Nature Spring Mineral Water 500ml', brand: 'Nature Spring', company: 'Philippine Spring Water Resources Inc', category: 'Beverages', size: '500ml', unit: 'Bottle', costPrice: 12, sellingPrice: 18, quantity: 150 },
+  { name: 'Lucky Me Pancit Canton Kalamansi 80g', brand: 'Lucky Me!', company: 'Monde Nissin Corp', category: 'Instant Meals', size: '80g', unit: 'Pack', costPrice: 15, sellingPrice: 20, quantity: 100 },
+  { name: 'Bear Brand Fortified Milk Powder 300g', brand: 'Bear Brand', company: 'Nestlé Philippines', category: 'Beverages & Dairy', size: '300g', unit: 'Pack', costPrice: 95, sellingPrice: 115, quantity: 40 },
+  { name: 'Kopiko Blanca Coffee Twin Pack 52g', brand: 'Kopiko', company: 'PT Mayora Indah', category: 'Hot Drinks', size: '52g', unit: 'Sachet', costPrice: 13, sellingPrice: 18, quantity: 120 },
+  { name: 'Century Tuna Flakes in Oil 155g', brand: 'Century Tuna', company: 'Century Pacific Food', category: 'Canned Goods', size: '155g', unit: 'Can', costPrice: 38, sellingPrice: 48, quantity: 60 }
+];
+
+export const SUGGESTED_COMPANIES = [
+  'San Miguel Foods', 'Monde Nissin', 'Universal Robina Corp', 'Nestlé Philippines', 
+  'Century Pacific Food', 'Gardenia Bakeries', 'Coca-Cola Beverages PH', 'Peerless Products'
+];
+
+export const SUGGESTED_BRANDS = [
+  'Magnolia', 'Purefoods', 'Nissin', 'Lucky Me!', 'Gardenia', 'C2', 
+  'Nature Spring', 'Bear Brand', 'Kopiko', 'Century Tuna', 'Jack \'n Jill'
+];
+
+export const SUGGESTED_SIZES = [
+  'Solo', '1L', '500ml', '330ml', '250ml', '210g', '155g', '100g', '80g', '60g', '600g', 'Twin Pack', 'Pack'
+];
+
+export const SUGGESTED_UNITS = [
+  'Piece', 'Can', 'Bottle', 'Pack', 'Cup', 'Loaf', 'Box', 'Sachet', 'Pouch'
+];
+
 export default function CanteenHub() {
   const { 
     canteenInventory, 
@@ -137,6 +176,7 @@ export default function CanteenHub() {
     recordCanteenSale, 
     canteenVoidLogs,
     canteenGatePasses,
+    canteenDrawer,
     confirmCanteenSalaryDeduction,
     clearGatePass,
     staffList,
@@ -145,7 +185,7 @@ export default function CanteenHub() {
     isSuperAdmin
   } = useApp();
 
-  const [activeSubtab, setActiveSubtab] = useState('pos'); // 'pos', 'inventory', 'orders', 'tracking', 'reports'
+  const [activeSubtab, setActiveSubtab] = useState('pos'); // 'pos', 'inventory', 'barcodes', 'orders', 'tracking', 'reports'
   const [showCanteenPassModal, setShowCanteenPassModal] = useState(false);
   
   // POS Register State
@@ -164,8 +204,18 @@ export default function CanteenHub() {
 
   useEscapeKey('canteen-hub-z-reading-modal', ESCAPE_PRIORITY.MODAL, showZReadingModal, () => setShowZReadingModal(false));
 
-  // Inbound Inventory Scanner State
-  const [inboundScanQuery, setInboundScanQuery] = useState('');
+  // Product Name-First Inbound Intake & Autocomplete State
+  const [inboundProductNameQuery, setInboundProductNameQuery] = useState('');
+  const [showInboundDropdown, setShowInboundDropdown] = useState(false);
+  const [modalSearchQuery, setModalSearchQuery] = useState('');
+  const [showModalCatalogDropdown, setShowModalCatalogDropdown] = useState(false);
+
+  // Barcode Tagging & Assignment Station State
+  const [barcodeViewFilter, setBarcodeViewFilter] = useState('UNASSIGNED'); // 'UNASSIGNED' | 'ALL' | 'INTERNAL'
+  const [barcodeSearch, setBarcodeSearch] = useState('');
+  const [pairingTargetProduct, setPairingTargetProduct] = useState(null);
+  const [scannerGunInput, setScannerGunInput] = useState('');
+  const [quickBarcodeEdits, setQuickBarcodeEdits] = useState({});
 
   // Category management & filtering state
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
@@ -227,51 +277,167 @@ export default function CanteenHub() {
   useEscapeKey('canteen-pass-modal-hub', ESCAPE_PRIORITY.MODAL, showCanteenPassModal, () => setShowCanteenPassModal(false));
   useEscapeKey('canteen-void-receipt-hub', ESCAPE_PRIORITY.MODAL, Boolean(selectedVoidReceipt), () => setSelectedVoidReceipt(null));
 
-  // Scan & Auto-Fill Inbound Stock Handler
-  const handleScanInboundInventory = (code) => {
-    if (!code || !code.trim()) return;
-    const clean = code.trim();
-    const catalogMatch = KNOWN_INBOUND_CATALOG[clean];
-    const inventoryMatch = canteenInventory.find(i => i.barcode === clean || i.id === clean);
-    const item = catalogMatch || inventoryMatch;
-
-    if (item) {
-      playScanBeep();
-      setNewItemBarcode(item.barcode || clean);
-      setNewItemName(item.name || '');
-      setNewItemCompany(item.company || '');
-      setNewItemBrand(item.brand || '');
-      setNewItemCategory(item.category || 'General Supplies');
-      setNewItemCost(item.costPrice !== undefined ? String(item.costPrice) : '0');
-      setNewItemPrice(item.sellingPrice !== undefined ? String(item.sellingPrice) : '0');
-      setNewItemQty(item.quantity !== undefined ? String(item.quantity) : '50');
-      setNewItemSize(item.size || '');
-      setNewItemUnit(item.unit || 'Piece');
-      setNewItemExpiry(item.expirationDate || '2026-12-31');
-    } else {
-      playScanBeep();
-      setNewItemBarcode(clean);
-      setNewItemName(`Inbound Supply Item #${clean.slice(-4)}`);
-      setNewItemCompany('Direct Supplier Corp');
-      setNewItemBrand('Standard Brand');
-      setNewItemCategory('General Supplies');
-      setNewItemCost('50.00');
-      setNewItemPrice('65.00');
-      setNewItemQty('50');
-      setNewItemSize('Unit');
-      setNewItemUnit('Piece');
-      setNewItemExpiry('2027-06-30');
+  // Unified master catalog list of products for suggestions
+  const catalogMasterList = useMemo(() => {
+    const map = new Map();
+    POPULAR_SUPPLY_SUGGESTIONS.forEach(p => {
+      if (p.name) map.set(p.name.toLowerCase().trim(), p);
+    });
+    if (canteenInventoryData?.products) {
+      canteenInventoryData.products.forEach(p => {
+        if (p.name && !map.has(p.name.toLowerCase().trim())) {
+          map.set(p.name.toLowerCase().trim(), p);
+        }
+      });
     }
+    Object.values(KNOWN_INBOUND_CATALOG).forEach(item => {
+      if (item.name && !map.has(item.name.toLowerCase().trim())) {
+        map.set(item.name.toLowerCase().trim(), item);
+      }
+    });
+    canteenInventory.forEach(p => {
+      if (p.name && !map.has(p.name.toLowerCase().trim())) {
+        map.set(p.name.toLowerCase().trim(), p);
+      }
+    });
+    return Array.from(map.values());
+  }, [canteenInventory]);
 
-    setInboundScanQuery('');
+  // Autocomplete matching products for the Inbound search bar
+  const inboundMatches = useMemo(() => {
+    if (!inboundProductNameQuery || !inboundProductNameQuery.trim()) return [];
+    const q = inboundProductNameQuery.toLowerCase().trim();
+    return catalogMasterList.filter(item => 
+      item.name?.toLowerCase().includes(q) ||
+      item.brand?.toLowerCase().includes(q) ||
+      item.company?.toLowerCase().includes(q) ||
+      item.category?.toLowerCase().includes(q)
+    ).slice(0, 8);
+  }, [inboundProductNameQuery, catalogMasterList]);
+
+  // Autocomplete matching products for the inside-modal catalog search
+  const modalCatalogMatches = useMemo(() => {
+    if (!modalSearchQuery || !modalSearchQuery.trim()) return [];
+    const q = modalSearchQuery.toLowerCase().trim();
+    return catalogMasterList.filter(item => 
+      item.name?.toLowerCase().includes(q) ||
+      item.brand?.toLowerCase().includes(q) ||
+      item.company?.toLowerCase().includes(q)
+    ).slice(0, 8);
+  }, [modalSearchQuery, catalogMasterList]);
+
+  // Helper to detect if a product has no valid barcode assigned
+  const isMissingBarcode = (p) => {
+    if (!p || !p.barcode) return true;
+    const b = String(p.barcode).trim();
+    return b === '' || b === 'N/A' || b === 'NONE' || b.startsWith('TEMP-');
+  };
+
+  const unassignedProducts = useMemo(() => {
+    return canteenInventory.filter(isMissingBarcode);
+  }, [canteenInventory]);
+
+  const barcodedProducts = useMemo(() => {
+    return canteenInventory.filter(p => !isMissingBarcode(p));
+  }, [canteenInventory]);
+
+  const internalSkuProducts = useMemo(() => {
+    return canteenInventory.filter(p => p.barcode && String(p.barcode).startsWith('NKB-CAN-'));
+  }, [canteenInventory]);
+
+  // Handle selecting a product from suggestions to prefill the intake form
+  const handleSelectProduct = (prod) => {
+    if (!prod) return;
+    playScanBeep();
+    setNewItemName(prod.name || '');
+    setNewItemCompany(prod.company || prod.supplier || 'Direct Supplier');
+    setNewItemBrand(prod.brand || 'General');
+    setNewItemCategory(prod.category || canteenCategories?.[0] || 'Beverages & Dairy');
+    setNewItemCost(prod.costPrice !== undefined ? String(prod.costPrice) : '0');
+    setNewItemPrice(prod.sellingPrice !== undefined ? String(prod.sellingPrice) : '0');
+    setNewItemQty(prod.quantity !== undefined && prod.quantity > 0 ? String(prod.quantity) : '50');
+    setNewItemSize(prod.size || '');
+    setNewItemUnit(prod.unit || 'Piece');
+    setNewItemExpiry(prod.expirationDate || '2027-06-30');
+    // Barcode is kept if present and not a temp tag, otherwise empty
+    setNewItemBarcode(prod.barcode && !prod.barcode.startsWith('TEMP-') ? prod.barcode : '');
+    setInboundProductNameQuery('');
+    setShowInboundDropdown(false);
+    setModalSearchQuery('');
+    setShowModalCatalogDropdown(false);
     setShowAddModal(true);
   };
 
-  const handleInboundScanSubmit = (e) => {
+  // Quick markup preset handler: calculates selling price from cost price
+  const applyMarkupPercent = (pct) => {
+    const cost = parseFloat(newItemCost);
+    if (isNaN(cost) || cost <= 0) return;
+    const computedPrice = (cost * (1 + pct / 100)).toFixed(2);
+    setNewItemPrice(computedPrice);
+  };
+
+  // Quick expiry preset handler
+  const applyExpiryMonths = (months) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + months);
+    setNewItemExpiry(d.toISOString().slice(0, 10));
+  };
+
+  // Internal SKU Generator
+  const generateSkuCode = () => {
+    return `NKB-CAN-${Math.floor(100000 + Math.random() * 900000)}`;
+  };
+
+  // Fast Scanner Gun Pairing Handler
+  const handleScannerGunPair = (e) => {
     e.preventDefault();
-    if (inboundScanQuery.trim()) {
-      handleScanInboundInventory(inboundScanQuery.trim());
+    if (!scannerGunInput.trim()) return;
+    const scannedCode = scannerGunInput.trim();
+    const target = pairingTargetProduct || unassignedProducts[0];
+    if (!target) {
+      alert('Please select a product from the queue to pair with this barcode.');
+      return;
     }
+    
+    updateSupplyItem(target.id, { barcode: scannedCode });
+    playScanBeep();
+    setScannerGunInput('');
+    
+    // Auto-advance to the next unassigned product
+    const remaining = unassignedProducts.filter(p => p.id !== target.id);
+    if (remaining.length > 0) {
+      setPairingTargetProduct(remaining[0]);
+    } else {
+      setPairingTargetProduct(null);
+    }
+  };
+
+  // Save inline barcode
+  const handleSaveInlineBarcode = (productId, customBarcode) => {
+    const code = (customBarcode !== undefined ? customBarcode : quickBarcodeEdits[productId] || '').trim();
+    if (!code) {
+      alert('Please enter a barcode or click "Generate SKU".');
+      return;
+    }
+    updateSupplyItem(productId, { barcode: code });
+    playScanBeep();
+    setQuickBarcodeEdits(prev => {
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
+  };
+
+  // Bulk Auto-Generate SKUs for All Unassigned Products
+  const handleBulkGenerateSKUs = () => {
+    if (unassignedProducts.length === 0) return;
+    if (!window.confirm(`Generate unique internal scannable SKUs (NKB-CAN-XXXXXX) for all ${unassignedProducts.length} pending products?`)) return;
+    
+    unassignedProducts.forEach((item, index) => {
+      const sku = `NKB-CAN-${Math.floor(100000 + Math.random() * 900000 + index)}`;
+      updateSupplyItem(item.id, { barcode: sku });
+    });
+    playScanBeep();
   };
 
   // POS Cart Methods
@@ -489,6 +655,24 @@ export default function CanteenHub() {
 
             <button
               type="button"
+              onClick={() => setActiveSubtab('barcodes')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer relative ${
+                activeSubtab === 'barcodes'
+                  ? 'bg-white text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Tag className="h-4 w-4 text-amber-400" />
+              <span>Barcode Tagging &amp; Workstation</span>
+              {unassignedProducts.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black animate-pulse">
+                  {unassignedProducts.length} Pending
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveSubtab('orders')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 activeSubtab === 'orders'
@@ -582,94 +766,130 @@ export default function CanteenHub() {
       {activeSubtab === 'inventory' && (
         <div className="space-y-4">
           
-          {/* Inbound Inventory Barcode Quick-Scanner Bar */}
+          {/* Inbound Supply Intake by Product Name & Suggestions */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-slate-200 shadow-sm space-y-3">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white">
-                  <ScanBarcode className="h-5 w-5 text-white" />
+                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-amber-400">
+                  <Sparkles className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                      Inbound Inventory Barcode Scanner
+                      Encode Inbound Supply by Product Name
                     </h4>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-[10px] font-mono font-bold text-slate-300">
-                      Auto-Fills 6 Required Attributes
+                    <span className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-[10px] font-mono font-bold text-amber-300">
+                      Catalog Autocomplete &amp; Form Suggestions
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Scanning fills: <strong>Company Name</strong>, <strong>Brand</strong>, <strong>Expiration / Best Before Date</strong>, <strong>Quantity</strong>, <strong>Prices (Cost &amp; Selling)</strong>, and <strong>Size</strong>.
+                    No barcode scanner required at intake! Type product name to auto-fill Supplier, Brand, Category, Size, and Prices.
                   </p>
                 </div>
               </div>
 
-              <form onSubmit={handleInboundScanSubmit} className="flex items-center gap-2 w-full md:w-auto">
-                <div className="relative flex-1 md:w-72">
-                  <ScanBarcode className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                {/* Autocomplete Input */}
+                <div className="relative flex-1 md:w-80">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <input
                     type="text"
-                    value={inboundScanQuery}
-                    onChange={(e) => setInboundScanQuery(e.target.value)}
-                    placeholder="Scan barcode for inventory..."
-                    className="w-full h-9 pl-9 pr-3 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500 font-mono"
+                    value={inboundProductNameQuery}
+                    onChange={(e) => {
+                      setInboundProductNameQuery(e.target.value);
+                      setShowInboundDropdown(true);
+                    }}
+                    onFocus={() => setShowInboundDropdown(true)}
+                    placeholder="Search product name (e.g. San Miguel, Purefoods, C2, Milk)..."
+                    className="w-full h-9 pl-9 pr-8 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
                   />
+                  {inboundProductNameQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInboundProductNameQuery('');
+                        setShowInboundDropdown(false);
+                      }}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-200"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+
+                  {/* Autocomplete Dropdown */}
+                  {showInboundDropdown && inboundMatches.length > 0 && (
+                    <div className="absolute left-0 right-0 top-10 z-30 bg-slate-950 border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-64 overflow-y-auto">
+                      <div className="p-2 border-b border-slate-800 text-[10px] uppercase font-bold text-slate-400">
+                        Matching Catalog Products ({inboundMatches.length})
+                      </div>
+                      {inboundMatches.map((prod, idx) => (
+                        <div
+                          key={`match-${idx}`}
+                          onClick={() => handleSelectProduct(prod)}
+                          className="p-2.5 hover:bg-slate-800/90 border-b border-slate-900/50 cursor-pointer transition flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-white truncate">{prod.name}</div>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                              <span className="text-amber-400">{prod.brand || prod.company || 'General'}</span>
+                              <span>·</span>
+                              <span>{prod.category}</span>
+                              {prod.size && <span>· {prod.size}</span>}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-xs font-mono font-bold text-emerald-400">₱{Number(prod.sellingPrice || 0).toFixed(2)}</div>
+                            <span className="text-[9px] text-slate-500">Auto-fill &amp; Encode</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
+
                 <button
-                  type="submit"
-                  className="h-9 px-4 rounded-xl bg-white hover:bg-slate-200 text-slate-950 text-xs font-bold transition cursor-pointer shrink-0 shadow-sm flex items-center gap-1.5"
+                  type="button"
+                  onClick={() => {
+                    // Open modal for new product
+                    setNewItemName(inboundProductNameQuery.trim());
+                    setNewItemCompany('');
+                    setNewItemBrand('');
+                    setNewItemCategory(canteenCategories?.[0] || 'Beverages & Dairy');
+                    setNewItemCost('');
+                    setNewItemPrice('');
+                    setNewItemQty('50');
+                    setNewItemSize('');
+                    setNewItemUnit('Piece');
+                    setNewItemExpiry('');
+                    setNewItemBarcode('');
+                    setShowAddModal(true);
+                  }}
+                  className="h-9 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition cursor-pointer shrink-0 shadow-sm flex items-center gap-1.5"
                 >
-                  <ScanBarcode className="h-3.5 w-3.5 text-slate-950" />
-                  Scan &amp; Fill
+                  <Plus className="h-4 w-4" />
+                  <span>+ Encode Product</span>
                 </button>
-              </form>
+              </div>
             </div>
 
-            {/* Quick Test Barcode Pills */}
+            {/* Quick Popular Product Suggestion Pills */}
             <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800 text-[11px]">
-              <span className="text-slate-400 font-medium mr-1 text-[10px] uppercase font-bold">Quick Inbound Scan Test:</span>
-              <button
-                type="button"
-                onClick={() => handleScanInboundInventory('4800016644012')}
-                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer text-[10px] font-mono"
-              >
-                Milk (1L) · San Miguel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleScanInboundInventory('4800016600216')}
-                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer text-[10px] font-mono"
-              >
-                Corned Beef (210g) · Purefoods
-              </button>
-              <button
-                type="button"
-                onClick={() => handleScanInboundInventory('4800841200115')}
-                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer text-[10px] font-mono"
-              >
-                Cup Noodles (60g) · Nissin
-              </button>
-              <button
-                type="button"
-                onClick={() => handleScanInboundInventory('4800047820102')}
-                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer text-[10px] font-mono"
-              >
-                White Bread (600g) · Gardenia
-              </button>
-              <button
-                type="button"
-                onClick={() => handleScanInboundInventory('4807770270014')}
-                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer text-[10px] font-mono"
-              >
-                C2 Tea (500ml) · URC
-              </button>
-              <button
-                type="button"
-                onClick={() => handleScanInboundInventory('4800552109923')}
-                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer text-[10px] font-mono"
-              >
-                Water (500ml) · Nature Spring
-              </button>
+              <span className="text-slate-400 font-medium mr-1 text-[10px] uppercase font-bold flex items-center gap-1">
+                <Sparkles className="h-3 w-3 text-amber-400" />
+                <span>Popular Suggestions:</span>
+              </span>
+              {POPULAR_SUPPLY_SUGGESTIONS.map((prod, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelectProduct(prod)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/50 text-slate-300 hover:text-white transition cursor-pointer text-[10px] flex items-center gap-1"
+                  title={`Click to auto-fill ${prod.name}`}
+                >
+                  <span>{prod.name}</span>
+                  <span className="text-[9px] text-amber-400 font-mono">₱{prod.sellingPrice}</span>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -879,6 +1099,510 @@ export default function CanteenHub() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* SUBTAB: BARCODE TAGGING & ASSIGNMENT WORKSTATION */}
+      {activeSubtab === 'barcodes' && (
+        <div className="space-y-5">
+          
+          {/* Workstation Header & KPI Metrics */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-slate-800 rounded-3xl p-5 text-white shadow-md">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800/80">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-400">
+                  <Tag className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black uppercase tracking-wider text-white">
+                      Barcode Tagging &amp; Inventory SKU Station
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-xs font-black">
+                      {unassignedProducts.length} Awaiting Barcode
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Manage items encoded without physical barcodes. Pair manufacturer barcodes using your scanner gun or generate internal NKB SKUs for adhesive sticker printing.
+                  </p>
+                </div>
+              </div>
+
+              {/* Fast Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleBulkGenerateSKUs}
+                  disabled={unassignedProducts.length === 0}
+                  className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  title="Automatically generate NKB-CAN-XXXXXX SKUs for all pending items"
+                >
+                  <Wand2 className="h-4 w-4" />
+                  <span>Auto-Generate SKUs for All ({unassignedProducts.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowBarcodeSheet(true)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  title="Print A4 Barcode Sticker Sheet (24-Up)"
+                >
+                  <Printer className="h-4 w-4 text-cyan-400" />
+                  <span>Print Sticker Sheet</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewItemName('');
+                    setNewItemBarcode('');
+                    setNewItemCost('');
+                    setNewItemPrice('');
+                    setNewItemQty('50');
+                    setShowAddModal(true);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>+ Encode New Supply</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4 Stat KPI Metric Tiles */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 text-xs">
+              <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-3.5 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Total Catalog Items</span>
+                <div className="text-xl font-black text-white font-mono">{canteenInventory.length}</div>
+                <span className="text-[10px] text-slate-500">Master product database</span>
+              </div>
+
+              <div className="bg-amber-950/30 border border-amber-900/40 rounded-2xl p-3.5 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-amber-400">Awaiting Barcodes</span>
+                <div className="text-xl font-black text-amber-300 font-mono">{unassignedProducts.length}</div>
+                <span className="text-[10px] text-amber-400/80 font-medium">Pending scanner/SKU pairing</span>
+              </div>
+
+              <div className="bg-emerald-950/30 border border-emerald-900/40 rounded-2xl p-3.5 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-emerald-400">Barcodes Verified</span>
+                <div className="text-xl font-black text-emerald-300 font-mono">{barcodedProducts.length}</div>
+                <span className="text-[10px] text-emerald-400/80 font-medium">Ready for POS counter scan</span>
+              </div>
+
+              <div className="bg-cyan-950/30 border border-cyan-900/40 rounded-2xl p-3.5 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-cyan-400">Internal NKB SKUs</span>
+                <div className="text-xl font-black text-cyan-300 font-mono">{internalSkuProducts.length}</div>
+                <span className="text-[10px] text-cyan-400/80 font-medium">Cooked/Local canteen goods</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Rapid Scanner Gun Pairing Station */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 text-white shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <ScanBarcode className="h-5 w-5 text-amber-400" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-white">
+                  Rapid Barcode Scanner Gun Pairing Workstation
+                </h4>
+              </div>
+              <span className="text-[11px] text-slate-400 font-mono">
+                Auto-Advances to Next Item on Scan
+              </span>
+            </div>
+
+            {/* Currently targeted item banner */}
+            {(() => {
+              const target = pairingTargetProduct || unassignedProducts[0];
+              if (!target) {
+                return (
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center">
+                    <CheckCircle2 className="h-6 w-6 text-emerald-400 mx-auto mb-1.5" />
+                    <p className="text-xs font-bold text-slate-200">
+                      All products currently have assigned barcodes!
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Select any product in the directory table below to update or re-tag its barcode.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  <div className="p-3.5 rounded-2xl bg-amber-950/20 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
+                        <Package className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded-md">
+                            Active Gun Pairing Target
+                          </span>
+                          <span className="text-xs font-bold text-white">{target.name}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-1">
+                          <span>Category: <strong className="text-slate-200">{target.category}</strong></span>
+                          <span>·</span>
+                          <span>Size: <strong className="text-slate-200">{target.size || 'Standard'}</strong></span>
+                          <span>·</span>
+                          <span>Stock: <strong className="text-slate-200">{target.quantity} {target.unit || 'pcs'}</strong></span>
+                          <span>·</span>
+                          <span>Price: <strong className="text-emerald-400 font-mono">₱{Number(target.sellingPrice).toFixed(2)}</strong></span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const sku = generateSkuCode();
+                          handleSaveInlineBarcode(target.id, sku);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                        title="Generate internal SKU for this item"
+                      >
+                        <Wand2 className="h-3.5 w-3.5" />
+                        <span>Generate SKU</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Scanner Gun Input Form */}
+                  <form onSubmit={handleScannerGunPair} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="relative flex-1">
+                      <ScanBarcode className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+                      <input
+                        type="text"
+                        value={scannerGunInput}
+                        onChange={(e) => setScannerGunInput(e.target.value)}
+                        placeholder="Aim scanner gun here & pull trigger (or type barcode & press Enter)..."
+                        className="w-full h-10 pl-10 pr-3 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        autoFocus
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={!scannerGunInput.trim()}
+                      className="h-10 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 text-xs font-black transition cursor-pointer shrink-0 shadow-sm flex items-center justify-center gap-1.5"
+                    >
+                      <Check className="h-4 w-4" />
+                      <span>Pair Barcode &amp; Next</span>
+                    </button>
+                  </form>
+                  <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                    <span>💡 <strong>Scanner Gun Workflow:</strong> Plug in your USB scanner gun, scan the physical barcode on the packaging. The system will immediately bind the barcode to <strong>"{target.name}"</strong>, emit a beep, and auto-load the next unassigned product!</span>
+                  </p>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Subtab View Filters & Search Bar */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                <button
+                  type="button"
+                  onClick={() => setBarcodeViewFilter('UNASSIGNED')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                    barcodeViewFilter === 'UNASSIGNED'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <AlertCircle className="h-3.5 w-3.5 text-amber-700" />
+                  <span>Awaiting Barcode ({unassignedProducts.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBarcodeViewFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+                    barcodeViewFilter === 'ALL'
+                      ? 'bg-slate-950 text-white shadow-sm font-black'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>All Catalog Products ({canteenInventory.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBarcodeViewFilter('INTERNAL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                    barcodeViewFilter === 'INTERNAL'
+                      ? 'bg-cyan-700 text-white shadow-sm font-black'
+                      : 'bg-cyan-50 text-cyan-800 hover:bg-cyan-100 border border-cyan-200'
+                  }`}
+                >
+                  <Wand2 className="h-3.5 w-3.5 text-cyan-600" />
+                  <span>Internal NKB SKUs ({internalSkuProducts.length})</span>
+                </button>
+              </div>
+
+              {/* Search Box */}
+              <div className="relative sm:w-72">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={barcodeTableSearch}
+                  onChange={(e) => setBarcodeTableSearch(e.target.value)}
+                  placeholder="Search name, category, or barcode..."
+                  className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+                />
+                {barcodeTableSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setBarcodeTableSearch('')}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+            </div>
+          </div>
+
+          {/* Products Workstation Table */}
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Boxes className="h-4 w-4 text-slate-600" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                  {barcodeViewFilter === 'UNASSIGNED' ? 'Products Awaiting Barcode Tagging' : barcodeViewFilter === 'INTERNAL' ? 'Internal NKB Canteen SKUs' : 'All Catalog Barcode Directory'}
+                </h4>
+              </div>
+              <span className="text-[11px] text-slate-400 font-mono">
+                Real-Time POS Inventory Sync
+              </span>
+            </div>
+
+            {(() => {
+              let list = canteenInventory;
+              if (barcodeViewFilter === 'UNASSIGNED') {
+                list = unassignedProducts;
+              } else if (barcodeViewFilter === 'INTERNAL') {
+                list = internalSkuProducts;
+              }
+
+              if (barcodeTableSearch.trim()) {
+                const q = barcodeTableSearch.toLowerCase().trim();
+                list = list.filter(item => 
+                  item.name?.toLowerCase().includes(q) ||
+                  item.barcode?.toLowerCase().includes(q) ||
+                  item.category?.toLowerCase().includes(q) ||
+                  item.brand?.toLowerCase().includes(q) ||
+                  item.company?.toLowerCase().includes(q)
+                );
+              }
+
+              if (list.length === 0) {
+                return (
+                  <div className="p-12 text-center text-slate-400 space-y-2">
+                    <CheckCircle2 className="h-10 w-10 text-emerald-400 mx-auto" />
+                    <p className="font-bold text-slate-700 text-sm">
+                      {barcodeViewFilter === 'UNASSIGNED' 
+                        ? 'Zero pending products! All items have verified barcodes.'
+                        : 'No products match your search filter.'}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {barcodeViewFilter === 'UNASSIGNED' 
+                        ? 'When you encode new supply without a barcode, it will appear here in the tagging queue automatically.'
+                        : 'Try searching with a different keyword or resetting your filter.'}
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3.5">Product Name &amp; Details</th>
+                        <th className="px-4 py-3.5">Category</th>
+                        <th className="px-4 py-3.5 text-right">Selling Price</th>
+                        <th className="px-4 py-3.5 text-center">In-Stock Qty</th>
+                        <th className="px-4 py-3.5">Current Barcode / Scannable SKU</th>
+                        <th className="px-4 py-3.5">Assign Physical Barcode</th>
+                        <th className="px-4 py-3.5 text-center">Quick Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {list.map((item) => {
+                        const hasBarcode = !isMissingBarcode(item);
+                        const isInternal = item.barcode && String(item.barcode).startsWith('NKB-CAN-');
+                        const isTargeted = pairingTargetProduct?.id === item.id;
+                        const editVal = quickBarcodeEdits[item.id] !== undefined ? quickBarcodeEdits[item.id] : (item.barcode || '');
+
+                        return (
+                          <tr 
+                            key={item.id} 
+                            className={`transition ${isTargeted ? 'bg-amber-50/60 ring-1 ring-amber-300' : hasBarcode ? 'hover:bg-slate-50/80' : 'bg-amber-50/20 hover:bg-amber-50/40'}`}
+                          >
+                            {/* Product Name & Details */}
+                            <td className="px-4 py-3">
+                              <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                <span>{item.name}</span>
+                                {isTargeted && (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 text-[9px] font-black uppercase">
+                                    Active Target
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+                                {item.brand && <span>{item.brand}</span>}
+                                {item.company && <span>· {item.company}</span>}
+                                {item.size && <span>· {item.size}</span>}
+                              </div>
+                            </td>
+
+                            {/* Category */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                                {item.category || 'General Supplies'}
+                              </span>
+                            </td>
+
+                            {/* Selling Price */}
+                            <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                              ₱{Number(item.sellingPrice || 0).toFixed(2)}
+                            </td>
+
+                            {/* In-Stock Qty */}
+                            <td className="px-4 py-3 text-center whitespace-nowrap font-mono font-medium">
+                              <span className={`inline-block px-2 py-0.5 rounded font-bold text-[11px] ${
+                                item.quantity <= 5 
+                                  ? 'bg-rose-100 text-rose-800' 
+                                  : 'bg-slate-100 text-slate-800'
+                              }`}>
+                                {item.quantity} {item.unit || 'pcs'}
+                              </span>
+                            </td>
+
+                            {/* Current Barcode / Preview */}
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              {hasBarcode ? (
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono font-bold text-slate-900 text-xs">
+                                      {item.barcode}
+                                    </span>
+                                    {isInternal ? (
+                                      <span className="px-1.5 py-0.2 rounded bg-cyan-100 text-cyan-800 text-[9px] font-bold">
+                                        Internal SKU
+                                      </span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 text-[9px] font-bold">
+                                        GTIN
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="w-28 py-0.5">
+                                    <BarcodeView value={item.barcode} height={20} width={1} displayValue={false} />
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                                  <AlertCircle className="h-3 w-3 text-amber-600" />
+                                  No Barcode Assigned
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Assign Physical Barcode Input */}
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="text"
+                                  value={editVal}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setQuickBarcodeEdits(prev => ({ ...prev, [item.id]: val }));
+                                  }}
+                                  placeholder="Type or scan..."
+                                  className="w-36 h-8 px-2.5 rounded-lg border border-slate-200 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleSaveInlineBarcode(item.id, editVal);
+                                    }
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveInlineBarcode(item.id, editVal)}
+                                  className="h-8 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold transition cursor-pointer"
+                                  title="Save this barcode to the product"
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            </td>
+
+                            {/* Quick Actions */}
+                            <td className="px-4 py-3 text-center whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-1">
+                                {!hasBarcode && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const sku = generateSkuCode();
+                                      handleSaveInlineBarcode(item.id, sku);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-200 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+                                    title="Generate Internal Scannable SKU"
+                                  >
+                                    <Wand2 className="h-3 w-3" />
+                                    <span>Gen SKU</span>
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPairingTargetProduct(item);
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                  }}
+                                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center gap-1 ${
+                                    isTargeted
+                                      ? 'bg-amber-500 text-slate-950 font-black'
+                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                  }`}
+                                  title="Set this product as the target for scanner gun pairing"
+                                >
+                                  <ScanBarcode className="h-3 w-3" />
+                                  <span>{isTargeted ? 'Targeted' : 'Gun Target'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingSupplyItem(item)}
+                                  className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+                                  title="Edit full product attributes"
+                                >
+                                  <Edit3 className="h-3 w-3" />
+                                  <span>Edit</span>
+                                </button>
+                              </div>
+                            </td>
+
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+
           </div>
 
         </div>
@@ -1374,34 +2098,70 @@ export default function CanteenHub() {
 
             <form onSubmit={handleSaveSupply} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
               
-              {/* Quick Barcode Scanner Auto-Fill Bar Inside Modal */}
-              <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 space-y-2">
+              {/* Quick Catalog / Product Name Auto-Fill Bar Inside Modal */}
+              <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 text-slate-200 space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-white flex items-center gap-1.5">
-                    <ScanBarcode className="h-4 w-4 text-white" />
-                    Scan Barcode to Auto-Fill Inbound Fields
+                    <Sparkles className="h-4 w-4 text-amber-400" />
+                    <span>Search Catalog to Auto-Fill All Form Fields</span>
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    Auto-fills: Company, Brand, Expiry, Qty, Prices, Size
+                  <span className="text-[10px] text-amber-300 font-mono">
+                    350+ Item Master Database
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Scan or enter barcode (e.g. 4800016644012)..."
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleScanInboundInventory(e.target.value);
-                      }
+                    value={modalSearchQuery}
+                    onChange={(e) => {
+                      setModalSearchQuery(e.target.value);
+                      setShowModalCatalogDropdown(true);
                     }}
-                    className="flex-1 h-8 px-3 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:ring-1 focus:ring-slate-400"
+                    onFocus={() => setShowModalCatalogDropdown(true)}
+                    placeholder="Search product (e.g. San Miguel, Purefoods, C2, Milk, Lucky Me)..."
+                    className="w-full h-8 pl-8 pr-7 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-400"
                   />
-                  <span className="text-[10px] text-slate-400 font-semibold shrink-0">Press Enter to Auto-Fill</span>
+                  {modalSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalSearchQuery('');
+                        setShowModalCatalogDropdown(false);
+                      }}
+                      className="absolute right-2 top-2 text-slate-400 hover:text-slate-200 cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+
+                  {/* Autocomplete Dropdown Inside Modal */}
+                  {showModalCatalogDropdown && modalCatalogMatches.length > 0 && (
+                    <div className="absolute left-0 right-0 top-9 z-30 bg-slate-950 border border-slate-700 rounded-xl shadow-2xl max-h-52 overflow-y-auto">
+                      {modalCatalogMatches.map((m, idx) => (
+                        <div
+                          key={`modal-match-${idx}`}
+                          onClick={() => {
+                            handleSelectProduct(m);
+                            setShowModalCatalogDropdown(false);
+                            setModalSearchQuery('');
+                          }}
+                          className="p-2 hover:bg-slate-800 cursor-pointer border-b border-slate-900 flex items-center justify-between text-xs"
+                        >
+                          <div>
+                            <span className="font-bold text-white">{m.name}</span>
+                            <span className="text-[10px] text-slate-400 ml-1.5">({m.category} · {m.brand || 'General'})</span>
+                          </div>
+                          <span className="font-mono text-emerald-400 text-xs font-bold">₱{Number(m.sellingPrice || 0).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Product Name */}
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Product Name <span className="text-slate-400">*</span>
@@ -1412,36 +2172,69 @@ export default function CanteenHub() {
                     value={newItemName}
                     onChange={(e) => setNewItemName(e.target.value)}
                     placeholder="e.g., San Miguel Fresh Milk 1L"
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400 font-bold text-slate-900"
                   />
                 </div>
 
+                {/* Barcode (Explicitly Optional) */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Barcode (SKU / GTIN)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Barcode (Optional)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setNewItemBarcode(generateSkuCode())}
+                      className="text-[10px] font-bold text-cyan-600 hover:text-cyan-700 flex items-center gap-1 transition cursor-pointer"
+                      title="Generate an internal NKB-CAN-XXXXXX SKU"
+                    >
+                      <Wand2 className="h-3 w-3" />
+                      <span>Generate SKU</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     value={newItemBarcode}
                     onChange={(e) => setNewItemBarcode(e.target.value)}
-                    placeholder="Auto-generated if blank..."
+                    placeholder="Leave blank if no barcode yet..."
                     className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Can be assigned later in the <strong>Barcode Tagging Station</strong>.
+                  </p>
                 </div>
 
+                {/* Size / Packaging with Suggestions */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Size / Packaging (e.g., 210g, 1L, 60g, 500ml)
+                    Size / Packaging (e.g. 1L, 210g, Solo)
                   </label>
                   <input
                     type="text"
                     value={newItemSize}
                     onChange={(e) => setNewItemSize(e.target.value)}
-                    placeholder="e.g., 1L, 210g, 60g, 600g, 500ml"
+                    placeholder="e.g., 1L, 210g, 60g, 500ml"
                     className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
                   />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {SUGGESTED_SIZES.slice(0, 7).map(sz => (
+                      <button
+                        key={sz}
+                        type="button"
+                        onClick={() => setNewItemSize(sz)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] transition cursor-pointer ${
+                          newItemSize === sz
+                            ? 'bg-slate-900 text-white font-bold'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {sz}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
+                {/* Category with Suggestions */}
                 <div className="min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
@@ -1514,9 +2307,6 @@ export default function CanteenHub() {
                           </button>
                         </div>
                       </div>
-                      <p className="text-[10px] text-emerald-700 mt-1 font-medium">
-                        Press Enter or click Add to save &amp; select.
-                      </p>
                     </div>
                   ) : (
                     <select
@@ -1538,8 +2328,27 @@ export default function CanteenHub() {
                       </option>
                     </select>
                   )}
+
+                  {/* Quick Category Suggestion Pills */}
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {['Beverages & Dairy', 'Canned Goods', 'Instant Meals', 'Bakery & Bread', 'Snacks', 'Hot Drinks', 'General Supplies'].map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setNewItemCategory(cat)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] transition cursor-pointer ${
+                          newItemCategory === cat
+                            ? 'bg-emerald-600 text-white font-bold'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
+                {/* Company (Supplier) with Suggestions */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Company (Supplier)
@@ -1548,14 +2357,31 @@ export default function CanteenHub() {
                     type="text"
                     value={newItemCompany}
                     onChange={(e) => setNewItemCompany(e.target.value)}
-                    placeholder="e.g., San Miguel Dairy Corp"
+                    placeholder="e.g., San Miguel Foods"
                     className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
                   />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {SUGGESTED_COMPANIES.slice(0, 4).map(comp => (
+                      <button
+                        key={comp}
+                        type="button"
+                        onClick={() => setNewItemCompany(comp)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] transition cursor-pointer ${
+                          newItemCompany === comp
+                            ? 'bg-slate-900 text-white font-bold'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {comp}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
+                {/* Brand with Suggestions */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Brand
+                    Brand Name
                   </label>
                   <input
                     type="text"
@@ -1564,38 +2390,120 @@ export default function CanteenHub() {
                     placeholder="e.g., Magnolia Pure Fresh"
                     className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
                   />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {SUGGESTED_BRANDS.slice(0, 6).map(br => (
+                      <button
+                        key={br}
+                        type="button"
+                        onClick={() => setNewItemBrand(br)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] transition cursor-pointer ${
+                          newItemBrand === br
+                            ? 'bg-slate-900 text-white font-bold'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {br}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
+                {/* Unit of Measurement with Suggestions */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Cost Price (₱) <span className="text-slate-400">*</span>
+                    Unit of Measurement
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={newItemCost}
-                    onChange={(e) => setNewItemCost(e.target.value)}
-                    placeholder="82.00"
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    type="text"
+                    value={newItemUnit}
+                    onChange={(e) => setNewItemUnit(e.target.value)}
+                    placeholder="Piece, Can, Bottle, Pack..."
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
                   />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {SUGGESTED_UNITS.map(un => (
+                      <button
+                        key={un}
+                        type="button"
+                        onClick={() => setNewItemUnit(un)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] transition cursor-pointer ${
+                          newItemUnit === un
+                            ? 'bg-slate-900 text-white font-bold'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {un}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Selling Price (₱) <span className="text-slate-400">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={newItemPrice}
-                    onChange={(e) => setNewItemPrice(e.target.value)}
-                    placeholder="98.00"
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
-                  />
+                {/* Pricing & Markup Presets Box */}
+                <div className="sm:col-span-2 p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">
+                      Pricing &amp; Automatic Markup Presets (% on Cost):
+                    </span>
+                    {parseFloat(newItemCost) > 0 && parseFloat(newItemPrice) > 0 && (
+                      <span className="text-[11px] font-mono text-emerald-700 font-bold">
+                        Margin: {(((parseFloat(newItemPrice) - parseFloat(newItemCost)) / parseFloat(newItemCost)) * 100).toFixed(1)}% (+₱{(parseFloat(newItemPrice) - parseFloat(newItemCost)).toFixed(2)}/unit)
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Cost Price (₱) <span className="text-slate-400">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        value={newItemCost}
+                        onChange={(e) => setNewItemCost(e.target.value)}
+                        placeholder="82.00"
+                        className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Selling Price (₱) <span className="text-slate-400">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        value={newItemPrice}
+                        onChange={(e) => setNewItemPrice(e.target.value)}
+                        placeholder="98.00"
+                        className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Markup calculation quick buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 mr-1">Markup Presets:</span>
+                    {[15, 20, 25, 30].map(pct => {
+                      const cost = parseFloat(newItemCost);
+                      const targetPrice = !isNaN(cost) && cost > 0 ? (cost * (1 + pct / 100)).toFixed(2) : null;
+                      return (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => applyMarkupPercent(pct)}
+                          disabled={!targetPrice}
+                          className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 hover:bg-emerald-50 hover:border-emerald-400 text-slate-700 hover:text-emerald-800 text-xs font-bold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs"
+                        >
+                          +{pct}% {targetPrice ? `(₱${targetPrice})` : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
+                {/* Inbound Quantity */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Inbound Quantity <span className="text-slate-400">*</span>
@@ -1608,8 +2516,21 @@ export default function CanteenHub() {
                     placeholder="50"
                     className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
                   />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {[12, 24, 48, 50, 100].map(q => (
+                      <button
+                        key={q}
+                        type="button"
+                        onClick={() => setNewItemQty(String(q))}
+                        className="px-2 py-0.5 rounded text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono transition cursor-pointer"
+                      >
+                        +{q}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
+                {/* Expiration Date with Presets */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Expiration Date / Best Before Date
@@ -1620,6 +2541,23 @@ export default function CanteenHub() {
                     onChange={(e) => setNewItemExpiry(e.target.value)}
                     className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
                   />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {[
+                      { label: '+1M', months: 1 },
+                      { label: '+3M', months: 3 },
+                      { label: '+6M', months: 6 },
+                      { label: '+1Y', months: 12 }
+                    ].map(exp => (
+                      <button
+                        key={exp.label}
+                        type="button"
+                        onClick={() => applyExpiryMonths(exp.months)}
+                        className="px-2 py-0.5 rounded text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition cursor-pointer"
+                      >
+                        {exp.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1736,14 +2674,25 @@ export default function CanteenHub() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Barcode (SKU / GTIN)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Barcode (SKU / GTIN)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setEditingSupplyItem(prev => ({ ...prev, barcode: generateSkuCode() }))}
+                      className="text-[10px] font-bold text-cyan-600 hover:text-cyan-700 flex items-center gap-1 transition cursor-pointer"
+                      title="Generate an internal NKB-CAN-XXXXXX SKU"
+                    >
+                      <Wand2 className="h-3 w-3" />
+                      <span>Generate SKU</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     value={editingSupplyItem.barcode || ''}
                     onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, barcode: e.target.value }))}
-                    placeholder="SKU Barcode..."
+                    placeholder="Leave blank or enter barcode..."
                     className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
                   />
                 </div>
