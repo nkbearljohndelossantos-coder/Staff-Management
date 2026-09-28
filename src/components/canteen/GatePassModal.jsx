@@ -14,7 +14,11 @@ export default function GatePassModal({ gatePass, onClose }) {
     window.print();
   };
 
-  const isCleared = gatePass.gateStatus === 'Cleared at Gate';
+  const isCleared = Boolean(
+    gatePass.gateStatus?.toLowerCase().includes('cleared') ||
+    gatePass.status?.toLowerCase().includes('cleared') ||
+    gatePass.clearedAt
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm overflow-y-auto">

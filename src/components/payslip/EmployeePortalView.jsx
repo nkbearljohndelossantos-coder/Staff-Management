@@ -759,11 +759,16 @@ export default function EmployeePortalView() {
                       {formatCurrency(gp.totalAmount)}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        gp.gateStatus === 'Cleared at Gate' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200'
-                      }`}>
-                        {gp.gateStatus}
-                      </span>
+                      {(() => {
+                        const isCleared = gp.gateStatus?.toLowerCase().includes('cleared') || gp.status?.toLowerCase().includes('cleared') || Boolean(gp.clearedAt);
+                        return (
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            isCleared ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                          }`}>
+                            {isCleared ? 'Cleared at Gate' : (gp.gateStatus || 'Issued')}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button

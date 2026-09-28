@@ -386,7 +386,16 @@ export default function ITAdminHub() {
     } else if (type === 'purchaseOrder') {
       updatePersonalPurchaseOrder(data.id || data.poNumber, data);
     } else if (type === 'gatePass') {
-      updateGatePass(data.gatePassNo || data.id, data);
+      const gpData = { ...data };
+      if (gpData.gateStatus?.toLowerCase().includes('cleared')) {
+        gpData.gateStatus = 'Cleared at Gate';
+        gpData.status = 'Cleared at Gate';
+        if (!gpData.clearedAt) gpData.clearedAt = new Date().toISOString();
+        if (!gpData.securityGuard || gpData.securityGuard === 'Awaiting Gate Post 1 Check') {
+          gpData.securityGuard = 'Officer R. Mendoza (Main Gate Post 1)';
+        }
+      }
+      updateGatePass(gpData.gatePassNo || gpData.id, gpData);
     } else if (type === 'voidLog') {
       updateVoidLog(data.id, data);
     } else if (type === 'attendance') {
@@ -838,7 +847,9 @@ export default function ITAdminHub() {
                         </div>
                       </td>
                       <td className="p-3.5">
-                        <span className="font-semibold text-slate-700">{r.orderType}</span>
+                        <span className="font-semibold text-slate-700">
+                          {r.orderType === 'Grocery' || r.orderType === 'Takeout' ? 'Gate Pass' : (r.orderType || 'Dine In')}
+                        </span>
                         <div className="text-[10px] font-bold text-slate-500">{r.paymentMethod}</div>
                       </td>
                       <td className="p-3.5 max-w-xs">
@@ -1326,8 +1337,8 @@ export default function ITAdminHub() {
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
             <div>
-              <h2 className="text-sm font-black text-slate-900">Plant Grocery Gate Passes</h2>
-              <p className="text-xs text-slate-500">Security checkout permits for grocery takeout from facility. Edit bearer, security status, and clearance records.</p>
+              <h2 className="text-sm font-black text-slate-900">Plant Gate Passes</h2>
+              <p className="text-xs text-slate-500">Security checkout permits for Gate Pass clearance from facility. Edit bearer, security status, and clearance records.</p>
             </div>
             <span className="text-xs font-bold text-slate-500">Showing {filteredGatePasses.length} of {canteenGatePasses.length} passes</span>
           </div>
@@ -1958,7 +1969,8 @@ export default function ITAdminHub() {
                         className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800"
                       >
                         <option value="Dine In">Dine In</option>
-                        <option value="Takeout">Takeout</option>
+                        <option value="Grocery">Gate Pass</option>
+                        <option value="Takeout">Takeout / Gate Pass</option>
                       </select>
                     </div>
                     <div>

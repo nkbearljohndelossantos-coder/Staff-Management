@@ -27,7 +27,8 @@ export default function ThermalReceiptView({ receipt, onClose }) {
     text += `Date: ${new Date(effectiveDate).toLocaleDateString()} ${new Date(receipt.actualEncodedAt || receipt.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}\n`;
     text += `Customer: ${receipt.customerName || 'Staff Member'}\n`;
     if (receipt.staffId) text += `Staff ID: ${receipt.staffId}\n`;
-    text += `Type: ${receipt.orderType || 'Dine In'}\n`;
+    const orderTypeLabel = receipt.orderType === 'Grocery' || receipt.orderType === 'Takeout' ? 'Gate Pass' : (receipt.orderType || 'Dine In');
+    text += `Type: ${orderTypeLabel}\n`;
     text += `Payment: ${receipt.paymentMethod || 'Cash'}\n`;
     if (receipt.gatePassNo) text += `Gate Pass: ${receipt.gatePassNo}\n`;
     text += divider;
@@ -155,7 +156,9 @@ export default function ThermalReceiptView({ receipt, onClose }) {
               )}
               <div className="flex justify-between">
                 <span>Order Nature:</span>
-                <span className="font-bold text-slate-900">{receipt.orderType || 'Dine In'}</span>
+                <span className="font-bold text-slate-900">
+                  {receipt.orderType === 'Grocery' || receipt.orderType === 'Takeout' ? 'Gate Pass' : (receipt.orderType || 'Dine In')}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Payment:</span>

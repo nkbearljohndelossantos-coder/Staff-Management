@@ -627,7 +627,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
         setCheckoutWizardStep('ORDER_NATURE');
         setScanStatusNotice({
           type: 'staff',
-          message: `Customer Verified: ${foundStaff.firstName} ${foundStaff.lastName}. Use ← Left (Dine In) or → Right (Takeout)`,
+          message: `Customer Verified: ${foundStaff.firstName} ${foundStaff.lastName}. Use ← Left (Dine In) or → Right (Gate Pass)`,
           timestamp: Date.now()
         });
       } else {
@@ -825,7 +825,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
         setCheckoutWizardStep('ORDER_NATURE');
         setScanStatusNotice({
           type: 'staff',
-          message: `Customer Verified: ${found.firstName} ${found.lastName}. Use ← Left (Dine In) or → Right (Takeout)`,
+          message: `Customer Verified: ${found.firstName} ${found.lastName}. Use ← Left (Dine In) or → Right (Gate Pass)`,
           timestamp: Date.now()
         });
       } else {
@@ -1482,7 +1482,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                   }`}
                 >
                   <ShoppingBag className="h-4 w-4" />
-                  <span>Grocery / Takeout</span>
+                  <span>Gate Pass</span>
                   <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] font-bold ${orderType === 'Grocery' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
                     Right → / 2
                   </span>
@@ -1868,7 +1868,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                   <div className="text-center">
                     <h4 className="text-lg font-black text-white">Select Order Nature</h4>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Press <kbd className="px-2 py-0.5 rounded bg-blue-900 border border-blue-600 font-mono text-white text-[11px] font-bold">← Left Arrow (or 1)</kbd> for Dine In, or <kbd className="px-2 py-0.5 rounded bg-blue-900 border border-blue-600 font-mono text-white text-[11px] font-bold">Right Arrow (or 2) →</kbd> for Takeout
+                      Press <kbd className="px-2 py-0.5 rounded bg-blue-900 border border-blue-600 font-mono text-white text-[11px] font-bold">← Left Arrow (or 1)</kbd> for Dine In, or <kbd className="px-2 py-0.5 rounded bg-blue-900 border border-blue-600 font-mono text-white text-[11px] font-bold">Right Arrow (or 2) →</kbd> for Gate Pass
                     </p>
                   </div>
 
@@ -1902,7 +1902,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                       )}
                     </button>
 
-                    {/* Grocery Takeout Card */}
+                    {/* Gate Pass Card */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1921,7 +1921,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                       </div>
                       <ShoppingBag className="h-10 w-10 text-cyan-400" />
                       <div>
-                        <div className="text-base font-black text-white">Grocery Takeout</div>
+                        <div className="text-base font-black text-white">Gate Pass</div>
                         <div className="text-[11px] text-slate-400 mt-1">Auto-prints Exit Gate Pass</div>
                       </div>
                       {orderType === 'Grocery' && (
@@ -2022,7 +2022,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                         <span className="text-[10px] text-slate-400 uppercase font-bold">Order Nature</span>
                         <div className="text-sm font-black text-white mt-0.5 flex items-center gap-1.5">
                           {orderType === 'Dine In' ? <Utensils className="h-4 w-4 text-blue-400" /> : <ShoppingBag className="h-4 w-4 text-cyan-400" />}
-                          <span>{orderType === 'Dine In' ? 'Dine In (Cafeteria)' : 'Grocery Takeout'}</span>
+                          <span>{orderType === 'Dine In' ? 'Dine In (Cafeteria)' : 'Gate Pass'}</span>
                         </div>
                       </div>
 
@@ -2082,7 +2082,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
               </div>
 
               <div className="text-[11px] text-blue-400 font-mono font-bold">
-                {checkoutWizardStep === 'ORDER_NATURE' && 'Step 1/3: Left (Dine In) / Right (Takeout)'}
+                {checkoutWizardStep === 'ORDER_NATURE' && 'Step 1/3: Left (Dine In) / Right (Gate Pass)'}
                 {checkoutWizardStep === 'PAYMENT_METHOD' && 'Step 2/3: Left (Salary Deduction) / Right (Cash)'}
                 {checkoutWizardStep === 'CONFIRM' && 'Step 3/3: Press ENTER to finalize'}
               </div>

@@ -612,7 +612,7 @@ export default function CanteenCustomerDisplay() {
                   ) : (
                     <>
                       <ShoppingBag className="h-5 w-5 text-white" />
-                      <span>Grocery Takeout</span>
+                      <span>Gate Pass</span>
                     </>
                   )}
                 </div>

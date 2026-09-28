@@ -10,6 +10,7 @@ import {
   ShieldAlert, 
   ShieldCheck,
   Trash2, 
+  Edit3,
   CheckCircle, 
   AlertCircle, 
   Clock, 
@@ -127,6 +128,7 @@ export default function CanteenHub() {
     addCanteenCategory,
     deleteCanteenCategory,
     addSupplyItem, 
+    updateSupplyItem,
     deleteSupplyItem,
     clearAllCanteenInventory,
     personalPurchaseOrders, 
@@ -209,12 +211,18 @@ export default function CanteenHub() {
   const [lateReason, setLateReason] = useState('');
   const [lateCustomDate, setLateCustomDate] = useState('');
 
+  // Edit Supply Item State
+  const [editingSupplyItem, setEditingSupplyItem] = useState(null);
+  const [showEditInlineAddCategory, setShowEditInlineAddCategory] = useState(false);
+  const [editInlineCategoryInput, setEditInlineCategoryInput] = useState('');
+
   // Search & Filter
   const [inventorySearch, setInventorySearch] = useState('');
   const [selectedVoidReceipt, setSelectedVoidReceipt] = useState(null);
 
   // Progressive Escape dismissal (Priority 40 - MODAL)
   useEscapeKey('canteen-add-supply-modal', ESCAPE_PRIORITY.MODAL, showAddModal, () => setShowAddModal(false));
+  useEscapeKey('canteen-edit-supply-modal', ESCAPE_PRIORITY.MODAL, Boolean(editingSupplyItem), () => setEditingSupplyItem(null));
   useEscapeKey('canteen-category-modal', ESCAPE_PRIORITY.MODAL, showCategoryModal, () => setShowCategoryModal(false));
   useEscapeKey('canteen-pass-modal-hub', ESCAPE_PRIORITY.MODAL, showCanteenPassModal, () => setShowCanteenPassModal(false));
   useEscapeKey('canteen-void-receipt-hub', ESCAPE_PRIORITY.MODAL, Boolean(selectedVoidReceipt), () => setSelectedVoidReceipt(null));
@@ -396,6 +404,39 @@ export default function CanteenHub() {
     setLateCustomDate('');
     setShowInlineAddCategory(false);
     setInlineCategoryInput('');
+  };
+
+  const handleUpdateSupply = (e) => {
+    e.preventDefault();
+    if (!editingSupplyItem) return;
+    const cleanName = (editingSupplyItem.name || '').trim();
+    if (!cleanName) {
+      alert('Product name is required.');
+      return;
+    }
+    const cost = parseFloat(editingSupplyItem.costPrice) || 0;
+    const price = parseFloat(editingSupplyItem.sellingPrice) || 0;
+    const qty = parseInt(editingSupplyItem.quantity) || 0;
+    const reorder = parseInt(editingSupplyItem.reorderLevel) || 10;
+
+    updateSupplyItem(editingSupplyItem.id, {
+      name: cleanName,
+      barcode: (editingSupplyItem.barcode || '').trim(),
+      company: (editingSupplyItem.company || '').trim(),
+      brand: (editingSupplyItem.brand || '').trim(),
+      category: editingSupplyItem.category || canteenCategories?.[0] || 'Beverages & Dairy',
+      size: (editingSupplyItem.size || '').trim(),
+      costPrice: cost,
+      sellingPrice: price,
+      quantity: qty,
+      unit: editingSupplyItem.unit || 'Piece',
+      expirationDate: editingSupplyItem.expirationDate || '',
+      reorderLevel: reorder
+    });
+
+    setEditingSupplyItem(null);
+    setShowEditInlineAddCategory(false);
+    setEditInlineCategoryInput('');
   };
 
   const filteredInventory = canteenInventory.filter(item => {
@@ -808,14 +849,28 @@ export default function CanteenHub() {
                         </td>
 
                         <td className="px-3 py-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => deleteSupplyItem(item.id)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                            title="Remove supply item"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setEditingSupplyItem({ ...item })}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                              title="Edit supply product details"
+                            >
+                              <Edit3 className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete "${item.name}" from inventory?`)) {
+                                  deleteSupplyItem(item.id);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                              title="Remove supply item"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         </td>
 
                       </tr>
@@ -1103,7 +1158,11 @@ export default function CanteenHub() {
                     </tr>
                   ) : (
                     canteenGatePasses.map(gp => {
-                      const isCleared = gp.gateStatus === 'Cleared at Gate';
+                      const isCleared = Boolean(
+                        gp.gateStatus?.toLowerCase().includes('cleared') ||
+                        gp.status?.toLowerCase().includes('cleared') ||
+                        gp.clearedAt
+                      );
                       return (
                         <tr key={gp.id || gp.gatePassNo} className="hover:bg-slate-50/80 transition">
                           <td className="px-4 py-3 font-mono font-bold text-slate-900">
@@ -1127,9 +1186,9 @@ export default function CanteenHub() {
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              isCleared ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'
+                              isCleared ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-700'
                             }`}>
-                              {gp.gateStatus}
+                              {isCleared ? 'Cleared at Gate' : (gp.gateStatus || 'Issued')}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-center">
@@ -1624,6 +1683,319 @@ export default function CanteenHub() {
                   className="px-5 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-xs font-bold text-white transition cursor-pointer shadow-sm"
                 >
                   Save Stock Item
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* Edit Supply Item Modal */}
+      {editingSupplyItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Edit3 className="h-5 w-5 text-slate-700" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Edit Supply Product Details
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    ID: {editingSupplyItem.id} {editingSupplyItem.barcode ? `· SKU: ${editingSupplyItem.barcode}` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingSupplyItem(null)}
+                className="text-slate-400 hover:text-slate-700 font-bold p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateSupply} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Product Name <span className="text-slate-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingSupplyItem.name || ''}
+                    onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g., San Miguel Fresh Milk 1L"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400 font-bold text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Barcode (SKU / GTIN)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingSupplyItem.barcode || ''}
+                    onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, barcode: e.target.value }))}
+                    placeholder="SKU Barcode..."
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Size / Packaging (e.g., 210g, 1L, 60g, 500ml)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingSupplyItem.size || ''}
+                    onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, size: e.target.value }))}
+                    placeholder="e.g., 1L, 210g, 60g, 600g, 500ml"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                      <span>Category</span>
+                      <span className="text-slate-400">*</span>
+                    </label>
+                    {showEditInlineAddCategory ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowEditInlineAddCategory(false);
+                          setEditInlineCategoryInput('');
+                        }}
+                        className="text-[11px] font-medium text-slate-500 hover:text-slate-800 transition cursor-pointer"
+                      >
+                        Choose Existing
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowEditInlineAddCategory(true)}
+                        className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 transition cursor-pointer"
+                        title="Add a new custom supply category"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <span>Add Category</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {showEditInlineAddCategory ? (
+                    <div>
+                      <div className="relative flex items-center w-full">
+                        <input
+                          type="text"
+                          value={editInlineCategoryInput}
+                          onChange={(e) => setEditInlineCategoryInput(e.target.value)}
+                          placeholder="Type new category..."
+                          className="w-full h-10 pl-3 pr-20 rounded-xl border-2 border-emerald-500 bg-emerald-50/40 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-medium transition"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const clean = editInlineCategoryInput.trim();
+                              if (clean) {
+                                addCanteenCategory(clean);
+                                setEditingSupplyItem(prev => ({ ...prev, category: clean }));
+                              }
+                              setShowEditInlineAddCategory(false);
+                              setEditInlineCategoryInput('');
+                            } else if (e.key === 'Escape') {
+                              setShowEditInlineAddCategory(false);
+                              setEditInlineCategoryInput('');
+                            }
+                          }}
+                        />
+                        <div className="absolute right-1.5 flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const clean = editInlineCategoryInput.trim();
+                              if (clean) {
+                                addCanteenCategory(clean);
+                                setEditingSupplyItem(prev => ({ ...prev, category: clean }));
+                              }
+                              setShowEditInlineAddCategory(false);
+                              setEditInlineCategoryInput('');
+                            }}
+                            className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition cursor-pointer shadow-xs"
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowEditInlineAddCategory(false);
+                              setEditInlineCategoryInput('');
+                            }}
+                            className="h-7 w-7 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <select
+                      value={editingSupplyItem.category || canteenCategories?.[0] || 'Beverages & Dairy'}
+                      onChange={(e) => {
+                        if (e.target.value === '__ADD_NEW__') {
+                          setShowEditInlineAddCategory(true);
+                        } else {
+                          setEditingSupplyItem(prev => ({ ...prev, category: e.target.value }));
+                        }
+                      }}
+                      className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer bg-white"
+                    >
+                      {(canteenCategories || []).map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                      <option value="__ADD_NEW__" className="font-bold text-emerald-600">
+                        + Add New Category...
+                      </option>
+                    </select>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Company (Supplier)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingSupplyItem.company || ''}
+                    onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, company: e.target.value }))}
+                    placeholder="e.g., San Miguel Dairy Corp"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Brand
+                  </label>
+                  <input
+                    type="text"
+                    value={editingSupplyItem.brand || ''}
+                    onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, brand: e.target.value }))}
+                    placeholder="e.g., Magnolia Pure Fresh"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Cost Price (₱) <span className="text-slate-400">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editingSupplyItem.costPrice ?? ''}
+                    onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, costPrice: e.target.value }))}
+                    placeholder="82.00"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Selling Price (₱) <span className="text-slate-400">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editingSupplyItem.sellingPrice ?? ''}
+                    onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, sellingPrice: e.target.value }))}
+                    placeholder="98.00"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Stock Quantity <span className="text-slate-400">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={editingSupplyItem.quantity ?? ''}
+                    onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, quantity: e.target.value }))}
+                    placeholder="50"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Unit of Measurement
+                  </label>
+                  <select
+                    value={editingSupplyItem.unit || 'Piece'}
+                    onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, unit: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
+                  >
+                    <option value="Piece">Piece / pc</option>
+                    <option value="Bottle">Bottle</option>
+                    <option value="Can">Can</option>
+                    <option value="Pack">Pack</option>
+                    <option value="Box">Box</option>
+                    <option value="Kg">Kg</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Expiration Date / Best Before Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editingSupplyItem.expirationDate || ''}
+                    onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, expirationDate: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Reorder Alert Level
+                  </label>
+                  <input
+                    type="number"
+                    value={editingSupplyItem.reorderLevel ?? 10}
+                    onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, reorderLevel: e.target.value }))}
+                    placeholder="10"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingSupplyItem(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-xs font-bold text-white transition cursor-pointer shadow-sm flex items-center gap-1.5"
+                >
+                  <CheckCircle className="h-4 w-4 text-emerald-400" />
+                  <span>Update Supply Product</span>
                 </button>
               </div>
 

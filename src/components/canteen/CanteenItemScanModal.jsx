@@ -939,7 +939,7 @@ export default function CanteenItemScanModal({
                     }`}
                   >
                     <ShoppingBag className="h-3.5 w-3.5" />
-                    <span>Grocery Takeout</span>
+                    <span>Gate Pass</span>
                   </button>
                 </div>
               </div>
