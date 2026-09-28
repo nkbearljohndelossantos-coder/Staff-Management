@@ -52,7 +52,14 @@ export function AppProvider({ children }) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map(s => ({
+          const existingIds = new Set(parsed.map(s => s.employeeId || s.id));
+          const merged = [...parsed];
+          INITIAL_STAFF.forEach(initStaff => {
+            if (!existingIds.has(initStaff.employeeId) && !existingIds.has(initStaff.id)) {
+              merged.push(initStaff);
+            }
+          });
+          return merged.map(s => ({
             ...s,
             dateHired: s.dateHired || s.hireDate || '2026-05-01',
             hireDate: s.hireDate || s.dateHired || '2026-05-01',
