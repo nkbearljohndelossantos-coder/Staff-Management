@@ -26,7 +26,12 @@ import {
   X,
   ExternalLink,
   Layers,
-  Sparkles
+  Sparkles,
+  Ban,
+  Wallet,
+  Undo2,
+  ArrowDownRight,
+  ArrowUpRight
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
@@ -47,6 +52,12 @@ export default function ITAdminHub() {
     canteenReceipts,
     updateCanteenReceipt,
     deleteCanteenReceipt,
+    adminVoidCanteenReceipt,
+    adminUnvoidCanteenReceipt,
+    canteenDrawer,
+    addCanteenDrawerTransaction,
+    updateCanteenDrawerTransaction,
+    deleteCanteenDrawerTransaction,
     canteenInventory,
     canteenCategories,
     updateSupplyItem,
@@ -94,7 +105,17 @@ export default function ITAdminHub() {
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [cashierFilter, setCashierFilter] = useState('ALL'); // 'ALL' | 'CANTEEN_HEAD' | 'POS_TERMINAL'
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
+
+  // Canteen Head Detection Helper
+  const isHandledByCanteenHead = (r) => {
+    if (!r) return false;
+    if (r.isLateEncoded) return true;
+    const name = (r.cashierName || r.operator || r.encoderName || '').toLowerCase();
+    const role = (r.cashierRole || r.encoderRole || '').toLowerCase();
+    return name.includes('head') || name.includes('admin') || name.includes('glen') || role.includes('head') || role.includes('admin');
+  };
 
   // Modals state
   const [editingRecord, setEditingRecord] = useState(null); // { type, data }
@@ -107,10 +128,31 @@ export default function ITAdminHub() {
     purchaseOrders: true
   });
 
+  // IT Admin Void Modal State
+  const [voidingReceipt, setVoidingReceipt] = useState(null);
+  const [voidReasonInput, setVoidReasonInput] = useState('');
+  const [restoreStockOnVoid, setRestoreStockOnVoid] = useState(true);
+  const [adjustDrawerOnVoid, setAdjustDrawerOnVoid] = useState(true);
+
+  // IT Admin Un-Void / Reactivate Modal State
+  const [unvoidingReceipt, setUnvoidingReceipt] = useState(null);
+
+  // Canteen Register Drawer Manual Transaction Modal State
+  const [isAddDrawerTxOpen, setIsAddDrawerTxOpen] = useState(false);
+  const [newDrawerTx, setNewDrawerTx] = useState({
+    type: 'MANUAL_FLOAT',
+    amount: '',
+    description: '',
+    operator: currentUser?.name || 'Canteen Head'
+  });
+
   // Progressive Escape dismissal: Closes modals at Priority 40 (MODAL)
   useEscapeKey('it-edit-record-modal', ESCAPE_PRIORITY.MODAL, Boolean(editingRecord), () => setEditingRecord(null));
   useEscapeKey('it-delete-record-modal', ESCAPE_PRIORITY.MODAL, Boolean(deletingRecord), () => setDeletingRecord(null));
   useEscapeKey('it-purge-modal', ESCAPE_PRIORITY.MODAL, isPurgeModalOpen, () => setIsPurgeModalOpen(false));
+  useEscapeKey('it-void-receipt-modal', ESCAPE_PRIORITY.MODAL, Boolean(voidingReceipt), () => setVoidingReceipt(null));
+  useEscapeKey('it-unvoid-receipt-modal', ESCAPE_PRIORITY.MODAL, Boolean(unvoidingReceipt), () => setUnvoidingReceipt(null));
+  useEscapeKey('it-add-drawer-tx-modal', ESCAPE_PRIORITY.MODAL, isAddDrawerTxOpen, () => setIsAddDrawerTxOpen(false));
   
   const fileInputRef = useRef(null);
 
@@ -153,18 +195,39 @@ export default function ITAdminHub() {
       const effectiveDate = (r.isLateEncoded && r.claimedDate) ? r.claimedDate : r.date;
       if (!isDateWithinRange(effectiveDate)) return false;
       if (statusFilter !== 'ALL' && (r.status || 'COMPLETED') !== statusFilter) return false;
+      if (cashierFilter === 'CANTEEN_HEAD' && !isHandledByCanteenHead(r)) return false;
+      if (cashierFilter === 'POS_TERMINAL' && isHandledByCanteenHead(r)) return false;
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
       return (
         (r.receiptNo && r.receiptNo.toLowerCase().includes(q)) ||
         (r.customerName && r.customerName.toLowerCase().includes(q)) ||
+        (r.staffId && r.staffId.toLowerCase().includes(q)) ||
+        (r.cashierName && r.cashierName.toLowerCase().includes(q)) ||
         (r.paymentMethod && r.paymentMethod.toLowerCase().includes(q)) ||
         (r.orderType && r.orderType.toLowerCase().includes(q)) ||
         (r.gatePassNo && r.gatePassNo.toLowerCase().includes(q)) ||
         (r.items && r.items.some(i => i.name && i.name.toLowerCase().includes(q)))
       );
     });
-  }, [canteenReceipts, dateRange, statusFilter, searchQuery]);
+  }, [canteenReceipts, dateRange, statusFilter, cashierFilter, searchQuery]);
+
+  const filteredDrawerTransactions = useMemo(() => {
+    const txs = canteenDrawer?.transactions || [];
+    return txs.filter(tx => {
+      if (!isDateWithinRange(tx.timestamp)) return false;
+      if (statusFilter !== 'ALL' && tx.type !== statusFilter) return false;
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        (tx.id && tx.id.toLowerCase().includes(q)) ||
+        (tx.type && tx.type.toLowerCase().includes(q)) ||
+        (tx.receiptNo && tx.receiptNo.toLowerCase().includes(q)) ||
+        (tx.description && tx.description.toLowerCase().includes(q)) ||
+        (tx.operator && tx.operator.toLowerCase().includes(q))
+      );
+    });
+  }, [canteenDrawer, dateRange, statusFilter, searchQuery]);
 
   const filteredInventory = useMemo(() => {
     return canteenInventory.filter(item => {
@@ -288,6 +351,8 @@ export default function ITAdminHub() {
     return {
       receiptsCount: canteenReceipts.length,
       receiptsAmount: totalReceiptsAmount,
+      drawerBalance: canteenDrawer?.balance || 0,
+      drawerTxCount: canteenDrawer?.transactions?.length || 0,
       inventoryCount: canteenInventory.length,
       inventoryValue: totalInventoryValue,
       poCount: personalPurchaseOrders.length,
@@ -297,7 +362,7 @@ export default function ITAdminHub() {
       loansCount: cashLoans.length,
       coopLedgerCount: coopLedger.length
     };
-  }, [canteenReceipts, canteenInventory, personalPurchaseOrders, canteenGatePasses, canteenVoidLogs, attendanceLogs, cashLoans, coopLedger]);
+  }, [canteenReceipts, canteenDrawer, canteenInventory, personalPurchaseOrders, canteenGatePasses, canteenVoidLogs, attendanceLogs, cashLoans, coopLedger]);
 
   // Handle Edit Action
   const handleOpenEdit = (type, data) => {
@@ -314,6 +379,8 @@ export default function ITAdminHub() {
 
     if (type === 'receipt') {
       updateCanteenReceipt(data.receiptNo, data);
+    } else if (type === 'canteenDrawer') {
+      updateCanteenDrawerTransaction(data.id, data);
     } else if (type === 'inventory') {
       updateSupplyItem(data.id, data);
     } else if (type === 'purchaseOrder') {
@@ -340,6 +407,8 @@ export default function ITAdminHub() {
 
     if (type === 'receipt') {
       deleteCanteenReceipt(id);
+    } else if (type === 'canteenDrawer') {
+      deleteCanteenDrawerTransaction(id);
     } else if (type === 'inventory') {
       deleteSupplyItem(id);
     } else if (type === 'purchaseOrder') {
@@ -440,11 +509,16 @@ export default function ITAdminHub() {
         </div>
 
         {/* Live Counters Metrics Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mt-6 pt-6 border-t border-slate-800/80">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mt-6 pt-6 border-t border-slate-800/80">
           <div className="p-3 rounded-2xl bg-slate-800/50 border border-slate-800">
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">POS Receipts</div>
             <div className="text-lg font-black text-white mt-0.5">{stats.receiptsCount}</div>
             <div className="text-[10px] text-slate-500 truncate">₱{stats.receiptsAmount.toLocaleString()} volume</div>
+          </div>
+          <div className="p-3 rounded-2xl bg-slate-800/50 border border-slate-800">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">Cash Drawer</div>
+            <div className="text-lg font-black text-white mt-0.5">₱{stats.drawerBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+            <div className="text-[10px] text-slate-500 truncate">{stats.drawerTxCount} register logs</div>
           </div>
           <div className="p-3 rounded-2xl bg-slate-800/50 border border-slate-800">
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Inventory Items</div>
@@ -480,6 +554,7 @@ export default function ITAdminHub() {
           { id: 'anomalies', label: 'Security & Anomaly Evaluation', count: detectedAnomalies.length, icon: AlertTriangle, highlight: true },
           { id: 'auditLogs', label: 'System Audit Trail', count: auditLogs.length, icon: ShieldCheck },
           { id: 'receipts', label: 'POS Receipts', count: canteenReceipts.length, icon: Receipt },
+          { id: 'canteenDrawer', label: 'Canteen Head & Register Drawer', count: canteenDrawer?.transactions?.length || 0, icon: Wallet },
           { id: 'inventory', label: 'Canteen Supplies', count: canteenInventory.length, icon: Package },
           { id: 'purchaseOrders', label: 'Personal POs', count: personalPurchaseOrders.length, icon: ShoppingBag },
           { id: 'gatePasses', label: 'Grocery Gate Passes', count: canteenGatePasses.length, icon: DoorClosed },
@@ -605,6 +680,84 @@ export default function ITAdminHub() {
             </div>
           </div>
         </div>
+
+        {/* Specific Subtab Filters: Receipts Handlers & Drawer Movement Types */}
+        {activeCategory === 'receipts' && (
+          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">Cashier / Handler:</span>
+              {[
+                { id: 'ALL', label: `All Transactions (${canteenReceipts.length})` },
+                { id: 'CANTEEN_HEAD', label: `👤 Canteen Head (${canteenReceipts.filter(isHandledByCanteenHead).length})` },
+                { id: 'POS_TERMINAL', label: `🖥️ POS Terminal (${canteenReceipts.filter(r => !isHandledByCanteenHead(r)).length})` }
+              ].map(f => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setCashierFilter(f.id)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                    cashierFilter === f.id
+                      ? 'bg-cyan-600 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">Status:</span>
+              {[
+                { id: 'ALL', label: 'All' },
+                { id: 'COMPLETED', label: 'Completed' },
+                { id: 'VOIDED', label: 'Voided' }
+              ].map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setStatusFilter(s.id)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                    statusFilter === s.id
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeCategory === 'canteenDrawer' && (
+          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">Movement Type:</span>
+              {[
+                { id: 'ALL', label: 'All Movements' },
+                { id: 'SALE_CASH', label: '💵 Cash Sales' },
+                { id: 'VOID_REFUND', label: '🚫 Void Refunds' },
+                { id: 'MANUAL_FLOAT', label: '➕ Floats / Change' },
+                { id: 'EXPENSE_PAYOUT', label: '📤 Petty Expenses' },
+                { id: 'CASH_COLLECTION', label: '🏦 Cash Collection' }
+              ].map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setStatusFilter(t.id)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                    statusFilter === t.id
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MAIN RECORDS CONTENT TABLES */}
@@ -615,7 +768,7 @@ export default function ITAdminHub() {
           <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
             <div>
               <h2 className="text-sm font-black text-slate-900">Canteen Sales Receipts Audit</h2>
-              <p className="text-xs text-slate-500">Edit transaction dates, claimed dates, payment methods, customer names, line items, and totals.</p>
+              <p className="text-xs text-slate-500">Edit transaction dates, claimed dates, payment methods, customer names, line items, and totals. Master void or reactivate receipts.</p>
             </div>
             <span className="text-xs font-bold text-slate-500">Showing {filteredReceipts.length} of {canteenReceipts.length} receipts</span>
           </div>
@@ -627,6 +780,7 @@ export default function ITAdminHub() {
                   <th className="p-3.5">Receipt #</th>
                   <th className="p-3.5">Transaction Date / Claimed</th>
                   <th className="p-3.5">Customer / Staff</th>
+                  <th className="p-3.5">Handled By / Cashier</th>
                   <th className="p-3.5">Type & Payment</th>
                   <th className="p-3.5">Purchased Items</th>
                   <th className="p-3.5">Total Amount</th>
@@ -637,13 +791,17 @@ export default function ITAdminHub() {
               <tbody className="divide-y divide-slate-100 text-xs">
                 {filteredReceipts.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="p-8 text-center text-slate-400">
+                    <td colSpan="9" className="p-8 text-center text-slate-400">
                       No receipts found matching your criteria.
                     </td>
                   </tr>
                 ) : (
-                  filteredReceipts.map(r => (
-                    <tr key={r.receiptNo} className="hover:bg-slate-50/80 transition">
+                  filteredReceipts.map(r => {
+                    const isHead = isHandledByCanteenHead(r);
+                    const isVoided = r.status === 'VOIDED';
+
+                    return (
+                    <tr key={r.receiptNo} className={`transition ${isVoided ? 'bg-rose-50/40 hover:bg-rose-50/60' : 'hover:bg-slate-50/80'}`}>
                       <td className="p-3.5 font-bold font-mono text-slate-900">
                         {r.receiptNo}
                         {r.gatePassNo && (
@@ -668,11 +826,23 @@ export default function ITAdminHub() {
                         <div className="text-[10px] text-slate-400">{r.customerType} {r.staffId ? `(${r.staffId})` : ''}</div>
                       </td>
                       <td className="p-3.5">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                          isHead
+                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}>
+                          {isHead ? '👤 Canteen Head' : '🖥️ POS'}
+                        </span>
+                        <div className="text-[10px] text-slate-500 font-medium truncate max-w-[120px]" title={r.cashierName || 'Cashier'}>
+                          {r.cashierName || 'Cashier'}
+                        </div>
+                      </td>
+                      <td className="p-3.5">
                         <span className="font-semibold text-slate-700">{r.orderType}</span>
                         <div className="text-[10px] font-bold text-slate-500">{r.paymentMethod}</div>
                       </td>
                       <td className="p-3.5 max-w-xs">
-                        <div className="truncate text-slate-600">
+                        <div className="truncate text-slate-600" title={r.items?.map(i => `${i.quantity}x ${i.name}`).join(', ')}>
                           {r.items?.map(i => `${i.quantity}x ${i.name}`).join(', ') || 'No items'}
                         </div>
                         <div className="text-[10px] text-slate-400">{r.items?.length || 0} item line(s)</div>
@@ -682,7 +852,7 @@ export default function ITAdminHub() {
                       </td>
                       <td className="p-3.5">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                          r.status === 'VOIDED'
+                          isVoided
                             ? 'bg-rose-50 text-rose-700 border-rose-200'
                             : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         }`}>
@@ -691,6 +861,7 @@ export default function ITAdminHub() {
                       </td>
                       <td className="p-3.5 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1">
+                          {/* Quick Edit */}
                           <button
                             type="button"
                             onClick={() => handleOpenEdit('receipt', r)}
@@ -699,6 +870,34 @@ export default function ITAdminHub() {
                           >
                             <Edit3 className="h-4 w-4" />
                           </button>
+
+                          {/* Quick Void / Un-Void Action */}
+                          {!isVoided ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setVoidingReceipt(r);
+                                setVoidReasonInput('');
+                                setRestoreStockOnVoid(true);
+                                setAdjustDrawerOnVoid(r.paymentMethod === 'Cash');
+                              }}
+                              className="p-1.5 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition cursor-pointer"
+                              title="Void Transaction (IT Master Override)"
+                            >
+                              <Ban className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setUnvoidingReceipt(r)}
+                              className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 transition cursor-pointer"
+                              title="Re-activate / Un-Void Transaction"
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </button>
+                          )}
+
+                          {/* Full Action Dropdown */}
                           <TableActionDropdown
                             id={`it-receipt-${r.receiptNo}`}
                             actions={[
@@ -707,6 +906,21 @@ export default function ITAdminHub() {
                                 icon: Edit3,
                                 onClick: () => handleOpenEdit('receipt', r)
                               },
+                              ...(!isVoided ? [{
+                                label: 'Void Receipt (Master)',
+                                icon: Ban,
+                                danger: true,
+                                onClick: () => {
+                                  setVoidingReceipt(r);
+                                  setVoidReasonInput('');
+                                  setRestoreStockOnVoid(true);
+                                  setAdjustDrawerOnVoid(r.paymentMethod === 'Cash');
+                                }
+                              }] : [{
+                                label: 'Re-activate Transaction',
+                                icon: RotateCcw,
+                                onClick: () => setUnvoidingReceipt(r)
+                              }]),
                               {
                                 label: 'Delete Receipt Record',
                                 icon: Trash2,
@@ -718,10 +932,190 @@ export default function ITAdminHub() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* 1.5. CANTEEN REGISTER & CASH DRAWER SUBTAB */}
+      {activeCategory === 'canteenDrawer' && (
+        <div className="space-y-4">
+          {/* Drawer Cash Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="p-4 rounded-3xl bg-slate-900 text-white shadow-sm border border-slate-800">
+              <div className="flex items-center justify-between text-xs text-cyan-400 font-bold uppercase tracking-wider">
+                <span>Current Cash Drawer Balance</span>
+                <Wallet className="h-4 w-4" />
+              </div>
+              <div className="text-2xl font-black mt-1">
+                ₱{Number(canteenDrawer?.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Physical cash registered in counter till</div>
+            </div>
+
+            <div className="p-4 rounded-3xl bg-white border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
+                <span>Cash Sales Inflow</span>
+                <ArrowDownRight className="h-4 w-4 text-emerald-600" />
+              </div>
+              <div className="text-xl font-black text-emerald-600 mt-1">
+                ₱{canteenDrawer?.transactions
+                  ?.filter(t => t.type === 'SALE_CASH')
+                  .reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+                  .toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Customer counter purchases</div>
+            </div>
+
+            <div className="p-4 rounded-3xl bg-white border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
+                <span>Cash Floats & Injections</span>
+                <Plus className="h-4 w-4 text-blue-600" />
+              </div>
+              <div className="text-xl font-black text-blue-600 mt-1">
+                ₱{canteenDrawer?.transactions
+                  ?.filter(t => t.type === 'MANUAL_FLOAT' || t.type === 'STARTING_FLOAT')
+                  .reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+                  .toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Beginning float / change additions</div>
+            </div>
+
+            <div className="p-4 rounded-3xl bg-white border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between text-xs text-slate-500 font-bold uppercase tracking-wider">
+                <span>Void Refunds & Payouts</span>
+                <ArrowUpRight className="h-4 w-4 text-rose-600" />
+              </div>
+              <div className="text-xl font-black text-rose-600 mt-1">
+                ₱{Math.abs(canteenDrawer?.transactions
+                  ?.filter(t => t.type === 'VOID_REFUND' || t.type === 'EXPENSE_PAYOUT')
+                  .reduce((sum, t) => sum + (Number(t.amount) || 0), 0))
+                  .toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Cancelled orders & expenses</div>
+            </div>
+          </div>
+
+          {/* Drawer Transactions Table */}
+          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+              <div>
+                <h2 className="text-sm font-black text-slate-900">Canteen Cash Register & Drawer Ledger</h2>
+                <p className="text-xs text-slate-500">Track and adjust physical register till movements, cash sales, manual floats, and void refunds.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewDrawerTx({
+                    type: 'MANUAL_FLOAT',
+                    amount: '',
+                    description: '',
+                    operator: currentUser?.name || 'Canteen Head'
+                  });
+                  setIsAddDrawerTxOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer self-start sm:self-auto shadow-sm"
+              >
+                <Plus className="h-4 w-4 text-cyan-400" />
+                <span>Record Drawer Adjustment</span>
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-100/60 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <th className="p-3.5">Date & Time</th>
+                    <th className="p-3.5">Transaction Type</th>
+                    <th className="p-3.5">Receipt / Ref</th>
+                    <th className="p-3.5">Description</th>
+                    <th className="p-3.5">Operator</th>
+                    <th className="p-3.5 text-right">Amount (₱)</th>
+                    <th className="p-3.5 text-right">IT Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {filteredDrawerTransactions.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="p-8 text-center text-slate-400">
+                        No drawer transactions found matching criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredDrawerTransactions.map(tx => {
+                      const isNegative = Number(tx.amount) < 0 || tx.type === 'VOID_REFUND' || tx.type === 'EXPENSE_PAYOUT';
+                      return (
+                        <tr key={tx.id} className="hover:bg-slate-50/80 transition">
+                          <td className="p-3.5 whitespace-nowrap text-slate-700">
+                            <div className="font-semibold">{new Date(tx.timestamp).toLocaleDateString()}</div>
+                            <div className="text-[10px] text-slate-400">{new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                          </td>
+                          <td className="p-3.5">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              tx.type === 'SALE_CASH'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : tx.type === 'VOID_REFUND'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : tx.type === 'MANUAL_FLOAT' || tx.type === 'STARTING_FLOAT'
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}>
+                              {tx.type}
+                            </span>
+                          </td>
+                          <td className="p-3.5 font-mono font-bold text-slate-800">
+                            {tx.receiptNo || '—'}
+                          </td>
+                          <td className="p-3.5 text-slate-700 max-w-sm">
+                            {tx.description || 'Register movement'}
+                          </td>
+                          <td className="p-3.5 font-medium text-slate-600">
+                            {tx.operator || 'Canteen Register'}
+                          </td>
+                          <td className={`p-3.5 text-right font-mono font-bold whitespace-nowrap ${
+                            isNegative ? 'text-rose-600' : 'text-emerald-700'
+                          }`}>
+                            {isNegative ? '-' : '+'}₱{Math.abs(Number(tx.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3.5 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEdit('canteenDrawer', tx)}
+                                className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                                title="Edit Drawer Entry"
+                              >
+                                <Edit3 className="h-4 w-4" />
+                              </button>
+                              <TableActionDropdown
+                                id={`it-drawer-${tx.id}`}
+                                actions={[
+                                  {
+                                    label: 'Edit Drawer Entry',
+                                    icon: Edit3,
+                                    onClick: () => handleOpenEdit('canteenDrawer', tx)
+                                  },
+                                  {
+                                    label: 'Delete Drawer Entry',
+                                    icon: Trash2,
+                                    danger: true,
+                                    onClick: () => setDeletingRecord({ type: 'canteenDrawer', id: tx.id, title: `Drawer Tx: ${tx.type} (₱${tx.amount})` })
+                                  }
+                                ]}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -1539,6 +1933,49 @@ export default function ITAdminHub() {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Cashier / Handled By</label>
+                      <input
+                        type="text"
+                        value={editingRecord.data.cashierName || ''}
+                        onChange={(e) => setEditingRecord(prev => ({
+                          ...prev,
+                          data: { ...prev.data, cashierName: e.target.value }
+                        }))}
+                        placeholder="e.g. Canteen Head / POS"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Order Type</label>
+                      <select
+                        value={editingRecord.data.orderType || 'Dine In'}
+                        onChange={(e) => setEditingRecord(prev => ({
+                          ...prev,
+                          data: { ...prev.data, orderType: e.target.value }
+                        }))}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800"
+                      >
+                        <option value="Dine In">Dine In</option>
+                        <option value="Takeout">Takeout</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Customer Staff ID</label>
+                      <input
+                        type="text"
+                        value={editingRecord.data.staffId || ''}
+                        onChange={(e) => setEditingRecord(prev => ({
+                          ...prev,
+                          data: { ...prev.data, staffId: e.target.value }
+                        }))}
+                        placeholder="e.g. NKB-0012"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-800"
+                      />
+                    </div>
+                  </div>
+
                   {/* Line Items Editor */}
                   <div className="border border-slate-200 rounded-2xl p-4 space-y-3 bg-slate-50/50">
                     <div className="flex items-center justify-between">
@@ -1621,6 +2058,86 @@ export default function ITAdminHub() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                </>
+              )}
+
+              {/* 1.5. CANTEEN CASH DRAWER ENTRY EDIT FIELDS */}
+              {editingRecord.type === 'canteenDrawer' && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Transaction Type</label>
+                      <select
+                        value={editingRecord.data.type || 'MANUAL_FLOAT'}
+                        onChange={(e) => setEditingRecord(prev => ({
+                          ...prev,
+                          data: { ...prev.data, type: e.target.value }
+                        }))}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800"
+                      >
+                        <option value="SALE_CASH">SALE_CASH</option>
+                        <option value="VOID_REFUND">VOID_REFUND</option>
+                        <option value="MANUAL_FLOAT">MANUAL_FLOAT</option>
+                        <option value="STARTING_FLOAT">STARTING_FLOAT</option>
+                        <option value="EXPENSE_PAYOUT">EXPENSE_PAYOUT</option>
+                        <option value="CASH_COLLECTION">CASH_COLLECTION</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Amount (₱)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editingRecord.data.amount ?? 0}
+                        onChange={(e) => setEditingRecord(prev => ({
+                          ...prev,
+                          data: { ...prev.data, amount: Number(e.target.value) }
+                        }))}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 font-mono font-bold text-xs text-slate-900"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Associated Receipt #</label>
+                      <input
+                        type="text"
+                        value={editingRecord.data.receiptNo || ''}
+                        onChange={(e) => setEditingRecord(prev => ({
+                          ...prev,
+                          data: { ...prev.data, receiptNo: e.target.value }
+                        }))}
+                        placeholder="e.g. REC-12345"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Operator / Handled By</label>
+                      <input
+                        type="text"
+                        value={editingRecord.data.operator || ''}
+                        onChange={(e) => setEditingRecord(prev => ({
+                          ...prev,
+                          data: { ...prev.data, operator: e.target.value }
+                        }))}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Description / Memo</label>
+                    <input
+                      type="text"
+                      value={editingRecord.data.description || ''}
+                      onChange={(e) => setEditingRecord(prev => ({
+                        ...prev,
+                        data: { ...prev.data, description: e.target.value }
+                      }))}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800"
+                    />
                   </div>
                 </>
               )}
@@ -2242,6 +2759,282 @@ export default function ITAdminHub() {
                 Confirm Purge
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- IT ADMIN VOID MODAL --- */}
+      {voidingReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-rose-950 text-white">
+              <div className="flex items-center gap-2.5">
+                <Ban className="h-5 w-5 text-rose-400" />
+                <div>
+                  <h3 className="text-sm font-black">Void Transaction (IT Master)</h3>
+                  <p className="text-[10px] text-rose-300">Override and cancel receipt with audit tracking</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVoidingReceipt(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Receipt Summary Card */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-bold text-slate-900">{voidingReceipt.receiptNo}</span>
+                  <span className="text-xs font-mono font-black text-rose-700">₱{Number(voidingReceipt.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="text-xs text-slate-600 font-semibold">{voidingReceipt.customerName} · {voidingReceipt.paymentMethod}</div>
+                <div className="text-[11px] text-slate-400">
+                  {voidingReceipt.items?.map(i => `${i.quantity}x ${i.name}`).join(', ') || 'No line items'}
+                </div>
+              </div>
+
+              {/* Void Reason Input */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Reason for Void <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="e.g. Customer cancelled order / Cashier encoded duplicate"
+                  value={voidReasonInput}
+                  onChange={(e) => setVoidReasonInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              {/* Automation Toggles */}
+              <div className="space-y-2 pt-1">
+                <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={restoreStockOnVoid}
+                    onChange={(e) => setRestoreStockOnVoid(e.target.checked)}
+                    className="w-4 h-4 rounded text-cyan-600 cursor-pointer"
+                  />
+                  <div className="text-xs">
+                    <span className="font-bold text-slate-800 block">Restore Inventory Stock</span>
+                    <span className="text-[10px] text-slate-500">Automatically returns line-item quantities back to Canteen Supplies</span>
+                  </div>
+                </label>
+
+                {voidingReceipt.paymentMethod === 'Cash' && (
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={adjustDrawerOnVoid}
+                      onChange={(e) => setAdjustDrawerOnVoid(e.target.checked)}
+                      className="w-4 h-4 rounded text-rose-600 cursor-pointer"
+                    />
+                    <div className="text-xs">
+                      <span className="font-bold text-slate-800 block">Deduct Refund from Register Till</span>
+                      <span className="text-[10px] text-slate-500">Records a ₱{Number(voidingReceipt.total || 0).toLocaleString()} cash refund outflow in drawer ledger</span>
+                    </div>
+                  </label>
+                )}
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setVoidingReceipt(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!voidReasonInput.trim()}
+                  onClick={() => {
+                    adminVoidCanteenReceipt(voidingReceipt.receiptNo, {
+                      reason: voidReasonInput.trim(),
+                      restoreStock: restoreStockOnVoid,
+                      adjustCashDrawer: adjustDrawerOnVoid,
+                      voidedBy: currentUser?.name || 'IT Admin'
+                    });
+                    setVoidingReceipt(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Ban className="h-4 w-4" />
+                  <span>Confirm Void Record</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- IT ADMIN UNVOID / REACTIVATE MODAL --- */}
+      {unvoidingReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
+              <div className="flex items-center gap-2.5">
+                <RotateCcw className="h-5 w-5 text-emerald-400" />
+                <div>
+                  <h3 className="text-sm font-black">Reactivate / Un-Void Transaction</h3>
+                  <p className="text-[10px] text-slate-300">Restore receipt to COMPLETED status</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUnvoidingReceipt(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-slate-600">
+                Are you sure you want to reactivate <strong>Receipt #{unvoidingReceipt.receiptNo}</strong> for <strong>{unvoidingReceipt.customerName}</strong> (₱{Number(unvoidingReceipt.total || 0).toLocaleString()})?
+              </p>
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                This will re-mark the transaction as active, re-deduct the items from canteen stock, and re-deposit cash to drawer if cash tender.
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setUnvoidingReceipt(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    adminUnvoidCanteenReceipt(unvoidingReceipt.receiptNo, {
+                      reason: 'Reactivated via IT Admin Hub Master Overrides',
+                      deductStock: true,
+                      restoreCashDrawer: true,
+                      unvoidedBy: currentUser?.name || 'IT Admin'
+                    });
+                    setUnvoidingReceipt(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  <span>Confirm Reactivation</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- ADD DRAWER TRANSACTION MODAL --- */}
+      {isAddDrawerTxOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
+              <div className="flex items-center gap-2.5">
+                <Wallet className="h-5 w-5 text-cyan-400" />
+                <div>
+                  <h3 className="text-sm font-black">Record Cash Register Till Movement</h3>
+                  <p className="text-[10px] text-slate-300">Add manual float, expense payout, or cash adjustment</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddDrawerTxOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                addCanteenDrawerTransaction({
+                  type: newDrawerTx.type,
+                  amount: Number(newDrawerTx.amount),
+                  description: newDrawerTx.description || 'Manual drawer adjustment',
+                  operator: newDrawerTx.operator || currentUser?.name || 'Canteen Head'
+                });
+                setIsAddDrawerTxOpen(false);
+              }}
+              className="p-5 space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Movement Type</label>
+                <select
+                  value={newDrawerTx.type}
+                  onChange={(e) => setNewDrawerTx(prev => ({ ...prev, type: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800"
+                >
+                  <option value="MANUAL_FLOAT">MANUAL_FLOAT (Beginning cash / coin addition)</option>
+                  <option value="EXPENSE_PAYOUT">EXPENSE_PAYOUT (Counter petty expense / withdrawal)</option>
+                  <option value="CASH_COLLECTION">CASH_COLLECTION (End of day deposit pick-up)</option>
+                  <option value="SALE_CASH">SALE_CASH (Direct Cash Sale Adjustment)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Amount (₱)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  min="0.01"
+                  placeholder="0.00"
+                  value={newDrawerTx.amount}
+                  onChange={(e) => setNewDrawerTx(prev => ({ ...prev, amount: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 font-mono font-bold text-sm text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Description / Purpose</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Added change fund / Buying fresh ice"
+                  value={newDrawerTx.description}
+                  onChange={(e) => setNewDrawerTx(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Operator / Handled By</label>
+                <input
+                  type="text"
+                  value={newDrawerTx.operator}
+                  onChange={(e) => setNewDrawerTx(prev => ({ ...prev, operator: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddDrawerTxOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl text-xs font-black bg-slate-900 hover:bg-slate-800 text-white transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Save className="h-4 w-4 text-cyan-400" />
+                  <span>Save Drawer Record</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

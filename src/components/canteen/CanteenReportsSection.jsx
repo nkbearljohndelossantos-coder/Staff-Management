@@ -25,7 +25,8 @@ import {
   ArrowUpDown,
   RotateCcw,
   Info,
-  Calculator
+  Calculator,
+  Ban
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CanteenZReadingModal from './CanteenZReadingModal';
@@ -39,7 +40,11 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
     canteenZReadings = [],
     canteenDrawer = { balance: 0, transactions: [] },
     canteenInventory = [],
-    staffList = []
+    staffList = [],
+    adminVoidCanteenReceipt,
+    currentUser,
+    isITAdmin,
+    isSuperAdmin
   } = useApp();
 
   // Filters & State
@@ -51,6 +56,12 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
   const [selectedReceiptDetail, setSelectedReceiptDetail] = useState(null);
   const [selectedZReadingDate, setSelectedZReadingDate] = useState(null);
   const [showZReadingModal, setShowZReadingModal] = useState(false);
+
+  // Void modal state for Canteen Reports
+  const [reportVoidItem, setReportVoidItem] = useState(null);
+  const [reportVoidReason, setReportVoidReason] = useState('');
+  const [reportRestoreStock, setReportRestoreStock] = useState(true);
+  const [reportAdjustDrawer, setReportAdjustDrawer] = useState(true);
 
   // Compute unified transactions array with Effective Claimed Date support
   const unifiedTransactions = useMemo(() => {
@@ -940,28 +951,46 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
 
                       {/* Action */}
                       <td className="px-4 py-3 text-center whitespace-nowrap">
-                        {item.category === 'SALE' && onShowReceipt && (
-                          <button
-                            type="button"
-                            onClick={() => onShowReceipt(item.rawRecord)}
-                            className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold transition cursor-pointer flex items-center gap-1 mx-auto"
-                            title="View / Print Receipt"
-                          >
-                            <Eye className="h-3 w-3" />
-                            <span>Receipt</span>
-                          </button>
-                        )}
-                        {item.category === 'GATE_PASS' && onShowGatePass && (
-                          <button
-                            type="button"
-                            onClick={() => onShowGatePass(item.rawRecord)}
-                            className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold transition cursor-pointer flex items-center gap-1 mx-auto"
-                            title="View Gate Pass"
-                          >
-                            <Eye className="h-3 w-3" />
-                            <span>Gate Pass</span>
-                          </button>
-                        )}
+                        <div className="flex items-center justify-center gap-1.5">
+                          {item.category === 'SALE' && onShowReceipt && (
+                            <button
+                              type="button"
+                              onClick={() => onShowReceipt(item.rawRecord)}
+                              className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+                              title="View / Print Receipt"
+                            >
+                              <Eye className="h-3 w-3" />
+                              <span>Receipt</span>
+                            </button>
+                          )}
+                          {item.category === 'SALE' && item.status !== 'VOIDED' && (isITAdmin || isSuperAdmin || currentUser?.role === 'canteen_head' || currentUser?.name === 'Glen Nobleza') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReportVoidItem(item.rawRecord);
+                                setReportVoidReason('');
+                                setReportRestoreStock(true);
+                                setReportAdjustDrawer(item.paymentMethod === 'Cash');
+                              }}
+                              className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+                              title="Void Transaction (Stock & Drawer Reconciliation)"
+                            >
+                              <Ban className="h-3 w-3" />
+                              <span>Void</span>
+                            </button>
+                          )}
+                          {item.category === 'GATE_PASS' && onShowGatePass && (
+                            <button
+                              type="button"
+                              onClick={() => onShowGatePass(item.rawRecord)}
+                              className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
+                              title="View Gate Pass"
+                            >
+                              <Eye className="h-3 w-3" />
+                              <span>Gate Pass</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                     </tr>
@@ -984,6 +1013,114 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
             setSelectedZReadingDate(null);
           }}
         />
+      )}
+
+      {/* Canteen Reports Void Transaction Modal */}
+      {reportVoidItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-rose-950 text-white">
+              <div className="flex items-center gap-2.5">
+                <Ban className="h-5 w-5 text-rose-400" />
+                <div>
+                  <h3 className="text-sm font-black">Void Transaction</h3>
+                  <p className="text-[10px] text-rose-300">Automatic inventory return & cash drawer refund</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReportVoidItem(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-bold text-slate-900">{reportVoidItem.receiptNo}</span>
+                  <span className="text-xs font-mono font-black text-rose-700">₱{Number(reportVoidItem.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="text-xs text-slate-600 font-semibold">{reportVoidItem.customerName} · {reportVoidItem.paymentMethod}</div>
+                <div className="text-[11px] text-slate-400">
+                  {reportVoidItem.items?.map(i => `${i.quantity}x ${i.name}`).join(', ') || 'No line items'}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Reason for Void <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="e.g. Customer cancelled order / Cashier wrong encoding"
+                  value={reportVoidReason}
+                  onChange={(e) => setReportVoidReason(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={reportRestoreStock}
+                    onChange={(e) => setReportRestoreStock(e.target.checked)}
+                    className="w-4 h-4 rounded text-cyan-600 cursor-pointer"
+                  />
+                  <div className="text-xs">
+                    <span className="font-bold text-slate-800 block">Restore Inventory Stock</span>
+                    <span className="text-[10px] text-slate-500">Automatically returns line-item quantities back to Canteen Supplies</span>
+                  </div>
+                </label>
+
+                {reportVoidItem.paymentMethod === 'Cash' && (
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={reportAdjustDrawer}
+                      onChange={(e) => setReportAdjustDrawer(e.target.checked)}
+                      className="w-4 h-4 rounded text-rose-600 cursor-pointer"
+                    />
+                    <div className="text-xs">
+                      <span className="font-bold text-slate-800 block">Deduct Refund from Register Cash Drawer</span>
+                      <span className="text-[10px] text-slate-500">Records a ₱{Number(reportVoidItem.total || 0).toLocaleString()} cash refund outflow in drawer ledger</span>
+                    </div>
+                  </label>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setReportVoidItem(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!reportVoidReason.trim()}
+                  onClick={() => {
+                    adminVoidCanteenReceipt(reportVoidItem.receiptNo, {
+                      reason: reportVoidReason.trim(),
+                      restoreStock: reportRestoreStock,
+                      adjustCashDrawer: reportAdjustDrawer,
+                      voidedBy: currentUser?.name || 'Canteen Head'
+                    });
+                    setReportVoidItem(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Ban className="h-4 w-4" />
+                  <span>Confirm Void</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

@@ -2477,6 +2477,246 @@ export function AppProvider({ children }) {
     return { success: true };
   };
 
+  const adminVoidCanteenReceipt = (receiptNo, { reason, restoreStock = true, adjustCashDrawer = true, voidedBy } = {}) => {
+    const receipt = canteenReceipts.find(r => r.receiptNo === receiptNo || r.id === receiptNo);
+    if (!receipt) {
+      showToast('Receipt not found.', 'error');
+      return { success: false, message: 'Receipt not found' };
+    }
+
+    if (receipt.status === 'VOIDED') {
+      showToast('Receipt is already voided.', 'warning');
+      return { success: false, message: 'Already voided' };
+    }
+
+    const operatorName = voidedBy || currentUser?.name || 'IT Administrator';
+    const voidReason = reason || 'IT Admin Master Record Override';
+
+    // 1. Mark receipt as VOIDED
+    setCanteenReceipts(prev => prev.map(r => {
+      if (r.receiptNo === receiptNo || r.id === receiptNo) {
+        return {
+          ...r,
+          status: 'VOIDED',
+          voidedAt: new Date().toISOString(),
+          voidedBy: operatorName,
+          voidReason
+        };
+      }
+      return r;
+    }));
+
+    // 2. Restore stock into canteenInventory if restoreStock is true
+    if (restoreStock && Array.isArray(receipt.items) && receipt.items.length > 0) {
+      setCanteenInventory(prev => prev.map(inv => {
+        const match = receipt.items.find(it => it.barcode === inv.barcode || it.id === inv.id || it.name === inv.name);
+        if (match) {
+          return {
+            ...inv,
+            quantity: (inv.quantity || 0) + (match.quantity || 1)
+          };
+        }
+        return inv;
+      }));
+    }
+
+    // 3. Deduct cash from drawer if Cash payment and adjustCashDrawer is true
+    if (adjustCashDrawer && receipt.paymentMethod === 'Cash') {
+      setCanteenDrawer(prev => ({
+        balance: Math.max(0, (prev?.balance || 0) - (receipt.total || 0)),
+        transactions: [
+          {
+            id: `ctx-${Date.now()}`,
+            type: 'VOID_REFUND',
+            amount: -(receipt.total || 0),
+            receiptNo: receipt.receiptNo,
+            description: `IT Master Void Refund - Receipt #${receipt.receiptNo} (${voidReason})`,
+            timestamp: new Date().toISOString(),
+            operator: operatorName
+          },
+          ...(prev?.transactions || [])
+        ]
+      }));
+    }
+
+    // 4. Log to Canteen Void Audit Trail
+    const voidLog = {
+      id: `void-${Date.now()}`,
+      receiptNo: receipt.receiptNo,
+      voidedAt: new Date().toISOString(),
+      voidedBy: operatorName,
+      authRole: currentUser?.role || 'it_admin',
+      authMethod: 'IT Admin Master Override',
+      reason: voidReason,
+      stockRestored: !!restoreStock,
+      cashAdjusted: adjustCashDrawer && receipt.paymentMethod === 'Cash',
+      returnedItems: (receipt.items || []).map(it => ({
+        barcode: it.barcode,
+        name: it.name,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice
+      })),
+      totalAmount: receipt.total || 0,
+      timestamp: new Date().toISOString()
+    };
+
+    setCanteenVoidLogs(prev => [voidLog, ...(prev || [])]);
+
+    // 5. System Event Log
+    if (logSystemEvent) {
+      logSystemEvent('CANTEEN_RECEIPT_VOIDED', {
+        receiptNo: receipt.receiptNo,
+        customerName: receipt.customerName,
+        total: receipt.total,
+        reason: voidReason,
+        voidedBy: operatorName
+      });
+    }
+
+    showToast(`Receipt #${receipt.receiptNo} successfully VOIDED by IT Master Record.`);
+    return { success: true, voidLog };
+  };
+
+  const adminUnvoidCanteenReceipt = (receiptNo, { reason, deductStock = true, restoreCashDrawer = true, unvoidedBy } = {}) => {
+    const receipt = canteenReceipts.find(r => r.receiptNo === receiptNo || r.id === receiptNo);
+    if (!receipt) {
+      showToast('Receipt not found.', 'error');
+      return { success: false, message: 'Receipt not found' };
+    }
+
+    if (receipt.status !== 'VOIDED') {
+      showToast('Receipt is not voided.', 'warning');
+      return { success: false, message: 'Not voided' };
+    }
+
+    const operatorName = unvoidedBy || currentUser?.name || 'IT Administrator';
+    const unvoidReason = reason || 'IT Admin Master Record Reversal / Un-void';
+
+    // 1. Restore receipt to COMPLETED
+    setCanteenReceipts(prev => prev.map(r => {
+      if (r.receiptNo === receiptNo || r.id === receiptNo) {
+        const { voidedAt, voidedBy, voidReason, ...rest } = r;
+        return {
+          ...rest,
+          status: 'COMPLETED',
+          unvoidedAt: new Date().toISOString(),
+          unvoidedBy: operatorName,
+          unvoidReason
+        };
+      }
+      return r;
+    }));
+
+    // 2. Deduct stock back from inventory
+    if (deductStock && Array.isArray(receipt.items) && receipt.items.length > 0) {
+      setCanteenInventory(prev => prev.map(inv => {
+        const match = receipt.items.find(it => it.barcode === inv.barcode || it.id === inv.id || it.name === inv.name);
+        if (match) {
+          return {
+            ...inv,
+            quantity: Math.max(0, (inv.quantity || 0) - (match.quantity || 1))
+          };
+        }
+        return inv;
+      }));
+    }
+
+    // 3. Re-add cash to drawer if Cash
+    if (restoreCashDrawer && receipt.paymentMethod === 'Cash') {
+      setCanteenDrawer(prev => ({
+        balance: (prev?.balance || 0) + (receipt.total || 0),
+        transactions: [
+          {
+            id: `ctx-${Date.now()}`,
+            type: 'VOID_REVERSAL',
+            amount: receipt.total || 0,
+            receiptNo: receipt.receiptNo,
+            description: `IT Master Void Reversal (Un-void) - Receipt #${receipt.receiptNo}`,
+            timestamp: new Date().toISOString(),
+            operator: operatorName
+          },
+          ...(prev?.transactions || [])
+        ]
+      }));
+    }
+
+    // 4. System Event Log
+    if (logSystemEvent) {
+      logSystemEvent('CANTEEN_RECEIPT_UNVOIDED', {
+        receiptNo: receipt.receiptNo,
+        customerName: receipt.customerName,
+        total: receipt.total,
+        reason: unvoidReason,
+        unvoidedBy: operatorName
+      });
+    }
+
+    showToast(`Receipt #${receipt.receiptNo} re-activated (Un-voided) by IT Master Record.`);
+    return { success: true };
+  };
+
+  // Canteen Cash Drawer Master Operations
+  const addCanteenDrawerTransaction = (txData) => {
+    const amount = Number(txData.amount) || 0;
+    const newTx = {
+      id: txData.id || `ctx-${Date.now()}`,
+      type: txData.type || 'ADJUSTMENT',
+      amount,
+      receiptNo: txData.receiptNo || null,
+      description: txData.description || 'Manual Drawer Transaction',
+      timestamp: txData.timestamp || new Date().toISOString(),
+      operator: txData.operator || currentUser?.name || 'IT Administrator'
+    };
+
+    setCanteenDrawer(prev => ({
+      balance: Math.max(0, (prev?.balance || 0) + amount),
+      transactions: [newTx, ...(prev?.transactions || [])]
+    }));
+
+    showToast(`Drawer transaction recorded (₱${amount.toLocaleString()}).`);
+    return { success: true, transaction: newTx };
+  };
+
+  const updateCanteenDrawerTransaction = (txId, updatedFields) => {
+    setCanteenDrawer(prev => {
+      const oldTx = (prev?.transactions || []).find(t => t.id === txId);
+      if (!oldTx) return prev;
+
+      const oldAmount = Number(oldTx.amount) || 0;
+      const newAmount = updatedFields.amount !== undefined ? Number(updatedFields.amount) : oldAmount;
+      const diff = newAmount - oldAmount;
+
+      const updatedTxs = (prev?.transactions || []).map(t => {
+        if (t.id === txId) {
+          return { ...t, ...updatedFields, amount: newAmount };
+        }
+        return t;
+      });
+
+      return {
+        balance: Math.max(0, (prev?.balance || 0) + diff),
+        transactions: updatedTxs
+      };
+    });
+
+    showToast('Canteen drawer transaction updated.');
+    return { success: true };
+  };
+
+  const deleteCanteenDrawerTransaction = (txId) => {
+    setCanteenDrawer(prev => {
+      const oldTx = (prev?.transactions || []).find(t => t.id === txId);
+      const amount = oldTx ? (Number(oldTx.amount) || 0) : 0;
+      return {
+        balance: Math.max(0, (prev?.balance || 0) - amount),
+        transactions: (prev?.transactions || []).filter(t => t.id !== txId)
+      };
+    });
+
+    showToast('Canteen drawer transaction deleted.');
+    return { success: true };
+  };
+
   // 2. Personal Purchase Orders
   const updatePersonalPurchaseOrder = (orderId, updatedFields) => {
     setPersonalPurchaseOrders(prev => prev.map(po => {
@@ -2761,6 +3001,11 @@ export function AppProvider({ children }) {
         // IT Admin Master Record Operations
         updateCanteenReceipt,
         deleteCanteenReceipt,
+        adminVoidCanteenReceipt,
+        adminUnvoidCanteenReceipt,
+        addCanteenDrawerTransaction,
+        updateCanteenDrawerTransaction,
+        deleteCanteenDrawerTransaction,
         updatePersonalPurchaseOrder,
         deletePersonalPurchaseOrder,
         updateGatePass,
