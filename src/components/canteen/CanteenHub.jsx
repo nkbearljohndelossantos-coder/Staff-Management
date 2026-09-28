@@ -36,7 +36,8 @@ import {
   Copy,
   Check,
   Layers,
-  Grid
+  Grid,
+  FileText
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CardVoidModal from './CardVoidModal';
@@ -48,6 +49,8 @@ import CanteenPassModal from './CanteenPassModal';
 import ThermalReceiptView from './ThermalReceiptView';
 import BarcodeLabelSheet from './BarcodeLabelSheet';
 import CanteenZReadingModal from './CanteenZReadingModal';
+import SalesInvoiceModal from './SalesInvoiceModal';
+import SalesInvoiceDetailModal from './SalesInvoiceDetailModal';
 import BarcodeView from '../common/BarcodeView';
 import canteenInventoryData from '../../data/canteenInventory.json';
 import { playScanBeep, playErrorBuzz } from '../../utils/audioFeedback';
@@ -170,6 +173,8 @@ export default function CanteenHub() {
     updateSupplyItem,
     deleteSupplyItem,
     clearAllCanteenInventory,
+    canteenSalesInvoices,
+    deleteCanteenSalesInvoice,
     personalPurchaseOrders, 
     fulfillPurchaseOrder, 
     canteenReceipts, 
@@ -201,6 +206,11 @@ export default function CanteenHub() {
   const [selectedThermalReceipt, setSelectedThermalReceipt] = useState(null);
   const [showBarcodeSheet, setShowBarcodeSheet] = useState(false);
   const [showZReadingModal, setShowZReadingModal] = useState(false);
+
+  // Sales Invoice State
+  const [showSalesInvoiceModal, setShowSalesInvoiceModal] = useState(false);
+  const [selectedInvoiceDetail, setSelectedInvoiceDetail] = useState(null);
+  const [invoiceSearch, setInvoiceSearch] = useState('');
 
   useEscapeKey('canteen-hub-z-reading-modal', ESCAPE_PRIORITY.MODAL, showZReadingModal, () => setShowZReadingModal(false));
 
@@ -655,6 +665,19 @@ export default function CanteenHub() {
 
             <button
               type="button"
+              onClick={() => setActiveSubtab('invoices')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                activeSubtab === 'invoices'
+                  ? 'bg-white text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <FileText className="h-4 w-4 text-indigo-400" />
+              <span>Sales Invoices ({(canteenSalesInvoices || []).length})</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveSubtab('barcodes')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer relative ${
                 activeSubtab === 'barcodes'
@@ -1007,6 +1030,20 @@ export default function CanteenHub() {
                         <td className="px-4 py-3">
                           <div className="font-bold text-slate-900">{item.name}</div>
                           <div className="font-mono text-[10px] text-slate-400 mt-0.5">{item.barcode}</div>
+                          {(item.sourceInvoiceNo || item.lastInvoiceNo) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const inv = (canteenSalesInvoices || []).find(i => i.invoiceNumber === (item.lastInvoiceNo || item.sourceInvoiceNo));
+                                if (inv) setSelectedInvoiceDetail(inv);
+                              }}
+                              className="mt-1 px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[9px] font-mono font-bold border border-indigo-200 transition inline-flex items-center gap-1"
+                              title={`View Sales Invoice ${item.lastInvoiceNo || item.sourceInvoiceNo}`}
+                            >
+                              <FileText className="h-2.5 w-2.5" />
+                              <span>{item.lastInvoiceNo || item.sourceInvoiceNo}</span>
+                            </button>
+                          )}
                         </td>
 
                         <td className="px-4 py-3 font-medium text-slate-700">
@@ -1103,6 +1140,168 @@ export default function CanteenHub() {
 
         </div>
       )}
+
+      {/* SUBTAB: SALES INVOICES (Supplier Inbound Receipts) */}
+      {activeSubtab === 'invoices' && (() => {
+        const invoices = canteenSalesInvoices || [];
+        const totalInvoiceValue = invoices.reduce((s, inv) => s + (inv.totalAmount || 0), 0);
+        const totalInvoiceUnits = invoices.reduce((s, inv) => s + (inv.totalUnits || 0), 0);
+        const uniqueSuppliers = [...new Set(invoices.map(inv => inv.supplier))];
+
+        const filteredInvoices = invoices.filter(inv => {
+          if (!invoiceSearch) return true;
+          const q = invoiceSearch.toLowerCase();
+          return (
+            (inv.invoiceNumber || '').toLowerCase().includes(q) ||
+            (inv.supplier || '').toLowerCase().includes(q) ||
+            (inv.notes || '').toLowerCase().includes(q) ||
+            (inv.items || []).some(it => (it.name || '').toLowerCase().includes(q))
+          );
+        });
+
+        return (
+          <div className="space-y-5">
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Invoices</span>
+                <span className="text-2xl font-mono font-black text-slate-900">{invoices.length}</span>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Inbound Value</span>
+                <span className="text-2xl font-mono font-black text-indigo-700">₱{totalInvoiceValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Units Received</span>
+                <span className="text-2xl font-mono font-black text-emerald-700">{totalInvoiceUnits.toLocaleString()}</span>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Unique Suppliers</span>
+                <span className="text-2xl font-mono font-black text-amber-700">{uniqueSuppliers.length}</span>
+              </div>
+            </div>
+
+            {/* Control Bar */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={invoiceSearch}
+                  onChange={(e) => setInvoiceSearch(e.target.value)}
+                  placeholder="Search invoice #, supplier, item name..."
+                  className="w-full h-9 pl-10 pr-4 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowSalesInvoiceModal(true)}
+                className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black flex items-center gap-2 transition cursor-pointer shadow-sm"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Encode New Sales Invoice</span>
+              </button>
+            </div>
+
+            {/* Invoices Table */}
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3.5">Invoice # &amp; Supplier</th>
+                      <th className="px-4 py-3.5 text-center">Date</th>
+                      <th className="px-4 py-3.5 text-center">Items</th>
+                      <th className="px-4 py-3.5 text-center">Total Units</th>
+                      <th className="px-4 py-3.5 text-right">Total Amount</th>
+                      <th className="px-4 py-3.5 text-center">Payment</th>
+                      <th className="px-4 py-3.5 text-center">Status</th>
+                      <th className="px-3 py-3.5 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredInvoices.length === 0 ? (
+                      <tr>
+                        <td colSpan="8" className="px-4 py-12 text-center text-slate-400 text-xs">
+                          <FileText className="h-8 w-8 mx-auto text-slate-300 mb-2" />
+                          <p className="font-bold text-slate-600 text-sm">
+                            {invoiceSearch ? 'No invoices match your search.' : 'No Sales Invoices recorded yet.'}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
+                            Click "Encode New Sales Invoice" to record supplier purchases and automatically add items to Canteen Inventory.
+                          </p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredInvoices.map(inv => (
+                        <tr key={inv.id} className="hover:bg-slate-50/80 transition cursor-pointer" onClick={() => setSelectedInvoiceDetail(inv)}>
+                          <td className="px-4 py-3">
+                            <div className="font-mono font-black text-indigo-700 text-sm">{inv.invoiceNumber}</div>
+                            <div className="text-[11px] text-slate-600 font-medium mt-0.5">{inv.supplier}</div>
+                            {inv.notes && (
+                              <div className="text-[10px] text-slate-400 italic mt-0.5 line-clamp-1">{inv.notes}</div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="font-semibold text-slate-800">{inv.receivedDate || inv.purchaseDate}</div>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-mono font-bold text-slate-800">{inv.itemsCount || (inv.items || []).length}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-mono font-bold text-emerald-700">{inv.totalUnits}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span className="font-mono font-black text-slate-900">₱{(inv.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-700">
+                              {inv.paymentMethod || 'Company Fund'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
+                              {inv.status === 'POSTED_TO_INVENTORY' ? 'Posted' : (inv.status || 'Active')}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setSelectedInvoiceDetail(inv); }}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 transition cursor-pointer"
+                                title="View invoice details & print voucher"
+                              >
+                                <FileSpreadsheet className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm(`Delete Sales Invoice ${inv.invoiceNumber} and revert ${inv.totalUnits} inbound units from inventory?`)) {
+                                    deleteCanteenSalesInvoice(inv.id, true);
+                                  }
+                                }}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                                title="Delete invoice & revert stock"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        );
+      })()}
 
       {/* SUBTAB: BARCODE TAGGING & ASSIGNMENT WORKSTATION */}
       {activeSubtab === 'barcodes' && (
@@ -3095,6 +3294,20 @@ export default function CanteenHub() {
       {showZReadingModal && (
         <CanteenZReadingModal
           onClose={() => setShowZReadingModal(false)}
+        />
+      )}
+
+      {/* Sales Invoice Encoding Modal */}
+      <SalesInvoiceModal
+        isOpen={showSalesInvoiceModal}
+        onClose={() => setShowSalesInvoiceModal(false)}
+      />
+
+      {/* Sales Invoice Detail / Voucher Modal */}
+      {selectedInvoiceDetail && (
+        <SalesInvoiceDetailModal
+          invoice={selectedInvoiceDetail}
+          onClose={() => setSelectedInvoiceDetail(null)}
         />
       )}
 

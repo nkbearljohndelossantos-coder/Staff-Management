@@ -19,6 +19,7 @@ import {
   INITIAL_CANTEEN_RECEIPTS,
   INITIAL_CANTEEN_GATE_PASSES,
   INITIAL_CANTEEN_VOID_LOGS,
+  INITIAL_CANTEEN_SALES_INVOICES,
   INITIAL_PRODUCT_JOURNEYS,
   PRODUCT_JOURNEY_STAGES,
   INITIAL_LEAVE_REQUESTS,
@@ -160,6 +161,18 @@ export function AppProvider({ children }) {
       // fallback
     }
     return DEFAULT_CANTEEN_CATEGORIES;
+  });
+
+  // Canteen Supplier Sales Invoices (Official Inbound Delivery Receipts)
+  const [canteenSalesInvoices, setCanteenSalesInvoices] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_canteen_sales_invoices');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [...INITIAL_CANTEEN_SALES_INVOICES];
   });
 
   // POS Dual Monitor Synchronization State
@@ -760,6 +773,10 @@ export function AppProvider({ children }) {
   useEffect(() => {
     localStorage.setItem('nkb_canteen_categories', JSON.stringify(canteenCategories));
   }, [canteenCategories]);
+
+  useEffect(() => {
+    localStorage.setItem('nkb_canteen_sales_invoices', JSON.stringify(canteenSalesInvoices));
+  }, [canteenSalesInvoices]);
 
   useEffect(() => {
     localStorage.setItem('nkb_mfg_products', JSON.stringify(manufacturingProducts));
@@ -1725,6 +1742,179 @@ export function AppProvider({ children }) {
     }
     setCanteenCategories(prev => prev.filter(c => c.toLowerCase() !== categoryName.toLowerCase()));
     showToast(`Category "${categoryName}" removed from supply categories.`);
+    return { success: true };
+  };
+
+  // Canteen Sales Invoice: Official Supplier Purchase & Delivery Inbound Processing
+  // Path: sales invoice -> items -> details of item -> inventory
+  const recordCanteenSalesInvoice = (invoiceData) => {
+    if (currentUser && !isCanteen && !isITAdmin && !isSuperAdmin) {
+      showToast('Access Denied: Only Canteen Management or Administrators can post Sales Invoices.', 'error');
+      return { success: false, message: 'Access Denied' };
+    }
+
+    if (!invoiceData || !invoiceData.items || !Array.isArray(invoiceData.items) || invoiceData.items.length === 0) {
+      showToast('Cannot post sales invoice: No items entered.', 'error');
+      return { success: false, message: 'No items in invoice' };
+    }
+
+    const normalizedInvoiceNo = (invoiceData.invoiceNumber || '').trim() || `SI-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const invoiceId = `INV-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+
+    const processedItems = invoiceData.items.map((it, idx) => {
+      const qty = Math.max(1, Number(it.quantity) || 1);
+      const cost = Number(it.costPrice) || 0;
+      const selling = Number(it.sellingPrice) || 0;
+      return {
+        id: it.id || `item-${Date.now()}-${idx}`,
+        name: (it.name || '').trim(),
+        category: (it.category || 'General').trim(),
+        brand: (it.brand || '').trim(),
+        company: (it.company || invoiceData.supplier || '').trim(),
+        size: (it.size || 'Standard').trim(),
+        unit: (it.unit || 'Piece').trim(),
+        quantity: qty,
+        costPrice: cost,
+        sellingPrice: selling,
+        totalCost: Number((qty * cost).toFixed(2)),
+        expirationDate: it.expirationDate || '',
+        barcode: (it.barcode || '').trim()
+      };
+    });
+
+    const totalAmount = processedItems.reduce((acc, it) => acc + it.totalCost, 0);
+    const totalUnits = processedItems.reduce((acc, it) => acc + it.quantity, 0);
+
+    const newInvoice = {
+      id: invoiceId,
+      invoiceNumber: normalizedInvoiceNo,
+      supplier: (invoiceData.supplier || 'General Supplier').trim(),
+      purchaseDate: invoiceData.purchaseDate || new Date().toISOString().split('T')[0],
+      receivedDate: invoiceData.receivedDate || new Date().toISOString().split('T')[0],
+      paymentMethod: invoiceData.paymentMethod || 'Company Fund',
+      paymentStatus: invoiceData.paymentStatus || 'Paid',
+      encodedBy: currentUser ? `${currentUser.name} (${currentUser.role})` : (invoiceData.encodedBy || 'Glen Nobleza (Canteen Staff)'),
+      notes: invoiceData.notes || '',
+      totalAmount: Number(totalAmount.toFixed(2)),
+      itemsCount: processedItems.length,
+      totalUnits,
+      status: 'POSTED_TO_INVENTORY',
+      createdAt: new Date().toISOString(),
+      items: processedItems
+    };
+
+    // Flow: sales invoice -> items -> details of item -> inventory
+    setCanteenInventory(prev => {
+      const updated = [...prev];
+      processedItems.forEach(lineItem => {
+        // Match existing inventory product by barcode (if non-empty) or by normalized name
+        const matchIdx = updated.findIndex(inv => {
+          if (lineItem.barcode && inv.barcode && inv.barcode.trim() === lineItem.barcode.trim()) {
+            return true;
+          }
+          return inv.name && inv.name.toLowerCase().trim() === lineItem.name.toLowerCase().trim();
+        });
+
+        if (matchIdx >= 0) {
+          const existing = updated[matchIdx];
+          const newQty = Number(existing.quantity || 0) + Number(lineItem.quantity);
+          updated[matchIdx] = {
+            ...existing,
+            quantity: newQty,
+            costPrice: lineItem.costPrice > 0 ? lineItem.costPrice : existing.costPrice,
+            sellingPrice: lineItem.sellingPrice > 0 ? lineItem.sellingPrice : existing.sellingPrice,
+            expirationDate: lineItem.expirationDate || existing.expirationDate,
+            size: lineItem.size || existing.size,
+            unit: lineItem.unit || existing.unit,
+            brand: lineItem.brand || existing.brand,
+            company: lineItem.company || existing.company,
+            category: lineItem.category || existing.category,
+            barcode: lineItem.barcode || existing.barcode,
+            lastInvoiceNo: normalizedInvoiceNo,
+            lastReceivedAt: new Date().toISOString(),
+            stockStatus: newQty > (existing.reorderLevel || 10) ? 'In Stock' : 'Low Stock'
+          };
+        } else {
+          // New product entering inventory from Sales Invoice
+          const newProductId = `PRD-SI-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+          updated.unshift({
+            id: newProductId,
+            barcode: lineItem.barcode || '',
+            name: lineItem.name,
+            brand: lineItem.brand || '',
+            company: lineItem.company || invoiceData.supplier || '',
+            supplier: invoiceData.supplier || lineItem.company || '',
+            category: lineItem.category || 'General',
+            unit: lineItem.unit || 'Piece',
+            size: lineItem.size || 'Standard',
+            costPrice: lineItem.costPrice,
+            sellingPrice: lineItem.sellingPrice,
+            quantity: lineItem.quantity,
+            reorderLevel: 10,
+            stockStatus: lineItem.quantity > 10 ? 'In Stock' : 'Low Stock',
+            expirationDate: lineItem.expirationDate || '',
+            sourceInvoiceNo: normalizedInvoiceNo,
+            lastInvoiceNo: normalizedInvoiceNo,
+            isLateEncoded: false,
+            encodedAt: new Date().toISOString(),
+            notes: `Inbound from Sales Invoice ${normalizedInvoiceNo} (${invoiceData.supplier || 'Direct Supplier'})`
+          });
+        }
+      });
+      return updated;
+    });
+
+    // Auto-register new categories if any
+    processedItems.forEach(it => {
+      if (it.category && !canteenCategories.some(c => c.toLowerCase() === it.category.toLowerCase())) {
+        setCanteenCategories(prev => [...prev, it.category]);
+      }
+    });
+
+    // Prepend to sales invoices
+    setCanteenSalesInvoices(prev => [newInvoice, ...prev]);
+
+    showToast(`Sales Invoice ${normalizedInvoiceNo} posted successfully! ${totalUnits} units across ${processedItems.length} items added to Canteen Inventory.`, 'success');
+    return { success: true, invoice: newInvoice };
+  };
+
+  const deleteCanteenSalesInvoice = (id, revertStock = false) => {
+    if (currentUser && !isCanteen && !isITAdmin && !isSuperAdmin) {
+      showToast('Access Denied: Only Canteen Management or Super Admin can delete sales invoices.', 'error');
+      return { success: false };
+    }
+
+    const targetInvoice = canteenSalesInvoices.find(inv => inv.id === id);
+    if (!targetInvoice) {
+      showToast('Sales Invoice not found.', 'error');
+      return { success: false };
+    }
+
+    if (revertStock && targetInvoice.items) {
+      // Revert the added quantities from inventory
+      setCanteenInventory(prev => {
+        const updated = [...prev];
+        targetInvoice.items.forEach(lineItem => {
+          const matchIdx = updated.findIndex(inv => 
+            (lineItem.barcode && inv.barcode && inv.barcode === lineItem.barcode) ||
+            (inv.name && inv.name.toLowerCase().trim() === lineItem.name.toLowerCase().trim())
+          );
+          if (matchIdx >= 0) {
+            const currentQty = Number(updated[matchIdx].quantity || 0);
+            const revertedQty = Math.max(0, currentQty - Number(lineItem.quantity));
+            updated[matchIdx] = {
+              ...updated[matchIdx],
+              quantity: revertedQty,
+              stockStatus: revertedQty > (updated[matchIdx].reorderLevel || 10) ? 'In Stock' : 'Low Stock'
+            };
+          }
+        });
+        return updated;
+      });
+    }
+
+    setCanteenSalesInvoices(prev => prev.filter(inv => inv.id !== id));
+    showToast(`Sales Invoice ${targetInvoice.invoiceNumber} removed${revertStock ? ' and inbound quantities reverted' : ''}.`);
     return { success: true };
   };
 
@@ -2866,6 +3056,7 @@ export function AppProvider({ children }) {
       canteenZReadings,
       canteenInventory,
       canteenCategories,
+      canteenSalesInvoices,
       personalPurchaseOrders,
       canteenGatePasses,
       canteenVoidLogs,
@@ -2906,6 +3097,7 @@ export function AppProvider({ children }) {
       if (Array.isArray(backupJson.canteenZReadings)) setCanteenZReadings(backupJson.canteenZReadings);
       if (Array.isArray(backupJson.canteenInventory)) setCanteenInventory(backupJson.canteenInventory);
       if (Array.isArray(backupJson.canteenCategories)) setCanteenCategories(backupJson.canteenCategories);
+      if (Array.isArray(backupJson.canteenSalesInvoices)) setCanteenSalesInvoices(backupJson.canteenSalesInvoices);
       if (Array.isArray(backupJson.personalPurchaseOrders)) setPersonalPurchaseOrders(backupJson.personalPurchaseOrders);
       if (Array.isArray(backupJson.canteenGatePasses)) setCanteenGatePasses(backupJson.canteenGatePasses);
       if (Array.isArray(backupJson.canteenVoidLogs)) setCanteenVoidLogs(backupJson.canteenVoidLogs);
@@ -2997,6 +3189,9 @@ export function AppProvider({ children }) {
         // Canteen Hub & Inventory
         canteenInventory,
         canteenCategories,
+        canteenSalesInvoices,
+        recordCanteenSalesInvoice,
+        deleteCanteenSalesInvoice,
         addSupplyItem,
         updateSupplyItem,
         deleteSupplyItem,

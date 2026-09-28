@@ -209,6 +209,106 @@ export const INITIAL_CANTEEN_RECEIPTS = [];
 // No demo void audit logs
 export const INITIAL_CANTEEN_VOID_LOGS = [];
 
+// Baseline Canteen Supplier Sales Invoices (Official Supplier Intake Receipts)
+export const INITIAL_CANTEEN_SALES_INVOICES = [
+  {
+    id: 'INV-20260925-001',
+    invoiceNumber: 'SI-2026-8812',
+    supplier: 'San Miguel Dairy Corp',
+    purchaseDate: '2026-09-25',
+    receivedDate: '2026-09-25',
+    paymentMethod: 'Company Fund',
+    paymentStatus: 'Paid',
+    encodedBy: 'Glen Nobleza (Canteen Staff)',
+    notes: 'Official Inbound Delivery - San Miguel Dairy Milk & Butter delivery',
+    totalAmount: 5120.00,
+    itemsCount: 2,
+    totalUnits: 75,
+    status: 'POSTED_TO_INVENTORY',
+    createdAt: '2026-09-25T08:30:00.000Z',
+    items: [
+      {
+        id: 'item-8812-1',
+        name: 'San Miguel Fresh Milk 1L',
+        category: 'Beverages & Dairy',
+        brand: 'Magnolia Pure Fresh',
+        company: 'San Miguel Dairy Corp',
+        size: '1L',
+        unit: 'Bottle',
+        quantity: 45,
+        costPrice: 82.00,
+        sellingPrice: 98.00,
+        totalCost: 3690.00,
+        expirationDate: '2027-03-31',
+        barcode: '4800016644012'
+      },
+      {
+        id: 'item-8812-2',
+        name: 'Magnolia Gold Pure Butter 225g',
+        category: 'Beverages & Dairy',
+        brand: 'Magnolia',
+        company: 'San Miguel Dairy Corp',
+        size: '225g',
+        unit: 'Block',
+        quantity: 30,
+        costPrice: 47.66,
+        sellingPrice: 58.00,
+        totalCost: 1430.00,
+        expirationDate: '2027-01-15',
+        barcode: '4800016644029'
+      }
+    ]
+  },
+  {
+    id: 'INV-20260926-002',
+    invoiceNumber: 'SI-2026-9045',
+    supplier: 'Universal Robina Corp',
+    purchaseDate: '2026-09-26',
+    receivedDate: '2026-09-26',
+    paymentMethod: 'Cash',
+    paymentStatus: 'Paid',
+    encodedBy: 'Glen Nobleza (Canteen Staff)',
+    notes: 'Official Inbound Delivery - URC Beverages & Snacks replenishment',
+    totalAmount: 3820.00,
+    itemsCount: 2,
+    totalUnits: 140,
+    status: 'POSTED_TO_INVENTORY',
+    createdAt: '2026-09-26T09:15:00.000Z',
+    items: [
+      {
+        id: 'item-9045-1',
+        name: 'C2 Green Tea Apple 500ml',
+        category: 'Cold Beverages',
+        brand: 'URC C2',
+        company: 'Universal Robina Corp',
+        size: '500ml',
+        unit: 'Bottle',
+        quantity: 80,
+        costPrice: 22.00,
+        sellingPrice: 30.00,
+        totalCost: 1760.00,
+        expirationDate: '2026-12-10',
+        barcode: '4807770270014'
+      },
+      {
+        id: 'item-9045-2',
+        name: 'Piattos Cheese Flavored Potato Crisps 85g',
+        category: 'Chips',
+        brand: 'Jack \'n Jill',
+        company: 'Universal Robina Corp',
+        size: '85g',
+        unit: 'Pack',
+        quantity: 60,
+        costPrice: 34.33,
+        sellingPrice: 42.00,
+        totalCost: 2060.00,
+        expirationDate: '2027-04-20',
+        barcode: '4800016050127'
+      }
+    ]
+  }
+];
+
 // Systematic Product Journey Stages (5 Systematic Steps)
 export const PRODUCT_JOURNEY_STAGES = [
   { id: 'ordered', name: 'Ordered', icon: 'ShoppingCart', description: 'Purchase order placed with supplier', coordinate: { x: 10, y: 50 } },
