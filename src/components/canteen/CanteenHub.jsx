@@ -223,7 +223,7 @@ export default function CanteenHub() {
 
   // Barcode Tagging & Assignment Station State
   const [barcodeViewFilter, setBarcodeViewFilter] = useState('UNASSIGNED'); // 'UNASSIGNED' | 'ALL' | 'INTERNAL'
-  const [barcodeSearch, setBarcodeSearch] = useState('');
+  const [barcodeTableSearch, setBarcodeTableSearch] = useState('');
   const [pairingTargetProduct, setPairingTargetProduct] = useState(null);
   const [scannerGunInput, setScannerGunInput] = useState('');
   const [quickBarcodeEdits, setQuickBarcodeEdits] = useState({});
