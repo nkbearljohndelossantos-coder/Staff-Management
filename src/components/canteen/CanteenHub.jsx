@@ -786,136 +786,9 @@ export default function CanteenHub() {
         />
       )}
 
-      {/* SUBTAB 2: SUPPLY INVENTORY WITH INBOUND SCANNING & LATE ENCODING */}
+      {/* SUBTAB 2: SUPPLY INVENTORY */}
       {activeSubtab === 'inventory' && (
         <div className="space-y-4">
-          
-          {/* Inbound Supply Intake by Product Name & Suggestions */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-slate-200 shadow-sm space-y-3">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-amber-400">
-                  <Sparkles className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                      Encode Inbound Supply by Product Name
-                    </h4>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-[10px] font-mono font-bold text-amber-300">
-                      Catalog Autocomplete &amp; Form Suggestions
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    No barcode scanner required at intake! Type product name to auto-fill Supplier, Brand, Category, Size, and Prices.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 w-full md:w-auto">
-                {/* Autocomplete Input */}
-                <div className="relative flex-1 md:w-80">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <input
-                    type="text"
-                    value={inboundProductNameQuery}
-                    onChange={(e) => {
-                      setInboundProductNameQuery(e.target.value);
-                      setShowInboundDropdown(true);
-                    }}
-                    onFocus={() => setShowInboundDropdown(true)}
-                    placeholder="Search product name (e.g. San Miguel, Purefoods, C2, Milk)..."
-                    className="w-full h-9 pl-9 pr-8 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
-                  />
-                  {inboundProductNameQuery && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setInboundProductNameQuery('');
-                        setShowInboundDropdown(false);
-                      }}
-                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-200"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-
-                  {/* Autocomplete Dropdown */}
-                  {showInboundDropdown && inboundMatches.length > 0 && (
-                    <div className="absolute left-0 right-0 top-10 z-30 bg-slate-950 border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-64 overflow-y-auto">
-                      <div className="p-2 border-b border-slate-800 text-[10px] uppercase font-bold text-slate-400">
-                        Matching Catalog Products ({inboundMatches.length})
-                      </div>
-                      {inboundMatches.map((prod, idx) => (
-                        <div
-                          key={`match-${idx}`}
-                          onClick={() => handleSelectProduct(prod)}
-                          className="p-2.5 hover:bg-slate-800/90 border-b border-slate-900/50 cursor-pointer transition flex items-center justify-between gap-2"
-                        >
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-white truncate">{prod.name}</div>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-                              <span className="text-amber-400">{prod.brand || prod.company || 'General'}</span>
-                              <span>·</span>
-                              <span>{prod.category}</span>
-                              {prod.size && <span>· {prod.size}</span>}
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <div className="text-xs font-mono font-bold text-emerald-400">₱{Number(prod.sellingPrice || 0).toFixed(2)}</div>
-                            <span className="text-[9px] text-slate-500">Auto-fill &amp; Encode</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Open modal for new product
-                    setNewItemName(inboundProductNameQuery.trim());
-                    setNewItemCompany('');
-                    setNewItemBrand('');
-                    setNewItemCategory(canteenCategories?.[0] || 'Beverages & Dairy');
-                    setNewItemCost('');
-                    setNewItemPrice('');
-                    setNewItemQty('50');
-                    setNewItemSize('');
-                    setNewItemUnit('Piece');
-                    setNewItemExpiry('');
-                    setNewItemBarcode('');
-                    setShowAddModal(true);
-                  }}
-                  className="h-9 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition cursor-pointer shrink-0 shadow-sm flex items-center gap-1.5"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>+ Encode Product</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Popular Product Suggestion Pills */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800 text-[11px]">
-              <span className="text-slate-400 font-medium mr-1 text-[10px] uppercase font-bold flex items-center gap-1">
-                <Sparkles className="h-3 w-3 text-amber-400" />
-                <span>Popular Suggestions:</span>
-              </span>
-              {POPULAR_SUPPLY_SUGGESTIONS.map((prod, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleSelectProduct(prod)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/50 text-slate-300 hover:text-white transition cursor-pointer text-[10px] flex items-center gap-1"
-                  title={`Click to auto-fill ${prod.name}`}
-                >
-                  <span>{prod.name}</span>
-                  <span className="text-[9px] text-amber-400 font-mono">₱{prod.sellingPrice}</span>
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Inventory Control Bar */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
@@ -983,11 +856,11 @@ export default function CanteenHub() {
 
               <button
                 type="button"
-                onClick={() => setShowAddModal(true)}
-                className="h-9 px-4 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-sm"
+                onClick={() => setShowSalesInvoiceModal(true)}
+                className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-sm"
               >
                 <Plus className="h-4 w-4 text-white" />
-                Encode Supply Item (Manual / Inbound)
+                New Sales Invoice
               </button>
             </div>
 
@@ -1007,20 +880,19 @@ export default function CanteenHub() {
                     <th className="px-4 py-3.5 text-right">Selling Price</th>
                     <th className="px-4 py-3.5 text-center">Stock Qty</th>
                     <th className="px-4 py-3.5">Expiration / Best Before</th>
-                    <th className="px-4 py-3.5">Encoding Status</th>
                     <th className="px-3 py-3.5 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredInventory.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="px-4 py-12 text-center text-slate-400 text-xs">
+                      <td colSpan="9" className="px-4 py-12 text-center text-slate-400 text-xs">
                         <Boxes className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                         <p className="font-bold text-slate-600 text-sm">
                           {inventorySearch ? 'No supply items match your search filter.' : 'No supply items found in inventory.'}
                         </p>
                         <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
-                          Canteen inventory is completely clean. Use the "Encode Supply Item" button above to intake and record new supplies.
+                          Canteen inventory is empty. Intake and record new supplies via the Sales Invoices subtab.
                         </p>
                       </td>
                     </tr>
@@ -1085,25 +957,6 @@ export default function CanteenHub() {
                             <Calendar className="h-3 w-3 text-slate-400" />
                             <span>{item.expirationDate || 'N/A'}</span>
                           </div>
-                        </td>
-
-                        <td className="px-4 py-3">
-                          {item.isLateEncoded ? (
-                            <div>
-                              <span className="inline-block px-2 py-0.5 rounded-md bg-slate-900 text-white text-[9px] font-extrabold uppercase tracking-wide">
-                                [Late Encoded]
-                              </span>
-                              {item.lateReason && (
-                                <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1" title={item.lateReason}>
-                                  {item.lateReason}
-                                </p>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-slate-500 font-medium">
-                              Regular Entry
-                            </span>
-                          )}
                         </td>
 
                         <td className="px-3 py-3 text-center">
