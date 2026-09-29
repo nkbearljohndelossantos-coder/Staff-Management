@@ -476,7 +476,7 @@ export default function ITAdminHub() {
               Enterprise Transactions & Master Records
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 max-w-3xl mt-1.5 leading-relaxed">
-              Assigned to IT Admin <strong>Carl Laurence B. PATAGNAN</strong> (NKB092026-0048) & Super Admin. Full administrative authority to inspect, correct clerical errors, update line items/totals, void, or delete records across all operational subsystems.
+              Assigned to IT Admin <strong>{currentUser?.name || 'Authorized IT Administrator'}</strong>{currentUser?.employeeId ? ` (${currentUser.employeeId})` : ''} & Super Admin. Full administrative authority to inspect, correct clerical errors, update line items/totals, void, or delete records across all operational subsystems.
             </p>
           </div>
 

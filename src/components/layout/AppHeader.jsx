@@ -53,20 +53,8 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen, onOpenCommandPa
     }
   };
 
-  const formatShortName = (name) => {
-    if (!name) return 'Staff User';
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0];
-    const toTitle = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-    
-    // Convert e.g. "Carl Laurence B. PATAGNAN" -> "Carl Patagnan"
-    const first = toTitle(parts[0]);
-    const last = toTitle(parts[parts.length - 1]);
-    return `${first} ${last}`;
-  };
-
   const badge = getRoleBadge(currentUser?.role);
-  const shortName = formatShortName(currentUser?.name);
+  const displayName = currentUser?.name || 'Staff User';
   const isEmployee = currentUser?.role === 'employee';
 
   return (
@@ -179,9 +167,9 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen, onOpenCommandPa
                 {currentUser?.name?.slice(0, 2).toUpperCase() || 'US'}
               </div>
             )}
-            <div className="hidden sm:block text-left leading-tight shrink-0 whitespace-nowrap" title={currentUser?.name || 'Staff User'}>
+            <div className="hidden sm:block text-left leading-tight shrink-0 whitespace-nowrap" title={displayName}>
               <div className="text-xs font-bold text-white whitespace-nowrap">
-                {shortName}
+                {displayName}
               </div>
               <span className={`inline-block text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${badge.color} mt-0.5 whitespace-nowrap`}>
                 {badge.label}

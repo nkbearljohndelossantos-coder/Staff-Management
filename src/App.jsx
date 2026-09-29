@@ -6,17 +6,25 @@ import StaffLoginForm from './components/auth/StaffLoginForm';
 import EmployeeBarcodeLogin from './components/auth/EmployeeBarcodeLogin';
 import AppHeader from './components/layout/AppHeader';
 import SideNavigation from './components/layout/SideNavigation';
-import StaffDirectory from './components/staff/StaffDirectory';
-import PositionDeptManager from './components/staff/PositionDeptManager';
-import BarcodeClockInKiosk from './components/attendance/BarcodeClockInKiosk';
-import PayRunList from './components/payroll/PayRunList';
-import EmployeePortalView from './components/payslip/EmployeePortalView';
-import CoopLoansManager from './components/coop/CoopLoansManager';
-import CanteenHub from './components/canteen/CanteenHub';
-import ITAdminHub from './components/it/ITAdminHub';
-import ExecutiveDashboardView from './components/dashboard/ExecutiveDashboardView';
-import SystemConceptMapView from './components/concept/SystemConceptMapView';
-import CanteenCustomerDisplay from './components/canteen/CanteenCustomerDisplay';
+const StaffDirectory = React.lazy(() => import('./components/staff/StaffDirectory'));
+const PositionDeptManager = React.lazy(() => import('./components/staff/PositionDeptManager'));
+const BarcodeClockInKiosk = React.lazy(() => import('./components/attendance/BarcodeClockInKiosk'));
+const PayRunList = React.lazy(() => import('./components/payroll/PayRunList'));
+const EmployeePortalView = React.lazy(() => import('./components/payslip/EmployeePortalView'));
+const CoopLoansManager = React.lazy(() => import('./components/coop/CoopLoansManager'));
+const CanteenHub = React.lazy(() => import('./components/canteen/CanteenHub'));
+const ITAdminHub = React.lazy(() => import('./components/it/ITAdminHub'));
+const ExecutiveDashboardView = React.lazy(() => import('./components/dashboard/ExecutiveDashboardView'));
+const CanteenCustomerDisplay = React.lazy(() => import('./components/canteen/CanteenCustomerDisplay'));
+
+function TabLoadingFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[400px] space-y-3 py-16">
+      <div className="w-8 h-8 rounded-full border-2 border-slate-300 border-t-slate-800 animate-spin" />
+      <span className="text-xs font-bold text-slate-500 tracking-wider uppercase">Loading Workspace Module...</span>
+    </div>
+  );
+}
 import MobileBottomNav from './components/layout/MobileBottomNav';
 import DigitalIdModal from './components/id/DigitalIdModal';
 import CommandPalette from './components/common/CommandPalette';
@@ -54,7 +62,11 @@ export default function App() {
   // Check if opened as 2nd Monitor Customer Display
   const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   if (urlParams?.get('view') === 'customer-display') {
-    return <CanteenCustomerDisplay />;
+    return (
+      <React.Suspense fallback={<TabLoadingFallback />}>
+        <CanteenCustomerDisplay />
+      </React.Suspense>
+    );
   }
 
   // Automatically ensure the active tab is authorized for the current user
@@ -118,7 +130,7 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <>
+              <React.Suspense fallback={<TabLoadingFallback />}>
                 {activeTab === 'executiveDashboard' && <ExecutiveDashboardView />}
                 {activeTab === 'staff' && <StaffDirectory />}
                 {activeTab === 'positions' && <PositionDeptManager />}
@@ -128,8 +140,7 @@ export default function App() {
                 {activeTab === 'canteenHub' && <CanteenHub />}
                 {activeTab === 'itAdminHub' && <ITAdminHub />}
                 {activeTab === 'employeePortal' && <EmployeePortalView />}
-                {activeTab === 'conceptMap' && <SystemConceptMapView />}
-              </>
+              </React.Suspense>
             )}
           </div>
         </main>

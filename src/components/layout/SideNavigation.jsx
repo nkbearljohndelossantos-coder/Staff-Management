@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Briefcase, ScanLine, Calculator, Landmark, Utensils, FileText, X, Shield, Network, Database, BarChart3 } from 'lucide-react';
+import { Users, Briefcase, ScanLine, Calculator, Landmark, Utensils, FileText, X, Shield, Database, BarChart3 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { isTabAuthorized } from '../../utils/rolePermissions';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
@@ -24,13 +24,7 @@ export default function SideNavigation({ isOpen, onClose }) {
       icon: Database, 
       roleBadge: 'IT Admin' 
     },
-    { id: 'employeePortal', label: 'My Payslips (ESS)', icon: FileText, roleBadge: null },
-    { 
-      id: 'conceptMap', 
-      label: 'Concept Map', 
-      icon: Network, 
-      roleBadge: currentUser?.role === 'ceo' || currentUser?.role === 'it_admin' ? 'CEO Master' : 'Role Map' 
-    },
+    { id: 'employeePortal', label: 'My Payslips (ESS)', icon: FileText, roleBadge: null }
   ];
 
   // Strictly remove access to any tabs the user is not authorized to manage

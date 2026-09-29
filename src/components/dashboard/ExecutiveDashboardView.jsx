@@ -558,7 +558,7 @@ export default function ExecutiveDashboardView() {
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Evaluated by IT Admin <strong>Carl Laurence B. PATAGNAN</strong>. Only verified risks escalated from IT Admin Master Records are surfaced here.
+                Evaluated by IT Administration ({currentUser?.role === 'it_admin' ? currentUser.name : 'Authorized IT Officer'}). Only verified risks escalated from IT Admin Master Records are surfaced here.
               </p>
             </div>
           </div>

@@ -411,7 +411,7 @@ export function AppProvider({ children }) {
   const recordAnomalyEvaluation = (anomalyId, evalData) => {
     const updated = saveAnomalyEvaluation(anomalyId, {
       ...evalData,
-      reviewedBy: currentUser?.name || 'IT Admin Carl Laurence B. PATAGNAN',
+      reviewedBy: currentUser?.name || 'Authorized IT Officer',
       reviewedAt: new Date().toISOString()
     });
     setAnomalyEvaluations(getStoredEvaluations());

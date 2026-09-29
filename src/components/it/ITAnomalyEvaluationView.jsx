@@ -78,7 +78,7 @@ export default function ITAnomalyEvaluationView() {
     recordAnomalyEvaluation(anomalyId, {
       status: draft.status || 'UNDER_REVIEW',
       notes: draft.notes || '',
-      reviewedBy: currentUser?.name || 'IT Admin Carl Laurence B. PATAGNAN',
+      reviewedBy: currentUser?.name || 'Authorized IT Officer',
       reviewedAt: new Date().toISOString()
     });
 
@@ -129,7 +129,7 @@ export default function ITAnomalyEvaluationView() {
               IT Admin Anomaly Evaluation &amp; Executive Risk Dispatch
             </h2>
             <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl leading-relaxed">
-              Anomalies detected across barcode timekeeping, rapid POS void clusters, inventory shrinkage, and loan velocity are reviewed here by IT Admin <strong>Carl Laurence B. PATAGNAN</strong> before evaluated risk scores flow to the Executive Dashboard.
+              Anomalies detected across barcode timekeeping, rapid POS void clusters, inventory shrinkage, and loan velocity are reviewed here by IT Administration ({currentUser?.role === 'it_admin' ? currentUser.name : 'Authorized IT Officer'}) before evaluated risk scores flow to the Executive Dashboard.
             </p>
           </div>
 

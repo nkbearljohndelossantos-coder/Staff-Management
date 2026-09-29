@@ -74,12 +74,6 @@ export const TAB_PERMISSIONS = {
     title: 'My Payslips (ESS)',
     authorizedRoles: ['ceo', 'it_admin', 'admin', 'hr', 'finance', 'accounting', 'canteen', 'employee'],
     requiredRoleLabel: 'All Personnel'
-  },
-  conceptMap: {
-    id: 'conceptMap',
-    title: 'System Concept Map',
-    authorizedRoles: ['ceo', 'it_admin', 'admin', 'hr', 'finance', 'accounting', 'canteen', 'employee'],
-    requiredRoleLabel: 'All Roles (Customized View)'
   }
 };
 
