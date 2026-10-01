@@ -32,6 +32,7 @@ import { logAuditEvent, getAuditLogs } from '../utils/auditLogger';
 import { getOfflineQueue, clearOfflineQueue, initOfflineSyncListener } from '../utils/offlineSync';
 import { scanForAnomalies, saveAnomalyEvaluation, computeExecutiveRiskSummary, getStoredEvaluations } from '../utils/anomalyDetector';
 import { formatStaffName, scanStaffMilestones } from '../utils/staffUtils';
+import { isBoxOrPackItem, extractPiecesFromItem, getEffectiveRetailPiecePrice } from '../utils/canteenPricing';
 
 const AppContext = createContext(null);
 
@@ -176,7 +177,21 @@ export function AppProvider({ children }) {
       const saved = localStorage.getItem('nkb_canteen_inventory');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(item => {
+            if (isBoxOrPackItem(item)) {
+              const effPiece = getEffectiveRetailPiecePrice(item);
+              const pieces = extractPiecesFromItem(item);
+              return {
+                ...item,
+                hasRetailPiece: true,
+                retailPiecePrice: Number(item.retailPiecePrice) > 0 ? Number(item.retailPiecePrice) : effPiece,
+                piecesPerPack: Number(item.piecesPerPack) > 0 ? Number(item.piecesPerPack) : pieces
+              };
+            }
+            return item;
+          });
+        }
       }
     } catch (e) {
       console.error('Failed to initialize canteen inventory:', e);

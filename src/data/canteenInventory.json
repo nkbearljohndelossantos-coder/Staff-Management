@@ -4009,6 +4009,9 @@
       "reorderLevel": 10,
       "stockStatus": "Out of Stock",
       "expirationDate": "2027-06-30",
+      "hasRetailPiece": true,
+      "piecesPerPack": 2,
+      "retailPiecePrice": 105,
       "isLateEncoded": false,
       "encodedAt": "2026-09-23T16:28:00.000Z",
       "notes": "Imported from Official NKB Canteen Inventory Masterlist"

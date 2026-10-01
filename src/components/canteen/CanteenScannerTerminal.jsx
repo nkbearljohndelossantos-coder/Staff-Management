@@ -51,6 +51,12 @@ import {
 } from '../../utils/scanResolver';
 import CanteenZReadingModal from './CanteenZReadingModal';
 import CanteenItemScanModal from './CanteenItemScanModal';
+import { 
+  isBoxOrPackItem, 
+  extractPiecesFromItem, 
+  getEffectiveRetailPiecePrice, 
+  getEffectiveWholesalePrice 
+} from '../../utils/canteenPricing';
 
 // Standard fallback catalog for barcode gun recognition
 const STANDARD_SUPPLIES_CATALOG = {
@@ -373,25 +379,10 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     if (!item) return;
     playBeep('success');
 
-    const isBoxOrPack = (
-      item.unit === 'Box' || 
-      item.unit === 'Pack' || 
-      (item.size || '').toLowerCase().includes('pack') || 
-      (item.size || '').toLowerCase().includes('box') || 
-      Boolean(item.hasRetailPiece) || 
-      Number(item.retailPiecePrice) > 0
-    );
-
-    const baseSellingPrice = Number(item.sellingPrice || item.unitPrice || 0);
-
-    let effectiveRetailPiecePrice = Number(item.retailPiecePrice) || 0;
-    if (effectiveRetailPiecePrice <= 0 && isBoxOrPack) {
-      if (item.piecesPerPack > 0) {
-        effectiveRetailPiecePrice = Math.ceil((baseSellingPrice / item.piecesPerPack) * 1.25);
-      } else {
-        effectiveRetailPiecePrice = Math.ceil(baseSellingPrice * 1.20);
-      }
-    }
+    const isBoxOrPack = isBoxOrPackItem(item);
+    const baseSellingPrice = getEffectiveWholesalePrice(item);
+    const effectiveRetailPiecePrice = getEffectiveRetailPiecePrice(item);
+    const piecesCount = item.piecesPerPack || extractPiecesFromItem(item);
 
     const isRetail = tier === 'retail_piece' && isBoxOrPack;
     const finalUnitPrice = isRetail ? effectiveRetailPiecePrice : baseSellingPrice;
@@ -410,7 +401,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       retailPiecePrice: effectiveRetailPiecePrice,
       isBoxOrPack: isBoxOrPack,
       isRetailPiece: isRetail,
-      piecesPerPack: item.piecesPerPack || 0,
+      piecesPerPack: piecesCount,
       unit: item.unit || 'Pack',
       size: finalSize,
       quantity: 1
@@ -448,7 +439,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
           retailPiecePrice: effectiveRetailPiecePrice,
           isBoxOrPack: isBoxOrPack,
           isRetailPiece: isRetail,
-          piecesPerPack: item.piecesPerPack || 0,
+          piecesPerPack: piecesCount,
           unit: item.unit || 'Pack',
           quantity: 1
         }
@@ -473,10 +464,8 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     setCart(prev => prev.map(it => {
       if (it.id !== targetId) return it;
       const willBeRetail = !it.isRetailPiece;
-      const baseWholesale = Number(it.wholesalePrice || it.unitPrice);
-      const piecePrice = Number(it.retailPiecePrice) > 0 
-        ? Number(it.retailPiecePrice) 
-        : (it.piecesPerPack > 0 ? Math.ceil((baseWholesale / it.piecesPerPack) * 1.25) : Math.ceil(baseWholesale * 1.20));
+      const baseWholesale = getEffectiveWholesalePrice(it);
+      const piecePrice = getEffectiveRetailPiecePrice(it);
       const newPrice = willBeRetail ? piecePrice : baseWholesale;
       const baseName = it.rawName || it.name.replace(' (Piece)', '');
       const newName = willBeRetail ? `${baseName} (Piece)` : baseName;
@@ -499,6 +488,25 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
         unitPrice: newPrice
       };
     }));
+
+    // Keep lastScanned synced if it's the same item
+    setLastScanned(prev => {
+      if (!prev || (prev.id !== targetId && lastScannedItemId !== targetId)) return prev;
+      const willBeRetail = !prev.isRetailPiece;
+      const baseWholesale = getEffectiveWholesalePrice(prev);
+      const piecePrice = getEffectiveRetailPiecePrice(prev);
+      const newPrice = willBeRetail ? piecePrice : baseWholesale;
+      const baseName = prev.rawName || prev.name.replace(' (Piece)', '');
+      return {
+        ...prev,
+        isRetailPiece: willBeRetail,
+        retailPiecePrice: piecePrice,
+        wholesalePrice: baseWholesale,
+        name: willBeRetail ? `${baseName} (Piece)` : baseName,
+        size: willBeRetail ? 'Piece' : (prev.unit || 'Pack'),
+        unitPrice: newPrice
+      };
+    });
   };
 
   // Set last scanned item tier
@@ -506,10 +514,8 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     if (!lastScanned) return;
     const targetId = lastScannedItemId;
     const willBeRetail = tier === 'retail_piece';
-    const baseWholesale = Number(lastScanned.wholesalePrice || lastScanned.unitPrice);
-    const piecePrice = Number(lastScanned.retailPiecePrice) > 0 
-      ? Number(lastScanned.retailPiecePrice) 
-      : (lastScanned.piecesPerPack > 0 ? Math.ceil((baseWholesale / lastScanned.piecesPerPack) * 1.25) : Math.ceil(baseWholesale * 1.20));
+    const baseWholesale = getEffectiveWholesalePrice(lastScanned);
+    const piecePrice = getEffectiveRetailPiecePrice(lastScanned);
     const newPrice = willBeRetail ? piecePrice : baseWholesale;
     const baseName = lastScanned.rawName || lastScanned.name.replace(' (Piece)', '');
     const newName = willBeRetail ? `${baseName} (Piece)` : baseName;
@@ -1384,12 +1390,13 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
               setEditingCartItem(null);
               setShowItemScanModal(true);
             }}
-            className="h-11 px-3.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white border border-cyan-400/50 text-xs font-black flex items-center gap-2 transition cursor-pointer shadow-md select-none"
-            title="Open Canteen Items Scanner & Detail Pop-up Screen (F2)"
+            className="h-11 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 border border-amber-400 text-xs font-black flex items-center gap-2 transition cursor-pointer shadow-md select-none"
+            title="Browse Products & Select Wholesale (Box/Pack) or Retail (Piece) Pricing (F2)"
           >
-            <ScanBarcode className="h-4 w-4 text-cyan-200" />
-            <span className="hidden sm:inline">Items Pop-up</span>
-            <kbd className="px-1.5 py-0.5 rounded bg-cyan-800 text-cyan-200 font-mono text-[10px]">F2</kbd>
+            <Boxes className="h-4 w-4 text-slate-950" />
+            <span className="hidden sm:inline">Wholesale &amp; Retail Items</span>
+            <span className="sm:hidden">Wholesale/Retail</span>
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-900 text-amber-300 font-mono text-[10px]">F2</kbd>
           </button>
 
           {/* Shift Closeout / Z-Reading Modal Launch Button */}
@@ -1633,15 +1640,15 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                         </div>
                       </div>
 
-                      {Boolean(item.unit === 'Box' || item.unit === 'Pack' || (item.size || '').toLowerCase().includes('pack') || (item.size || '').toLowerCase().includes('box') || item.hasRetailPiece || Number(item.retailPiecePrice) > 0) ? (
+                      {isBoxOrPackItem(item) ? (
                         <div className="flex items-center gap-2 shrink-0">
                           <div className="text-right">
                             <div className="text-xs font-black font-mono text-slate-900">
-                              ₱{Number(item.sellingPrice || 0).toFixed(2)}
+                              ₱{getEffectiveWholesalePrice(item).toFixed(2)}
                               <span className="text-[9px] text-slate-400 font-normal ml-0.5">/{item.unit || 'pack'}</span>
                             </div>
                             <div className="text-[10px] font-mono font-bold text-amber-700">
-                              ₱{(Number(item.retailPiecePrice) || (item.piecesPerPack > 0 ? Math.ceil((Number(item.sellingPrice || 0) / item.piecesPerPack) * 1.25) : Math.ceil(Number(item.sellingPrice || 0) * 1.20))).toFixed(2)}/pc
+                              ₱{getEffectiveRetailPiecePrice(item).toFixed(2)}/pc
                             </div>
                           </div>
                           <div className="flex flex-col sm:flex-row gap-1">
@@ -1810,13 +1817,20 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
               </div>
 
               {/* Box & Pack Pricing Option on Just Scanned Card */}
-              {(lastScanned.isBoxOrPack || lastScanned.unit === 'Box' || lastScanned.unit === 'Pack' || Number(lastScanned.retailPiecePrice) > 0 || (lastScanned.size || '').toLowerCase().includes('pack') || (lastScanned.size || '').toLowerCase().includes('box')) && (
+              {isBoxOrPackItem(lastScanned) && (
                 <div className="pt-2.5 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 animate-in fade-in duration-100">
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <Boxes className="h-3.5 w-3.5 text-amber-400" />
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300">
-                      Box / Pack Pricing Tier:
-                    </span>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <Boxes className="h-4 w-4 text-amber-400" />
+                      <span className="text-xs font-black uppercase tracking-wider text-amber-300">
+                        Box / Pack Option:
+                      </span>
+                    </div>
+                    {lastScanned.piecesPerPack > 1 && (
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        ({lastScanned.piecesPerPack} pcs · ₱{(getEffectiveWholesalePrice(lastScanned) / lastScanned.piecesPerPack).toFixed(2)}/pc wholesale)
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -1829,7 +1843,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                       }`}
                     >
                       <Boxes className="h-3.5 w-3.5" />
-                      <span>Wholesale ({lastScanned.unit || 'Pack'}): ₱{Number(lastScanned.wholesalePrice || lastScanned.unitPrice).toFixed(2)}</span>
+                      <span>Wholesale ({lastScanned.unit || 'Pack'}): ₱{getEffectiveWholesalePrice(lastScanned).toFixed(2)}</span>
                     </button>
 
                     <button
@@ -1842,7 +1856,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                       }`}
                     >
                       <Tag className="h-3.5 w-3.5" />
-                      <span>Retail (Piece): ₱{Number(lastScanned.retailPiecePrice || Math.ceil((lastScanned.wholesalePrice || lastScanned.unitPrice) * 1.25)).toFixed(2)}</span>
+                      <span>Retail (Piece): ₱{getEffectiveRetailPiecePrice(lastScanned).toFixed(2)}</span>
                     </button>
                   </div>
                 </div>
@@ -2111,21 +2125,23 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                       </div>
 
                       {/* Box & Pack Tier Switch Button right on Cart Item */}
-                      {Boolean(item.isBoxOrPack || item.unit === 'Box' || item.unit === 'Pack' || Number(item.retailPiecePrice) > 0 || item.isRetailPiece || (item.size || '').toLowerCase().includes('pack') || (item.size || '').toLowerCase().includes('box')) && (
+                      {isBoxOrPackItem(item) && (
                         <div className="mt-1 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={() => handleToggleCartItemTier(item.id)}
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 transition cursor-pointer border shadow-2xs ${
+                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1.5 transition cursor-pointer border shadow-2xs ${
                               item.isRetailPiece
-                                ? 'bg-amber-100 border-amber-300 text-amber-900 hover:bg-amber-200'
-                                : 'bg-cyan-50 border-cyan-300 text-cyan-900 hover:bg-cyan-100'
+                                ? 'bg-amber-100 border-amber-300 text-amber-950 hover:bg-amber-200'
+                                : 'bg-cyan-50 border-cyan-300 text-cyan-950 hover:bg-cyan-100'
                             }`}
                             title="Click to toggle between Wholesale (Box/Pack) and Retail (Piece)"
                           >
-                            <Boxes className="h-3 w-3 text-amber-600" />
-                            <span>{item.isRetailPiece ? '🏷️ Retail Piece' : `📦 Wholesale ${item.unit || 'Pack'}`}</span>
-                            <span className="text-[9px] font-black underline text-indigo-600 ml-1">Switch Tier</span>
+                            <Boxes className="h-3 w-3 text-amber-600 shrink-0" />
+                            <span>{item.isRetailPiece ? `🏷️ Retail Piece (₱${Number(item.unitPrice).toFixed(2)})` : `📦 Wholesale ${item.unit || 'Pack'} (₱${Number(item.unitPrice).toFixed(2)})`}</span>
+                            <span className="text-[9px] font-black underline text-indigo-700 ml-1">
+                              Switch to {item.isRetailPiece ? 'Wholesale' : 'Retail Piece'}
+                            </span>
                           </button>
                         </div>
                       )}

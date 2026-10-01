@@ -24,6 +24,12 @@ import {
 } from 'lucide-react';
 import { cleanScanInput } from '../../utils/scanResolver';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
+import { 
+  isBoxOrPackItem, 
+  extractPiecesFromItem, 
+  getEffectiveRetailPiecePrice, 
+  getEffectiveWholesalePrice 
+} from '../../utils/canteenPricing';
 
 // Standard fallback catalog for barcode gun recognition
 const STANDARD_SUPPLIES_CATALOG = {
@@ -238,10 +244,8 @@ export default function CanteenItemScanModal({
     setActiveItem(item);
     setIsCustomMode(false);
     setQuantity(1);
-    const baseSelling = Number(item.sellingPrice || item.unitPrice || 0);
-    const defaultPiece = Number(item.retailPiecePrice) > 0 
-      ? Number(item.retailPiecePrice) 
-      : (item.piecesPerPack > 0 ? Math.ceil((baseSelling / item.piecesPerPack) * 1.25) : Math.ceil(baseSelling * 1.20));
+    const baseSelling = getEffectiveWholesalePrice(item);
+    const defaultPiece = getEffectiveRetailPiecePrice(item);
     setBoxPackPiecePrice(defaultPiece);
     setPricingTier(item.isRetailPiece ? 'retail_piece' : 'wholesale');
     setUnitPrice(item.isRetailPiece ? defaultPiece : baseSelling);
@@ -723,11 +727,14 @@ export default function CanteenItemScanModal({
 
                       <div className="text-right shrink-0">
                         <div className="text-base font-black font-mono text-cyan-300">
-                          ₱{Number(item.sellingPrice || item.unitPrice || 0).toFixed(2)}
+                          ₱{getEffectiveWholesalePrice(item).toFixed(2)}
+                          {isBoxOrPackItem(item) && (
+                            <span className="text-[10px] text-slate-400 font-normal ml-0.5">/{item.unit || 'pack'}</span>
+                          )}
                         </div>
-                        {Number(item.retailPiecePrice) > 0 ? (
+                        {isBoxOrPackItem(item) ? (
                           <div className="text-[10px] font-mono font-bold text-amber-400">
-                            ₱{Number(item.retailPiecePrice).toFixed(2)} / pc
+                            ₱{getEffectiveRetailPiecePrice(item).toFixed(2)} / pc (Retail)
                           </div>
                         ) : (
                           <div className="text-[10px] text-slate-400">
@@ -856,7 +863,7 @@ export default function CanteenItemScanModal({
               </div>
 
               {/* Box & Pack Breakdown & Retail Piece Price Option in POS Scan Modal */}
-              {Boolean(activeItem && (activeItem.unit === 'Box' || activeItem.unit === 'Pack' || (activeItem.size || '').toLowerCase().includes('pack') || (activeItem.size || '').toLowerCase().includes('box') || activeItem.hasRetailPiece || Number(activeItem.retailPiecePrice) > 0)) && (
+              {Boolean(activeItem && isBoxOrPackItem(activeItem)) && (
                 <div className="space-y-2.5 p-3 rounded-2xl bg-slate-900 border-2 border-amber-500/50 shadow-md">
                   <div className="flex items-center justify-between text-[11px] font-bold text-amber-300">
                     <span className="flex items-center gap-1.5">
@@ -877,7 +884,7 @@ export default function CanteenItemScanModal({
                       type="button"
                       onClick={() => {
                         setPricingTier('wholesale');
-                        setUnitPrice(Number(activeItem.sellingPrice || activeItem.unitPrice || 0));
+                        setUnitPrice(getEffectiveWholesalePrice(activeItem));
                       }}
                       className={`p-2.5 rounded-xl text-left transition border-2 cursor-pointer ${
                         pricingTier === 'wholesale'
@@ -890,7 +897,7 @@ export default function CanteenItemScanModal({
                         <span className="px-1 rounded bg-cyan-500/30 text-cyan-200 text-[8px] font-mono">Bulk</span>
                       </div>
                       <div className="text-base font-black font-mono text-white mt-1">
-                        ₱{Number(activeItem.sellingPrice || activeItem.unitPrice || 0).toFixed(2)}
+                        ₱{getEffectiveWholesalePrice(activeItem).toFixed(2)}
                       </div>
                     </button>
 
@@ -898,7 +905,7 @@ export default function CanteenItemScanModal({
                       type="button"
                       onClick={() => {
                         setPricingTier('retail_piece');
-                        const defaultP = Number(boxPackPiecePrice) || Number(activeItem.retailPiecePrice) || Math.ceil(Number(activeItem.sellingPrice || 0) * 1.25);
+                        const defaultP = Number(boxPackPiecePrice) || getEffectiveRetailPiecePrice(activeItem);
                         setUnitPrice(defaultP);
                       }}
                       className={`p-2.5 rounded-xl text-left transition border-2 cursor-pointer ${
@@ -912,7 +919,7 @@ export default function CanteenItemScanModal({
                         <span className="px-1 rounded bg-amber-500/30 text-amber-200 text-[8px] font-mono">Single</span>
                       </div>
                       <div className="text-base font-black font-mono text-amber-400 mt-1">
-                        ₱{Number(boxPackPiecePrice || activeItem.retailPiecePrice || Math.ceil(Number(activeItem.sellingPrice || 0) * 1.25)).toFixed(2)}
+                        ₱{Number(boxPackPiecePrice || getEffectiveRetailPiecePrice(activeItem)).toFixed(2)}
                       </div>
                     </button>
                   </div>

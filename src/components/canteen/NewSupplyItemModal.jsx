@@ -19,13 +19,18 @@ import {
 import { useApp } from '../../context/AppContext';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 import { playScanBeep } from '../../utils/audioFeedback';
+import { 
+  isBoxOrPackItem, 
+  extractPiecesFromItem, 
+  getEffectiveRetailPiecePrice 
+} from '../../utils/canteenPricing';
 
 const COMMON_SIZES = [
-  'Solo', 'Piece', '500ml', '1L', '330ml', '250ml', '210g', '155g', '100g', '80g', '60g', 'Can', 'Bottle', 'Pack', 'Twin Pack', 'Cup'
+  'Solo', 'Piece', 'Standard', '500ml', '1L', '330ml', '250ml', '210g', '155g', '100g', '80g', '60g', 'Can', 'Bottle', 'Pack', 'Twin Pack', 'Box', 'Cup'
 ];
 
 const COMMON_UNITS = [
-  'Piece', 'Can', 'Bottle', 'Pack', 'Cup', 'Loaf', 'Box', 'Sachet', 'Pouch', 'Serving'
+  'Piece', 'Pack', 'Sachet/Pack', 'Box', 'Twin Pack', 'Bundle', 'Case', 'Can', 'Bottle', 'Cup', 'Loaf', 'Sachet', 'Pouch', 'Serving'
 ];
 
 const COMMON_BRANDS = [
@@ -103,15 +108,17 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
     }
   }, [isOpen, canteenCategories]);
 
-  // Auto-activate retail piece option if size or unit indicates Box or Pack
+  // Auto-activate retail piece option if name, size or unit indicates Box, Pack, Twin, etc.
   useEffect(() => {
-    const s = (size || '').toLowerCase();
-    const u = (unit || '').toLowerCase();
-    if (s.includes('box') || s.includes('pack') || u === 'box' || u === 'pack') {
+    if (isBoxOrPackItem({ name, size, unit })) {
       setHasRetailPiece(true);
       setShowOptionalDetails(true);
+      const estPieces = extractPiecesFromItem({ name, size, unit });
+      if (estPieces > 1 && !piecesPerPack) {
+        setPiecesPerPack(String(estPieces));
+      }
     }
-  }, [size, unit]);
+  }, [name, size, unit]);
 
   if (!isOpen) return null;
 

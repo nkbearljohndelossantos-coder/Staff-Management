@@ -54,6 +54,12 @@ import NewSupplyItemModal from './NewSupplyItemModal';
 import canteenInventoryData from '../../data/canteenInventory.json';
 import { playScanBeep, playErrorBuzz } from '../../utils/audioFeedback';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
+import { 
+  isBoxOrPackItem, 
+  extractPiecesFromItem, 
+  getEffectiveRetailPiecePrice, 
+  getEffectiveWholesalePrice 
+} from '../../utils/canteenPricing';
 
 export const SUGGESTED_COMPANIES = [
   'San Miguel Foods', 'Monde Nissin', 'Universal Robina Corp', 'Nestlé Philippines', 
@@ -719,23 +725,23 @@ export default function CanteenHub() {
                         <td className="px-4 py-3 text-right">
                           <div className="font-mono font-bold text-slate-900">
                             ₱{item.sellingPrice?.toFixed(2)}
-                            {(item.unit === 'Box' || item.unit === 'Pack' || item.hasRetailPiece) && (
+                            {isBoxOrPackItem(item) && (
                               <span className="text-[10px] text-slate-500 font-normal ml-1">
                                 /{item.unit || 'pack'}
                               </span>
                             )}
                           </div>
-                          {Number(item.retailPiecePrice) > 0 && (
+                          {isBoxOrPackItem(item) && (
                             <div className="mt-1 flex flex-col items-end">
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-[10px] font-mono font-bold">
-                                <span>₱{Number(item.retailPiecePrice).toFixed(2)}/pc</span>
+                                <span>₱{getEffectiveRetailPiecePrice(item).toFixed(2)}/pc</span>
                                 <span className="text-[8px] uppercase tracking-wider text-amber-700 bg-amber-100 px-1 rounded font-black">
                                   Retail
                                 </span>
                               </span>
-                              {item.piecesPerPack > 0 && item.sellingPrice > 0 && (
+                              {(item.piecesPerPack > 0 || extractPiecesFromItem(item) > 1) && item.sellingPrice > 0 && (
                                 <span className="text-[9px] text-slate-400 font-mono mt-0.5">
-                                  ({item.piecesPerPack} pcs · ₱{(item.sellingPrice / item.piecesPerPack).toFixed(2)}/pc wholesale)
+                                  ({item.piecesPerPack || extractPiecesFromItem(item)} pcs · ₱{(item.sellingPrice / (item.piecesPerPack || extractPiecesFromItem(item))).toFixed(2)}/pc wholesale)
                                 </span>
                               )}
                             </div>
@@ -1739,11 +1745,17 @@ export default function CanteenHub() {
                     className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white"
                   >
                     <option value="Piece">Piece / pc</option>
-                    <option value="Bottle">Bottle</option>
-                    <option value="Can">Can</option>
                     <option value="Pack">Pack</option>
+                    <option value="Sachet/Pack">Sachet / Pack</option>
                     <option value="Box">Box</option>
+                    <option value="Twin Pack">Twin Pack</option>
+                    <option value="Bundle">Bundle</option>
+                    <option value="Case">Case</option>
+                    <option value="Can">Can</option>
+                    <option value="Bottle">Bottle</option>
                     <option value="Kg">Kg</option>
+                    <option value="Sachet">Sachet</option>
+                    <option value="Pouch">Pouch</option>
                   </select>
                 </div>
 
@@ -1753,7 +1765,7 @@ export default function CanteenHub() {
                     <label className="flex items-center gap-2 cursor-pointer select-none">
                       <input
                         type="checkbox"
-                        checked={Boolean(editingSupplyItem.hasRetailPiece || (editingSupplyItem.unit === 'Box' || editingSupplyItem.unit === 'Pack') || Number(editingSupplyItem.retailPiecePrice) > 0)}
+                        checked={Boolean(editingSupplyItem.hasRetailPiece || isBoxOrPackItem(editingSupplyItem))}
                         onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, hasRetailPiece: e.target.checked }))}
                         className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
                       />
@@ -1771,7 +1783,7 @@ export default function CanteenHub() {
                     Set a separate retail price for single pieces when sold separately from the box/pack. <strong>The retail price per piece will be more expensive than the wholesale price per piece</strong>.
                   </p>
 
-                  {(editingSupplyItem.hasRetailPiece || editingSupplyItem.unit === 'Box' || editingSupplyItem.unit === 'Pack' || Number(editingSupplyItem.retailPiecePrice) > 0) && (
+                  {(editingSupplyItem.hasRetailPiece || isBoxOrPackItem(editingSupplyItem)) && (
                     <div className="space-y-3 pt-2 border-t border-amber-200/60 animate-in fade-in duration-150">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {/* Pieces per Box/Pack */}
@@ -1784,12 +1796,12 @@ export default function CanteenHub() {
                             min="1"
                             value={editingSupplyItem.piecesPerPack ?? ''}
                             onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, piecesPerPack: e.target.value }))}
-                            placeholder="e.g., 10, 24, 50 pcs"
+                            placeholder={extractPiecesFromItem(editingSupplyItem) > 1 ? `e.g. ${extractPiecesFromItem(editingSupplyItem)} pcs` : 'e.g., 10, 24, 50 pcs'}
                             className="w-full h-10 px-3 rounded-xl border border-amber-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
                           />
-                          {Number(editingSupplyItem.piecesPerPack) > 0 && Number(editingSupplyItem.sellingPrice) > 0 && (
+                          {(Number(editingSupplyItem.piecesPerPack) > 0 || extractPiecesFromItem(editingSupplyItem) > 1) && Number(editingSupplyItem.sellingPrice) > 0 && (
                             <p className="text-[10px] text-amber-800 font-mono mt-1">
-                              Wholesale rate: <strong>₱{(Number(editingSupplyItem.sellingPrice) / Number(editingSupplyItem.piecesPerPack)).toFixed(2)}</strong> / piece
+                              Wholesale rate: <strong>₱{(Number(editingSupplyItem.sellingPrice) / (Number(editingSupplyItem.piecesPerPack) || extractPiecesFromItem(editingSupplyItem))).toFixed(2)}</strong> / piece
                             </p>
                           )}
                         </div>
@@ -1807,7 +1819,7 @@ export default function CanteenHub() {
                               min="0"
                               value={editingSupplyItem.retailPiecePrice ?? ''}
                               onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, retailPiecePrice: e.target.value }))}
-                              placeholder="e.g., 12.00"
+                              placeholder={getEffectiveRetailPiecePrice(editingSupplyItem) > 0 ? getEffectiveRetailPiecePrice(editingSupplyItem).toFixed(2) : 'e.g., 12.00'}
                               className="w-full h-10 pl-7 pr-3 rounded-xl border border-amber-400 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
                             />
                           </div>
@@ -1815,17 +1827,18 @@ export default function CanteenHub() {
                       </div>
 
                       {/* Quick Markup Suggestions */}
-                      {Number(editingSupplyItem.piecesPerPack) > 0 && Number(editingSupplyItem.sellingPrice) > 0 && (
+                      {(Number(editingSupplyItem.piecesPerPack) > 0 || extractPiecesFromItem(editingSupplyItem) > 0) && Number(editingSupplyItem.sellingPrice) > 0 && (
                         <div className="p-2.5 rounded-xl bg-white/90 border border-amber-200 flex flex-wrap items-center gap-2">
                           <span className="text-[10px] font-bold text-amber-800">Suggested Retail Markups:</span>
                           {[15, 20, 25, 30].map(pct => {
-                            const base = Number(editingSupplyItem.sellingPrice) / Number(editingSupplyItem.piecesPerPack);
+                            const pCount = Number(editingSupplyItem.piecesPerPack) || extractPiecesFromItem(editingSupplyItem) || 1;
+                            const base = Number(editingSupplyItem.sellingPrice) / pCount;
                             const sug = Math.ceil(base * (1 + pct / 100));
                             return (
                               <button
                                 key={pct}
                                 type="button"
-                                onClick={() => setEditingSupplyItem(prev => ({ ...prev, retailPiecePrice: sug.toFixed(2) }))}
+                                onClick={() => setEditingSupplyItem(prev => ({ ...prev, retailPiecePrice: sug.toFixed(2), piecesPerPack: prev.piecesPerPack || pCount }))}
                                 className="px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-mono text-[10px] font-bold transition cursor-pointer"
                               >
                                 +{pct}% (₱{sug.toFixed(2)})
