@@ -182,7 +182,7 @@ export default function SalesInvoiceDetailModal({ invoice, onClose }) {
                     <th className="px-3 py-3 text-right">Cost Price</th>
                     <th className="px-3 py-3 text-right">Selling Price</th>
                     <th className="px-3 py-3 text-right font-black text-slate-900">Subtotal</th>
-                    <th className="px-3 py-3 text-center">Expiry</th>
+                    <th className="px-3 py-3 text-center">Expiry (Optional)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -229,7 +229,7 @@ export default function SalesInvoiceDetailModal({ invoice, onClose }) {
                           ₱{lineSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="px-3 py-3 text-center font-mono text-[11px] text-slate-600">
-                          {it.expirationDate || 'N/A'}
+                          {it.expirationDate || '—'}
                         </td>
                       </tr>
                     );

@@ -1153,7 +1153,7 @@ export default function ITAdminHub() {
                   <th className="p-3.5">Selling Price</th>
                   <th className="p-3.5">Current Stock</th>
                   <th className="p-3.5">Reorder Level</th>
-                  <th className="p-3.5">Expiry Date</th>
+                  <th className="p-3.5">Expiry Date (Optional)</th>
                   <th className="p-3.5 text-right">IT Actions</th>
                 </tr>
               </thead>
@@ -2270,7 +2270,22 @@ export default function ITAdminHub() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Expiration Date</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold text-slate-600">Expiration Date (Optional)</label>
+                        {editingRecord.data.expirationDate && (
+                          <button
+                            type="button"
+                            onClick={() => setEditingRecord(prev => ({
+                              ...prev,
+                              data: { ...prev.data, expirationDate: '' }
+                            }))}
+                            className="text-[10px] text-rose-500 hover:text-rose-700 font-bold cursor-pointer"
+                            title="Clear expiration date"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="date"
                         value={editingRecord.data.expirationDate || ''}

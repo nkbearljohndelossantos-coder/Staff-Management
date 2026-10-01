@@ -615,7 +615,7 @@ export default function CanteenHub() {
                     <th className="px-4 py-3.5 text-right">Cost Price</th>
                     <th className="px-4 py-3.5 text-right">Selling Price</th>
                     <th className="px-4 py-3.5 text-center">Stock Qty</th>
-                    <th className="px-4 py-3.5">Expiration / Best Before</th>
+                    <th className="px-4 py-3.5">Expiration (Optional)</th>
                     <th className="px-3 py-3.5 text-center">Action</th>
                   </tr>
                 </thead>
@@ -689,10 +689,14 @@ export default function CanteenHub() {
                         </td>
 
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1 text-slate-700 font-medium">
-                            <Calendar className="h-3 w-3 text-slate-400" />
-                            <span>{item.expirationDate || 'N/A'}</span>
-                          </div>
+                          {item.expirationDate ? (
+                            <div className="flex items-center gap-1 text-slate-700 font-medium">
+                              <Calendar className="h-3 w-3 text-slate-400" />
+                              <span className="font-mono text-xs">{item.expirationDate}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 font-mono text-[11px]">—</span>
+                          )}
                         </td>
 
                         <td className="px-3 py-3 text-center">
@@ -1681,15 +1685,28 @@ export default function CanteenHub() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Expiration Date / Best Before Date
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Expiration Date <span className="text-slate-400 font-normal">(Optional)</span>
+                    </label>
+                    {editingSupplyItem.expirationDate && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingSupplyItem(prev => ({ ...prev, expirationDate: '' }))}
+                        className="text-[10px] text-rose-500 hover:text-rose-700 font-bold transition cursor-pointer"
+                        title="Remove expiration date"
+                      >
+                        Clear / No Expiry
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="date"
                     value={editingSupplyItem.expirationDate || ''}
                     onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, expirationDate: e.target.value }))}
                     className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">Optional. Leave empty for items without an expiration date.</p>
                 </div>
 
                 <div>

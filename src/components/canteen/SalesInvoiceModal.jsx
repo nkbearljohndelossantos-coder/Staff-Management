@@ -133,7 +133,7 @@ export default function SalesInvoiceModal({ isOpen, onClose }) {
         unit: catItem.unit || 'Piece',
         costPrice: catItem.costPrice ? String(catItem.costPrice) : '',
         sellingPrice: catItem.sellingPrice ? String(catItem.sellingPrice) : '',
-        expirationDate: catItem.expirationDate || '',
+        expirationDate: '', // Expiration date is strictly optional - not auto-filled
         barcode: catItem.barcode || '',
         searchQuery: catItem.name,
         showDropdown: false
@@ -715,18 +715,62 @@ export default function SalesInvoiceModal({ isOpen, onClose }) {
                         </div>
                       </div>
 
-                      {/* Expiration Date */}
+                      {/* Expiration Date (Optional) */}
                       <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1 flex items-center gap-1">
-                          <Calendar className="h-2.5 w-2.5 text-slate-400" />
-                          <span>Expiration Date</span>
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1">
+                            <Calendar className="h-2.5 w-2.5 text-slate-400" />
+                            <span>Expiration Date (Optional)</span>
+                          </label>
+                          {item.expirationDate && (
+                            <button
+                              type="button"
+                              onClick={() => handleItemFieldChange(index, 'expirationDate', '')}
+                              className="text-[9px] font-bold text-rose-500 hover:text-rose-700 transition cursor-pointer"
+                              title="Clear expiration date"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
                         <input
                           type="date"
                           value={item.expirationDate}
                           onChange={(e) => handleItemFieldChange(index, 'expirationDate', e.target.value)}
                           className="w-full h-8 px-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
+                        <div className="flex items-center gap-1 mt-1.5">
+                          <span className="text-[8px] uppercase font-bold text-slate-400">Add:</span>
+                          {[
+                            { label: '+6M', months: 6 },
+                            { label: '+1Y', months: 12 },
+                            { label: '+2Y', months: 24 }
+                          ].map(preset => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => {
+                                const d = new Date();
+                                d.setMonth(d.getMonth() + preset.months);
+                                handleItemFieldChange(index, 'expirationDate', d.toISOString().split('T')[0]);
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-slate-200 hover:bg-indigo-100 hover:text-indigo-700 text-slate-700 text-[9px] font-bold transition cursor-pointer"
+                              title={`Optionally set expiry to ${preset.months} months from today`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                          {item.expirationDate && (
+                            <button
+                              type="button"
+                              onClick={() => handleItemFieldChange(index, 'expirationDate', '')}
+                              className="px-1.5 py-0.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 text-[9px] font-bold transition cursor-pointer ml-auto"
+                              title="Remove expiration date"
+                            >
+                              No Expiry
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {/* Barcode (Optional) */}
