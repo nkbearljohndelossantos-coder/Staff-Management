@@ -59,25 +59,33 @@ export function AppProvider({ children }) {
               merged.push(initStaff);
             }
           });
-          return merged.map(s => ({
-            ...s,
-            dateHired: s.dateHired || s.hireDate || '2026-05-01',
-            hireDate: s.hireDate || s.dateHired || '2026-05-01',
-            birthday: s.birthday || '1995-06-15',
-            address: s.address || 'Subic Bay Gateway Park, Olongapo City, Zambales',
-            sssNo: s.sssNo || '',
-            philHealthNo: s.philHealthNo || '12-094820192-1',
-            hdmfNo: s.hdmfNo || '1210-9482-0192',
-            salaryRateType: s.salaryRateType || 'monthly',
-            workScheduleType: s.workScheduleType || '6_days',
-            salaryRate: s.salaryRate !== undefined ? s.salaryRate : (s.baseSalary || 0),
-            filedSalary: s.filedSalary !== undefined ? s.filedSalary : 0,
-            sickLeaveTotal: s.sickLeaveTotal !== undefined ? s.sickLeaveTotal : 5,
-            sickLeaveRemaining: s.sickLeaveRemaining !== undefined ? s.sickLeaveRemaining : 5,
-            vacationLeaveTotal: s.vacationLeaveTotal !== undefined ? s.vacationLeaveTotal : 5,
-            vacationLeaveRemaining: s.vacationLeaveRemaining !== undefined ? s.vacationLeaveRemaining : 5,
-            documents: s.documents || []
-          }));
+          return merged.map(s => {
+            const isTargetITAdmin = s.employeeId === 'NKB052026-0014' || s.id === 'emp-nkb052026-0014';
+            return {
+              ...s,
+              role: isTargetITAdmin ? 'it_admin' : (s.role || 'employee'),
+              positionId: isTargetITAdmin ? 'pos-it' : s.positionId,
+              positionTitle: isTargetITAdmin ? 'IT Systems Administrator' : s.positionTitle,
+              departmentId: isTargetITAdmin ? 'dept-it' : s.departmentId,
+              departmentName: isTargetITAdmin ? 'Information Technology (IT)' : s.departmentName,
+              dateHired: s.dateHired || s.hireDate || '2026-05-01',
+              hireDate: s.hireDate || s.dateHired || '2026-05-01',
+              birthday: s.birthday || '1995-06-15',
+              address: s.address || 'Subic Bay Gateway Park, Olongapo City, Zambales',
+              sssNo: s.sssNo || '',
+              philHealthNo: s.philHealthNo || '12-094820192-1',
+              hdmfNo: s.hdmfNo || '1210-9482-0192',
+              salaryRateType: s.salaryRateType || 'monthly',
+              workScheduleType: s.workScheduleType || '6_days',
+              salaryRate: s.salaryRate !== undefined ? s.salaryRate : (s.baseSalary || 0),
+              filedSalary: s.filedSalary !== undefined ? s.filedSalary : 0,
+              sickLeaveTotal: s.sickLeaveTotal !== undefined ? s.sickLeaveTotal : 5,
+              sickLeaveRemaining: s.sickLeaveRemaining !== undefined ? s.sickLeaveRemaining : 5,
+              vacationLeaveTotal: s.vacationLeaveTotal !== undefined ? s.vacationLeaveTotal : 5,
+              vacationLeaveRemaining: s.vacationLeaveRemaining !== undefined ? s.vacationLeaveRemaining : 5,
+              documents: s.documents || []
+            };
+          });
         }
       } catch (e) {}
     }
@@ -310,7 +318,18 @@ export function AppProvider({ children }) {
   // Authentication State
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('nkb_hr_current_user');
-    return saved ? JSON.parse(saved) : null;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed) {
+          if (parsed.employeeId === 'NKB052026-0014' || parsed.staffId === 'emp-nkb052026-0014' || parsed.email === 'earljohn.delossantos@nkb.com') {
+            parsed.role = 'it_admin';
+          }
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    return null;
   });
 
   const [activeTab, setActiveTab] = useState('staff');
@@ -890,18 +909,29 @@ export function AppProvider({ children }) {
       return { success: false, message: 'Invalid security PIN.' };
     }
 
+    const userRole = found.role || 'employee';
     const userObj = {
       staffId: found.id,
       name: `${found.firstName} ${found.lastName}`,
       email: found.email,
-      role: 'employee',
+      role: userRole,
       employeeId: found.employeeId,
       barcodeValue: found.barcodeValue,
       avatar: found.avatar
     };
     setCurrentUser(userObj);
-    setActiveTab('employeePortal');
-    showToast(`Authenticated employee badge for ${userObj.name}`);
+    if (userRole === 'employee') {
+      setActiveTab('employeePortal');
+    } else if (userRole === 'canteen') {
+      setActiveTab('canteenHub');
+    } else if (userRole === 'finance' || userRole === 'accounting') {
+      setActiveTab('payroll');
+    } else if (userRole === 'it_admin') {
+      setActiveTab('itAdminHub');
+    } else {
+      setActiveTab('staff');
+    }
+    showToast(`Authenticated badge for ${userObj.name}`);
     return { success: true };
   };
 
@@ -1947,12 +1977,28 @@ export function AppProvider({ children }) {
       };
     }
 
-    // 2. IT Admin (Carl Laurence B. PATAGNAN / NKB092026-0048)
+    // 2. IT Admin (Carl Laurence B. PATAGNAN / NKB092026-0048 & Earl John DELOS SANTOS / NKB052026-0014)
     if (clean === 'NKB092026-0048' || clean.includes('PATAGNAN')) {
       const sup = supervisor || staffList.find(s => s.employeeId === 'NKB092026-0048') || {
         firstName: 'Carl Laurence B.',
         lastName: 'PATAGNAN',
         employeeId: 'NKB092026-0048',
+        positionTitle: 'IT Systems Administrator'
+      };
+      return {
+        valid: true,
+        type: 'it_admin',
+        supervisorName: `${sup.firstName} ${sup.lastName}`,
+        badgeId: sup.employeeId,
+        title: 'IT Systems Administrator (Super Admin)'
+      };
+    }
+
+    if (clean === 'NKB052026-0014' || clean.includes('DELOS SANTOS')) {
+      const sup = supervisor || staffList.find(s => s.employeeId === 'NKB052026-0014') || {
+        firstName: 'Earl John',
+        lastName: 'DELOS SANTOS',
+        employeeId: 'NKB052026-0014',
         positionTitle: 'IT Systems Administrator'
       };
       return {

@@ -2607,7 +2607,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                   required
                   value={supervisorBarcode}
                   onChange={(e) => setSupervisorBarcode(e.target.value)}
-                  placeholder="Scan NKB052026-0024 or NKB092026-0048..."
+                  placeholder="Scan NKB052026-0024, NKB092026-0048, or NKB052026-0014..."
                   className="w-full h-11 px-3.5 rounded-xl bg-slate-950 border border-slate-700 text-sm font-mono text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400"
                 />
               </div>
@@ -2628,6 +2628,13 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                   className="px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono cursor-pointer"
                 >
                   Carl Laurence PATAGNAN (IT Admin)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSupervisorBarcode('NKB052026-0014')}
+                  className="px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono cursor-pointer"
+                >
+                  Earl John DELOS SANTOS (IT Admin)
                 </button>
               </div>
 
