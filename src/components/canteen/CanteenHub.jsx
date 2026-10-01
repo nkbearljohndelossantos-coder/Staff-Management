@@ -388,13 +388,14 @@ export default function CanteenHub() {
     updateSupplyItem(editingSupplyItem.id, {
       name: cleanName,
       barcode: (editingSupplyItem.barcode || '').trim(),
+      pieceBarcode: (editingSupplyItem.pieceBarcode || '').trim(),
       company: (editingSupplyItem.company || '').trim(),
       brand: (editingSupplyItem.brand || '').trim(),
       category: editingSupplyItem.category || canteenCategories?.[0] || 'Beverages & Dairy',
       size: (editingSupplyItem.size || '').trim(),
       costPrice: cost,
       sellingPrice: price,
-      hasRetailPiece: Boolean(editingSupplyItem.hasRetailPiece || (Number(editingSupplyItem.retailPiecePrice) > 0)),
+      hasRetailPiece: Boolean(editingSupplyItem.hasRetailPiece || (Number(editingSupplyItem.retailPiecePrice) > 0) || (editingSupplyItem.pieceBarcode && editingSupplyItem.pieceBarcode.trim())),
       retailPiecePrice: parseFloat(editingSupplyItem.retailPiecePrice) || 0,
       piecesPerPack: parseInt(editingSupplyItem.piecesPerPack, 10) || 0,
       quantity: qty,
@@ -413,6 +414,7 @@ export default function CanteenHub() {
     const matchesSearch = (
       item.name.toLowerCase().includes(q) ||
       item.barcode.includes(q) ||
+      (item.pieceBarcode && item.pieceBarcode.toLowerCase().includes(q)) ||
       (item.company && item.company.toLowerCase().includes(q)) ||
       (item.brand && item.brand.toLowerCase().includes(q)) ||
       (item.category && item.category.toLowerCase().includes(q))
@@ -686,7 +688,15 @@ export default function CanteenHub() {
                         
                         <td className="px-4 py-3">
                           <div className="font-bold text-slate-900">{item.name}</div>
-                          <div className="font-mono text-[10px] text-slate-400 mt-0.5">{item.barcode}</div>
+                          <div className="font-mono text-[10px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
+                            <span>{item.barcode}</span>
+                            {item.pieceBarcode && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-amber-50 border border-amber-200 text-amber-800 font-bold" title="Inner Piece Barcode for Retail Piece">
+                                <Tag className="h-2.5 w-2.5 text-amber-600" />
+                                <span>Pc: {item.pieceBarcode}</span>
+                              </span>
+                            )}
+                          </div>
                           {(item.sourceInvoiceNo || item.lastInvoiceNo) && (
                             <button
                               type="button"
@@ -1823,6 +1833,32 @@ export default function CanteenHub() {
                               className="w-full h-10 pl-7 pr-3 rounded-xl border border-amber-400 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
                             />
                           </div>
+                        </div>
+
+                        {/* Inner Piece Barcode (Printed on individual piece) */}
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-bold text-amber-900 mb-1 flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                              <Barcode className="h-3.5 w-3.5 text-amber-600" />
+                              <span>Inner Piece Barcode (Printed on Single Piece)</span>
+                            </span>
+                            <span className="text-[10px] text-amber-700 font-normal">Optional · Scanned for Retail Piece</span>
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2.5 text-xs text-amber-500 font-bold">
+                              <ScanBarcode className="h-4 w-4" />
+                            </span>
+                            <input
+                              type="text"
+                              value={editingSupplyItem.pieceBarcode ?? ''}
+                              onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, pieceBarcode: e.target.value }))}
+                              placeholder="Scan or type barcode printed on individual piece inside..."
+                              className="w-full h-10 pl-9 pr-3 rounded-xl border border-amber-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                          <p className="text-[10px] text-amber-800/80 mt-1">
+                            Dual-Barcode: When cashiers scan this piece barcode at POS, it will <strong>automatically ring up as a single retail piece</strong> without any manual button clicking.
+                          </p>
                         </div>
                       </div>
 

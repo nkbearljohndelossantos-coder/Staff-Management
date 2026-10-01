@@ -64,6 +64,7 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
   const [hasRetailPiece, setHasRetailPiece] = useState(false);
   const [piecesPerPack, setPiecesPerPack] = useState('');
   const [retailPiecePrice, setRetailPiecePrice] = useState('');
+  const [pieceBarcode, setPieceBarcode] = useState('');
   const [category, setCategory] = useState('');
   const [brand, setBrand] = useState('');
   const [company, setCompany] = useState('');
@@ -165,7 +166,8 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
       barcode: finalBarcode,
       costPrice: cost,
       sellingPrice: price,
-      hasRetailPiece: Boolean(hasRetailPiece || (Number(retailPiecePrice) > 0)),
+      pieceBarcode: pieceBarcode.trim(),
+      hasRetailPiece: Boolean(hasRetailPiece || (Number(retailPiecePrice) > 0) || pieceBarcode.trim()),
       retailPiecePrice: parseFloat(retailPiecePrice) || 0,
       piecesPerPack: parseInt(piecesPerPack, 10) || 0,
       category: category || canteenCategories?.[0] || 'General Supplies',
@@ -184,6 +186,7 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
         setSize('Piece');
         setQuantity(0);
         setBarcode('');
+        setPieceBarcode('');
         setCostPrice('');
         setSellingPrice('');
         setHasRetailPiece(false);
@@ -535,6 +538,32 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
                               className="w-full h-10 pl-7 pr-3 rounded-xl border border-amber-400 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
                             />
                           </div>
+                        </div>
+
+                        {/* Inner Piece Barcode (Printed on individual piece) */}
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-bold text-amber-900 mb-1 flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                              <Barcode className="h-3.5 w-3.5 text-amber-600" />
+                              <span>Inner Piece Barcode (Printed on Single Piece)</span>
+                            </span>
+                            <span className="text-[10px] text-amber-700 font-normal">Optional · Scanned for Retail Piece</span>
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2.5 text-xs text-amber-500 font-bold">
+                              <ScanBarcode className="h-4 w-4" />
+                            </span>
+                            <input
+                              type="text"
+                              value={pieceBarcode}
+                              onChange={(e) => setPieceBarcode(e.target.value)}
+                              placeholder="Scan or type barcode printed on individual piece inside..."
+                              className="w-full h-10 pl-9 pr-3 rounded-xl border border-amber-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                          <p className="text-[10px] text-amber-800/80 mt-1">
+                            Dual-Barcode: When cashiers scan this piece barcode at POS, it will <strong>automatically ring up as a single retail piece</strong> without any manual button clicking.
+                          </p>
                         </div>
                       </div>
 

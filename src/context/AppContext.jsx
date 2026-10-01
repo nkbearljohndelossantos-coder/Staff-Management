@@ -1865,7 +1865,8 @@ export function AppProvider({ children }) {
       reorderLevel: reorder,
       stockStatus: qty > reorder ? 'In Stock' : (qty > 0 ? 'Low Stock' : 'Out of Stock'),
       unit: data.unit || 'Piece',
-      hasRetailPiece: Boolean(data.hasRetailPiece || (Number(data.retailPiecePrice) > 0)),
+      pieceBarcode: (data.pieceBarcode || '').trim(),
+      hasRetailPiece: Boolean(data.hasRetailPiece || (Number(data.retailPiecePrice) > 0) || Boolean(data.pieceBarcode)),
       retailPiecePrice: Number(data.retailPiecePrice) || 0,
       piecesPerPack: Math.max(0, parseInt(data.piecesPerPack, 10) || 0),
       expirationDate: data.expirationDate || '',
@@ -1895,7 +1896,8 @@ export function AppProvider({ children }) {
         size: data.size !== undefined ? data.size : item.size,
         costPrice: data.costPrice !== undefined ? Number(data.costPrice) : item.costPrice,
         sellingPrice: data.sellingPrice !== undefined ? Number(data.sellingPrice) : item.sellingPrice,
-        hasRetailPiece: data.hasRetailPiece !== undefined ? Boolean(data.hasRetailPiece) : item.hasRetailPiece,
+        pieceBarcode: data.pieceBarcode !== undefined ? (data.pieceBarcode || '').trim() : (item.pieceBarcode || ''),
+        hasRetailPiece: data.hasRetailPiece !== undefined ? Boolean(data.hasRetailPiece || (data.pieceBarcode && data.pieceBarcode.trim())) : item.hasRetailPiece,
         retailPiecePrice: data.retailPiecePrice !== undefined ? Number(data.retailPiecePrice) : item.retailPiecePrice,
         piecesPerPack: data.piecesPerPack !== undefined ? Math.max(0, parseInt(data.piecesPerPack, 10) || 0) : item.piecesPerPack,
         quantity: nextQty,
@@ -2338,11 +2340,20 @@ export function AppProvider({ children }) {
 
     // Deduct stock from inventory
     setCanteenInventory(prev => prev.map(inv => {
-      const soldItem = items.find(it => it.barcode === inv.barcode || it.id === inv.id);
+      const soldItem = items.find(it => 
+        (it.barcode && it.barcode === inv.barcode) || 
+        (it.pieceBarcode && inv.pieceBarcode && it.pieceBarcode === inv.pieceBarcode) ||
+        (it.barcode && inv.pieceBarcode && it.barcode === inv.pieceBarcode) ||
+        it.id === inv.id || 
+        it.rawId === inv.id
+      );
       if (soldItem) {
+        const packDeduction = (soldItem.isRetailPiece && soldItem.piecesPerPack > 1)
+          ? (soldItem.quantity / soldItem.piecesPerPack)
+          : soldItem.quantity;
         return {
           ...inv,
-          quantity: Math.max(0, inv.quantity - soldItem.quantity)
+          quantity: Math.max(0, parseFloat((inv.quantity - packDeduction).toFixed(2)))
         };
       }
       return inv;

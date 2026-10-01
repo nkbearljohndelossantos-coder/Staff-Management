@@ -31,6 +31,7 @@ export function isBoxOrPackItem(item) {
   
   if (
     Boolean(item.hasRetailPiece) || 
+    Boolean(item.pieceBarcode) ||
     Number(item.retailPiecePrice) > 0 || 
     Boolean(item.isBoxOrPack) || 
     Boolean(item.isRetailPiece)

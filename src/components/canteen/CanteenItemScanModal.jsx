@@ -123,6 +123,7 @@ export default function CanteenItemScanModal({
       const brand = (item.brand || '').toLowerCase();
       const cat = (item.category || '').toLowerCase();
       const bCode = (item.barcode || '').toLowerCase();
+      const pieceCode = (item.pieceBarcode || '').toLowerCase();
 
       const matchCategory = selectedCategory === 'ALL' || item.category === selectedCategory;
       if (!matchCategory) return;
@@ -133,7 +134,7 @@ export default function CanteenItemScanModal({
         return;
       }
 
-      if (bCode.includes(cleanQ) || name.includes(q) || brand.includes(q) || cat.includes(q)) {
+      if (bCode.includes(cleanQ) || (pieceCode && pieceCode.includes(cleanQ)) || name.includes(q) || brand.includes(q) || cat.includes(q)) {
         candidates.push(item);
         seenBarcodes.add(code);
       }
@@ -192,13 +193,15 @@ export default function CanteenItemScanModal({
       if (!q) return 0;
       const aBar = (a.barcode || '').toLowerCase();
       const bBar = (b.barcode || '').toLowerCase();
+      const aPiece = (a.pieceBarcode || '').toLowerCase();
+      const bPiece = (b.pieceBarcode || '').toLowerCase();
       const aName = (a.name || '').toLowerCase();
       const bName = (b.name || '').toLowerCase();
 
-      if (aBar === cleanQ) return -1;
-      if (bBar === cleanQ) return 1;
-      if (aBar.startsWith(cleanQ) && !bBar.startsWith(cleanQ)) return -1;
-      if (!aBar.startsWith(cleanQ) && bBar.startsWith(cleanQ)) return 1;
+      if (aBar === cleanQ || aPiece === cleanQ) return -1;
+      if (bBar === cleanQ || bPiece === cleanQ) return 1;
+      if ((aBar.startsWith(cleanQ) || aPiece.startsWith(cleanQ)) && !(bBar.startsWith(cleanQ) || bPiece.startsWith(cleanQ))) return -1;
+      if (!(aBar.startsWith(cleanQ) || aPiece.startsWith(cleanQ)) && (bBar.startsWith(cleanQ) || bPiece.startsWith(cleanQ))) return 1;
       if (aName.startsWith(q) && !bName.startsWith(q)) return -1;
       if (!aName.startsWith(q) && bName.startsWith(q)) return 1;
       return 0;
@@ -239,7 +242,7 @@ export default function CanteenItemScanModal({
   }, [isOpen, initialItem]);
 
   // Select Item helper
-  const selectItem = (item) => {
+  const selectItem = (item, preferredTier) => {
     if (!item) return;
     setActiveItem(item);
     setIsCustomMode(false);
@@ -247,8 +250,15 @@ export default function CanteenItemScanModal({
     const baseSelling = getEffectiveWholesalePrice(item);
     const defaultPiece = getEffectiveRetailPiecePrice(item);
     setBoxPackPiecePrice(defaultPiece);
-    setPricingTier(item.isRetailPiece ? 'retail_piece' : 'wholesale');
-    setUnitPrice(item.isRetailPiece ? defaultPiece : baseSelling);
+
+    // Auto-detect if scanned query matches pieceBarcode
+    const q = (searchQuery || '').trim().toLowerCase();
+    const cleanQ = cleanScanInput(q).toLowerCase();
+    const matchesPieceBarcode = Boolean(cleanQ && item.pieceBarcode && (cleanScanInput(item.pieceBarcode).toLowerCase() === cleanQ || cleanScanInput(item.pieceBarcode).toLowerCase().includes(cleanQ)));
+    const isRetail = preferredTier ? preferredTier === 'retail_piece' : (matchesPieceBarcode || Boolean(item.isRetailPiece));
+
+    setPricingTier(isRetail ? 'retail_piece' : 'wholesale');
+    setUnitPrice(isRetail ? defaultPiece : baseSelling);
     setDiscountPercent(0);
     setItemOrderType(defaultOrderType);
     setNotes('');
@@ -320,6 +330,7 @@ export default function CanteenItemScanModal({
       id: initialItem?.id || activeItem.id || `item-${Date.now()}`,
       rawId: activeItem.id,
       barcode: activeItem.barcode || '',
+      pieceBarcode: activeItem.pieceBarcode || '',
       name: isRetail ? (activeItem.name.includes('(Piece)') ? activeItem.name : `${activeItem.name.replace(' (Piece)', '')} (Piece)`) : activeItem.name.replace(' (Piece)', ''),
       brand: activeItem.brand || 'NKB',
       size: isRetail ? 'Piece' : (activeItem.size || activeItem.unit || ''),
@@ -711,9 +722,16 @@ export default function CanteenItemScanModal({
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400 mt-1">
-                          <span className="font-mono text-slate-300 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
-                            {item.barcode || '480-SCAN'}
-                          </span>
+                          {item.barcode && (
+                            <span className="font-mono text-slate-300 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
+                              {item.pieceBarcode ? `Pack: ${item.barcode}` : item.barcode}
+                            </span>
+                          )}
+                          {item.pieceBarcode && (
+                            <span className="font-mono text-amber-300 bg-amber-950/70 px-1.5 py-0.5 rounded border border-amber-600/50">
+                              Piece: {item.pieceBarcode}
+                            </span>
+                          )}
                           {item.category && <span>· {item.category}</span>}
                           {item.quantity !== undefined && (
                             <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${

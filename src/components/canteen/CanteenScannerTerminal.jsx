@@ -295,6 +295,8 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     const matches = inventoryList.filter(item => {
       const bCode = (item.barcode || '').toLowerCase();
       const bAlnum = bCode.replace(/[^a-z0-9]/g, '');
+      const pieceCode = (item.pieceBarcode || '').toLowerCase();
+      const pieceAlnum = pieceCode.replace(/[^a-z0-9]/g, '');
       const name = (item.name || '').toLowerCase();
       const brand = (item.brand || '').toLowerCase();
       const cat = (item.category || '').toLowerCase();
@@ -302,7 +304,8 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
 
       return (
         bCode.includes(cleanQ) ||
-        (cleanAlnum.length >= 3 && bAlnum.includes(cleanAlnum)) ||
+        (pieceCode && pieceCode.includes(cleanQ)) ||
+        (cleanAlnum.length >= 3 && (bAlnum.includes(cleanAlnum) || pieceAlnum.includes(cleanAlnum))) ||
         name.includes(q) ||
         brand.includes(q) ||
         cat.includes(q) ||
@@ -396,6 +399,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       rawName: cleanRawName,
       brand: item.brand || 'NKB',
       barcode: item.barcode,
+      pieceBarcode: item.pieceBarcode || '',
       unitPrice: finalUnitPrice,
       wholesalePrice: baseSellingPrice,
       retailPiecePrice: effectiveRetailPiecePrice,
@@ -409,7 +413,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
 
     setCart(prev => {
       const idx = prev.findIndex(p => 
-        ((item.barcode && p.barcode === item.barcode) || p.id === item.id || p.rawId === item.id) &&
+        ((item.barcode && p.barcode === item.barcode) || (item.pieceBarcode && p.pieceBarcode === item.pieceBarcode) || p.id === item.id || p.rawId === item.id) &&
         Boolean(p.isRetailPiece) === Boolean(isRetail)
       );
 
@@ -430,6 +434,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
           id: newId,
           rawId: item.id,
           barcode: item.barcode || '',
+          pieceBarcode: item.pieceBarcode || '',
           name: finalName,
           rawName: cleanRawName,
           brand: item.brand || 'NKB',
@@ -949,7 +954,24 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       return;
     }
 
-    // 3. Check in canteenInventory
+    // 3. Dual-Barcode Resolver:
+    // First, check if scanned barcode directly matches an INNER PIECE BARCODE
+    const matchedPieceItem = canteenInventory.find(i => 
+      i.pieceBarcode && cleanScanInput(i.pieceBarcode).toUpperCase() === clean.toUpperCase()
+    );
+
+    if (matchedPieceItem) {
+      // Direct hit on inner piece barcode -> Automatically ring up as Single Retail Piece!
+      addItemToCart(matchedPieceItem, 'retail_piece');
+      setScanStatusNotice({
+        type: 'staff',
+        message: `Recognized Inner Piece Barcode [${clean}] · Added: ${matchedPieceItem.name} as Single Retail Piece`,
+        timestamp: Date.now()
+      });
+      return;
+    }
+
+    // Next, check by outer pack barcode, product ID, or product name
     let matchedItem = canteenInventory.find(i => 
       (i.barcode && cleanScanInput(i.barcode).toUpperCase() === clean.toUpperCase()) || 
       (i.id && i.id.toUpperCase() === clean.toUpperCase()) || 
@@ -1561,7 +1583,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                       if (barcodeQuery.trim()) setShowSuggestions(true);
                     }}
                     onKeyDown={handleKeyDown}
-                    placeholder="Scan barcode or type name (e.g. 4800016644012, Colgate, Bread, Coffee)..."
+                    placeholder="Scan outer pack or inner piece barcode (e.g. 4800016644012, Colgate, Nescafe)..."
                     className="w-full h-11 pl-11 pr-8 rounded-xl border-2 border-slate-200 focus:border-slate-900 text-sm font-mono text-slate-900 placeholder-slate-400 focus:outline-none transition shadow-inner bg-slate-50 focus:bg-white"
                   />
                   {barcodeQuery && (
@@ -1625,10 +1647,18 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 mt-1">
-                          <span className="flex items-center gap-1 font-mono text-slate-700 font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                            <ScanBarcode className="h-3 w-3 text-slate-500" />
-                            {item.barcode}
-                          </span>
+                          {item.barcode && (
+                            <span className="flex items-center gap-1 font-mono text-slate-700 font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                              <ScanBarcode className="h-3 w-3 text-slate-500" />
+                              {item.pieceBarcode ? `Pack: ${item.barcode}` : item.barcode}
+                            </span>
+                          )}
+                          {item.pieceBarcode && (
+                            <span className="flex items-center gap-1 font-mono text-amber-800 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title="Single piece barcode">
+                              <ScanBarcode className="h-3 w-3 text-amber-600" />
+                              Piece: {item.pieceBarcode}
+                            </span>
+                          )}
                           {item.category && <span>· {item.category}</span>}
                           {item.quantity !== undefined && (
                             <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
