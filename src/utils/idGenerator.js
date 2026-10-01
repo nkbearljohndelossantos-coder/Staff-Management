@@ -4,8 +4,9 @@
  * - Part-time / Contractual / Project: starts with 'PRJ' (e.g. PRJ-2026-0001)
  */
 export function getPrefixForEmploymentType(type = 'regular') {
-  const t = (type || '').toString().toLowerCase();
-  if (t === 'prj' || t === 'part-time' || t === 'contractual' || t === 'contract' || t === 'project') {
+  const t = (type || '').toString().toUpperCase();
+  if (t === 'VYU') return 'VYU';
+  if (t === 'PRJ' || t.includes('PROJECT') || t.includes('CONTRACT') || t.includes('PART-TIME')) {
     return 'PRJ';
   }
   return 'NKB';
@@ -13,11 +14,18 @@ export function getPrefixForEmploymentType(type = 'regular') {
 
 /**
  * Generates an automated, conflict-free Employee ID number.
- * - Regular: NKB-YYYY-XXXX (e.g. NKB-2026-0001)
- * - Part-time / Contractual: PRJ-YYYY-XXXX (e.g. PRJ-2026-0001)
+ * Supports NKB, PRJ, VYU or custom prefixes.
+ * Format: PREFIX-YYYY-XXXX (e.g. NKB-2026-0001, PRJ-2026-0001, VYU-2026-0001)
  */
-export function generateNextEmployeeId(staffList = [], employmentType = 'regular', year = new Date().getFullYear()) {
-  const prefix = getPrefixForEmploymentType(employmentType);
+export function generateNextEmployeeId(staffList = [], prefixOrType = 'NKB', year = new Date().getFullYear()) {
+  let prefix = 'NKB';
+  const clean = (prefixOrType || '').toString().trim().toUpperCase();
+  if (clean === 'VYU' || clean === 'PRJ' || clean === 'NKB') {
+    prefix = clean;
+  } else {
+    prefix = getPrefixForEmploymentType(clean);
+  }
+
   const patternPrefix = `${prefix}-${year}-`;
   
   let maxSeq = 0;

@@ -24,7 +24,9 @@ import {
   Sparkles,
   FolderArchive,
   FileCheck,
-  Loader2
+  Loader2,
+  Crown,
+  PhoneCall
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -164,13 +166,19 @@ export default function StaffDetailModal({
               className="w-14 h-14 rounded-2xl object-cover border-2 border-slate-200 shadow-sm bg-slate-100"
             />
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <h3 className="text-base font-black text-slate-900">
-                  {formatStaffName(staff)}
+                  {formatStaffName(currentStaff)}
                 </h3>
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-                  {staff.employmentType || (staff.employeeId?.startsWith('PRJ') ? 'Contractual' : 'Regular')}
+                  {currentStaff.employmentType === 'project_based' || currentStaff.employeeId?.startsWith('PRJ') ? 'Project-Based (PRJ)' : 'Regular (NKB)'}
                 </span>
+                {currentStaff.isTeamLeader && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1">
+                    <Crown className="h-3 w-3 text-amber-600" />
+                    Team Leader
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-600 font-semibold mt-0.5">
                 {position?.title || 'Staff Specialist'} · <span className="font-normal text-slate-500">{department?.name || 'General'}</span>
@@ -253,8 +261,37 @@ export default function StaffDetailModal({
                 <span className="text-[10px] text-slate-500 font-semibold block uppercase">Residential Address</span>
                 <span className="text-slate-800 flex items-center gap-1 mt-0.5">
                   <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
-                  {staff.address || 'Address not registered'}
+                  {currentStaff.address || 'Address not registered'}
                 </span>
+              </div>
+
+              {/* Emergency Contact */}
+              <div className="sm:col-span-2 p-2.5 rounded-xl bg-rose-50/70 border border-rose-200">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-800 uppercase tracking-wider mb-1">
+                  <PhoneCall className="h-3 w-3 text-rose-600" />
+                  <span>In Case of Emergency</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-semibold block">Contact Person</span>
+                    <span className="font-bold text-slate-900 uppercase">
+                      {currentStaff.emergencyContactName || 'None listed'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-semibold block">Contact Number</span>
+                    <span className="font-bold text-rose-700 font-mono">
+                      {currentStaff.emergencyContactPhone ? (
+                        <a href={`tel:${currentStaff.emergencyContactPhone}`} className="hover:underline flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {currentStaff.emergencyContactPhone}
+                        </a>
+                      ) : (
+                        'None listed'
+                      )}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

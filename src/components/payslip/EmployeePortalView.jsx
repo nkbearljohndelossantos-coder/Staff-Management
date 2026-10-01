@@ -22,7 +22,11 @@ import {
   Maximize2,
   Calendar,
   CalendarCheck,
-  Sun
+  Sun,
+  Crown,
+  PhoneCall,
+  Phone,
+  Shield
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
@@ -31,7 +35,6 @@ import BarcodeView from '../common/BarcodeView';
 import QRCodeView from '../common/QRCodeView';
 import PayslipDocument from './PayslipDocument';
 import GatePassModal from '../canteen/GatePassModal';
-import BIR2316Modal from '../payroll/BIR2316Modal';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 import { formatStaffName } from '../../utils/staffUtils';
 
@@ -81,7 +84,6 @@ export default function EmployeePortalView() {
   const [selectedGatePass, setSelectedGatePass] = useState(null);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showOTModal, setShowOTModal] = useState(false);
-  const [showBIRModal, setShowBIRModal] = useState(false);
 
   // Progressive Escape dismissal (Priority 40 - MODAL)
   useEscapeKey('ess-loan-modal', ESCAPE_PRIORITY.MODAL, showLoanModal, () => setShowLoanModal(false));
@@ -92,7 +94,6 @@ export default function EmployeePortalView() {
   useEscapeKey('ess-payslip-modal', ESCAPE_PRIORITY.MODAL, Boolean(selectedPayslipData), () => setSelectedPayslipData(null));
   useEscapeKey('ess-leave-modal', ESCAPE_PRIORITY.MODAL, showLeaveModal, () => setShowLeaveModal(false));
   useEscapeKey('ess-ot-modal', ESCAPE_PRIORITY.MODAL, showOTModal, () => setShowOTModal(false));
-  useEscapeKey('ess-bir-modal', ESCAPE_PRIORITY.MODAL, showBIRModal, () => setShowBIRModal(false));
 
   // Form States
   const [loanForm, setLoanForm] = useState({ category: 'cash', principal: '', termMonths: 3, purpose: '' });
@@ -106,6 +107,7 @@ export default function EmployeePortalView() {
     reason: ''
   });
   const [otForm, setOtForm] = useState({
+    staffId: '',
     date: new Date().toISOString().split('T')[0],
     hours: 2,
     reasonCategory: 'Urgent Client Delivery / Rush Order',
@@ -123,6 +125,8 @@ export default function EmployeePortalView() {
   const currentStaff = staffList.find(s => s.id === currentUser?.staffId) || staffList[0] || null;
   const dept = departments.find(d => d.id === currentStaff?.departmentId);
   const pos = positions.find(p => p.id === currentStaff?.positionId);
+  const isTeamLeader = Boolean(currentStaff?.isTeamLeader);
+  const isTeamLeaderOrAdmin = isTeamLeader || currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.role === 'hr' || currentUser?.role === 'it_admin';
 
   // Financial calculations for this employee
   const myCoopBalance = coopBalances[currentStaff?.id] || 0;
@@ -203,6 +207,12 @@ export default function EmployeePortalView() {
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 Employee Self-Service (ESS)
               </div>
+              {currentStaff?.isTeamLeader && (
+                <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-[10px] font-bold uppercase tracking-wider">
+                  <Crown className="h-3 w-3 text-amber-600" />
+                  Team Leader
+                </div>
+              )}
               <label
                 htmlFor="employee-portal-photo-input"
                 className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-[10px] font-bold cursor-pointer transition"
@@ -251,6 +261,31 @@ export default function EmployeePortalView() {
             <QrCode className="h-3.5 w-3.5 text-cyan-400" />
             Digital ID (Barcode &amp; QR)
           </button>
+        </div>
+      </div>
+
+      {/* Emergency Contact Card */}
+      <div className="rounded-2xl border border-rose-200/90 bg-rose-50/50 p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-xl bg-rose-100 border border-rose-200 text-rose-700 flex items-center justify-center shrink-0">
+            <PhoneCall className="h-4 w-4" />
+          </div>
+          <div>
+            <span className="text-[10px] text-rose-800 font-bold uppercase tracking-wider block">In Case of Emergency (Emergency Contact)</span>
+            <span className="font-extrabold text-slate-900 text-sm">
+              {currentStaff?.emergencyContactName || 'No emergency contact person registered'}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 font-mono font-bold text-rose-800 text-sm pl-12 sm:pl-0">
+          {currentStaff?.emergencyContactPhone ? (
+            <a href={`tel:${currentStaff.emergencyContactPhone}`} className="hover:underline flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-rose-200 text-rose-700 shadow-2xs">
+              <Phone className="h-3.5 w-3.5" />
+              <span>{currentStaff.emergencyContactPhone}</span>
+            </a>
+          ) : (
+            <span className="text-slate-400 font-sans italic text-xs font-normal">Contact number not registered</span>
+          )}
         </div>
       </div>
 
@@ -798,7 +833,7 @@ export default function EmployeePortalView() {
               Leave &amp; Overtime Request Center
             </h4>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              File leaves, schedule daytime overtime extensions, and retrieve annual tax certificates
+              File leaves, schedule daytime overtime extensions, and view payslip records
             </p>
           </div>
 
@@ -821,33 +856,34 @@ export default function EmployeePortalView() {
               <span>File Leave</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setOtForm({
-                  date: new Date().toISOString().split('T')[0],
-                  hours: 2,
-                  reasonCategory: 'Urgent Client Delivery / Rush Order',
-                  reason: ''
-                });
-                setShowOTModal(true);
-              }}
-              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
-              title="Request Overtime clearance to HR with mandatory reason"
-            >
-              <Clock className="h-3.5 w-3.5 text-slate-700" />
-              <span>Request OT (HR)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowBIRModal(true)}
-              className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition shadow-sm"
-              title="View Annual BIR Form 2316 Tax Certificate"
-            >
-              <FileText className="h-3.5 w-3.5 text-slate-500" />
-              <span>BIR Form 2316</span>
-            </button>
+            {isTeamLeaderOrAdmin ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setOtForm({
+                    staffId: currentStaff?.id || '',
+                    date: new Date().toISOString().split('T')[0],
+                    hours: 2,
+                    reasonCategory: 'Urgent Client Delivery / Rush Order',
+                    reason: ''
+                  });
+                  setShowOTModal(true);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+                title="Team Leader Authority: File Overtime clearance to HR for team members"
+              >
+                <Crown className="h-3.5 w-3.5 text-white" />
+                <span>Request Team OT (TL)</span>
+              </button>
+            ) : (
+              <div
+                className="px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 text-[11px] font-medium flex items-center gap-1.5"
+                title="Overtime requests must be submitted by your designated Team Leader"
+              >
+                <Shield className="h-3 w-3 text-slate-400" />
+                <span>OT Filed by Team Leader</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -924,6 +960,16 @@ export default function EmployeePortalView() {
                 <Sun className="h-3 w-3" /> HR Authorization Required
               </span>
             </div>
+
+            {!isTeamLeaderOrAdmin && (
+              <div className="p-2.5 rounded-lg bg-amber-50/80 border border-amber-200 text-[11px] text-amber-900 flex items-start gap-2">
+                <Crown className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-bold">Team Leader Requested Policy</strong>
+                  <span>Per company policy, overtime requests are submitted by your designated Team Leader for HR clearance.</span>
+                </div>
+              </div>
+            )}
 
             {myOvertime.length === 0 ? (
               <p className="text-xs text-slate-400 py-3 text-center">No overtime requests submitted to HR yet.</p>
@@ -1067,14 +1113,6 @@ export default function EmployeePortalView() {
       </div>
 
       {/* Modals */}
-      {showBIRModal && (
-        <BIR2316Modal
-          staff={currentStaff}
-          payRuns={payRuns}
-          onClose={() => setShowBIRModal(false)}
-        />
-      )}
-
       {/* Modal: File Leave Application */}
       {showLeaveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-150">
@@ -1208,11 +1246,11 @@ export default function EmployeePortalView() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-slate-700" />
+                  <Crown className="h-4 w-4 text-amber-600" />
                   Request Overtime Clearance to HR
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Pre-shift authorization required by HR policy before rendering extended hours
+                  Endorsed by Team Leader: <strong className="text-slate-800">{formatStaffName(currentStaff)}</strong>
                 </p>
               </div>
               <button
@@ -1234,19 +1272,46 @@ export default function EmployeePortalView() {
               </p>
             </div>
 
+            {/* DOLE Fatigue Warning if hours > 4 */}
+            {Number(otForm.hours) > 4 && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-rose-800">
+                  <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+                  DOLE Fatigue &amp; Health Advisory Warning
+                </div>
+                <p className="text-[11px] text-rose-700 leading-snug">
+                  Overtime exceeding <strong>4 hours</strong> in a single shift poses safety risks. Please verify emergency operational necessity and ensure adequate rest intervals.
+                </p>
+              </div>
+            )}
+
+            {/* Retroactive Request Warning if date is before today */}
+            {otForm.date < new Date().toISOString().split('T')[0] && (
+              <div className="p-3 rounded-xl bg-orange-50 border border-orange-200 text-orange-900 text-xs">
+                ⚠️ <strong>Retroactive Post-Shift Filing:</strong> The selected shift date has already passed. This voucher will be labeled as a Retroactive Request and subject to strict HR scrutiny.
+              </div>
+            )}
+
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!otForm.date) return;
+                const targetStaff = staffList.find(s => s.id === (otForm.staffId || currentStaff?.id)) || currentStaff;
+                const isRetro = otForm.date < new Date().toISOString().split('T')[0];
                 const res = fileOvertimeRequest({
-                  staffId: currentStaff?.id,
-                  staffName: `${currentStaff?.firstName} ${currentStaff?.lastName}`,
-                  employeeId: currentStaff?.employeeId,
+                  staffId: targetStaff.id,
+                  staffName: formatStaffName(targetStaff),
+                  employeeId: targetStaff.employeeId,
                   date: otForm.date,
                   hours: Number(otForm.hours) || 2,
                   reasonCategory: otForm.reasonCategory,
                   reason: otForm.reason,
-                  shift: 'Day Shift Extension (No Night Shift)'
+                  task: otForm.reason,
+                  shift: 'Day Shift Extension (No Night Shift)',
+                  requestedByTeamLeader: true,
+                  teamLeaderStaffId: currentStaff?.id,
+                  teamLeaderName: formatStaffName(currentStaff),
+                  isRetroactive: isRetro
                 });
                 if (res) {
                   setShowOTModal(false);
@@ -1254,6 +1319,23 @@ export default function EmployeePortalView() {
               }}
               className="space-y-3 text-xs"
             >
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">
+                  Team Member (Employee for Overtime)
+                </label>
+                <select
+                  value={otForm.staffId || currentStaff?.id}
+                  onChange={(e) => setOtForm({ ...otForm, staffId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none font-medium"
+                >
+                  {staffList.filter(s => s.status !== 'inactive').map(s => (
+                    <option key={s.id} value={s.id}>
+                      {formatStaffName(s)} ({s.employeeId}) · {s.departmentName || 'General Staff'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-700 font-bold block mb-1">Shift Extension Date</label>
@@ -2073,159 +2155,6 @@ export default function EmployeePortalView() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Modal: Request Overtime Clearance to HR */}
-      {showOTModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Clock className="h-4 w-4 text-slate-600" />
-                Request Overtime Clearance to HR
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowOTModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed space-y-1">
-              <div className="font-bold flex items-center gap-1.5">
-                <Sun className="h-3.5 w-3.5 text-amber-700" />
-                HR Mandatory Pre-Shift Overtime Policy
-              </div>
-              <p className="text-[11px] text-amber-800">
-                All overtime must be requested to HR with an operational reason before declaration and payroll credit. Overtime is credited at <strong>+30% per hour</strong>.
-              </p>
-            </div>
-
-            {/* DOLE Fatigue Warning if hours > 4 */}
-            {Number(otForm.hours) > 4 && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs space-y-1">
-                <div className="font-bold flex items-center gap-1.5 text-rose-800">
-                  <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
-                  DOLE Fatigue &amp; Health Advisory Warning
-                </div>
-                <p className="text-[11px] text-rose-700 leading-snug">
-                  Overtime exceeding <strong>4 hours</strong> in a single shift poses safety risks. Please verify emergency operational necessity and ensure adequate rest intervals.
-                </p>
-              </div>
-            )}
-
-            {/* Retroactive Request Warning if date is before today */}
-            {otForm.date < new Date().toISOString().split('T')[0] && (
-              <div className="p-3 rounded-xl bg-orange-50 border border-orange-200 text-orange-900 text-xs">
-                ⚠️ <strong>Retroactive Post-Shift Filing:</strong> The selected shift date has already passed. This voucher will be labeled as a Retroactive Request and subject to strict HR scrutiny.
-              </div>
-            )}
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Overtime Shift Date</label>
-                <input
-                  type="date"
-                  required
-                  value={otForm.date}
-                  onChange={(e) => setOtForm({ ...otForm, date: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Requested Overtime Hours</label>
-                <input
-                  type="number"
-                  min={0.5}
-                  max={8}
-                  step={0.5}
-                  required
-                  value={otForm.hours}
-                  onChange={(e) => setOtForm({ ...otForm, hours: Number(e.target.value) || 1 })}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono text-center font-bold focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Reason Category</label>
-                <select
-                  value={otForm.reasonCategory}
-                  onChange={(e) => setOtForm({ ...otForm, reasonCategory: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
-                >
-                  <option value="Urgent Client Delivery / Rush Order">Urgent Client Delivery / Rush Order</option>
-                  <option value="Machine Maintenance & IT Repairs">Machine Maintenance & IT Repairs</option>
-                  <option value="Plant Inventory Audit & Receiving">Plant Inventory Audit & Receiving</option>
-                  <option value="Critical Shift Cover / Staff Shortage">Critical Shift Cover / Staff Shortage</option>
-                  <option value="Sanitation & Facility Overhaul">Sanitation & Facility Overhaul</option>
-                  <option value="Special Engineering Project">Special Engineering Project</option>
-                  <option value="Other Operational Necessity">Other Operational Necessity</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">
-                  Operational Justification / Reason <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  rows={2}
-                  required
-                  placeholder="Explain the specific plant task, production line, or emergency reason requiring overtime clearance..."
-                  value={otForm.reason}
-                  onChange={(e) => setOtForm({ ...otForm, reason: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setShowOTModal(false)}
-                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!otForm.reason || otForm.reason.trim().length < 5) {
-                    alert('Please enter a detailed reason (at least 5 characters).');
-                    return;
-                  }
-                  const isRetro = otForm.date < new Date().toISOString().split('T')[0];
-                  fileOvertimeRequest({
-                    staffId: currentStaff.id,
-                    staffName: formatStaffName(currentStaff),
-                    employeeId: currentStaff.employeeId,
-                    date: otForm.date,
-                    hours: Number(otForm.hours),
-                    reasonCategory: otForm.reasonCategory,
-                    reason: otForm.reason,
-                    task: otForm.reason,
-                    isRetroactive: isRetro
-                  });
-                  setShowOTModal(false);
-                }}
-                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm"
-              >
-                Submit Clearance Request to HR
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: BIR Form 2316 Certificate */}
-      {showBIRModal && (
-        <BIR2316Modal
-          staff={currentStaff}
-          payRuns={payRuns}
-          onClose={() => setShowBIRModal(false)}
-        />
       )}
 
     </div>

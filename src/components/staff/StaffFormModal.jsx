@@ -18,10 +18,12 @@ import {
   Shield,
   FileText,
   Calculator,
-  AlertCircle
+  AlertCircle,
+  PhoneCall,
+  Crown
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { generateNextEmployeeId } from '../../utils/idGenerator';
+import { generateNextEmployeeId, formatBarcodeValue } from '../../utils/idGenerator';
 import {
   formatCurrency,
   computeFiledSalaryDeductions,
@@ -42,15 +44,27 @@ export default function StaffFormModal({ staff, onClose }) {
 
   const isEditing = Boolean(staff);
 
+  const initialEmploymentType = (staff?.employmentType === 'project_based' || staff?.employmentType === 'contractual' || staff?.employeeId?.startsWith('PRJ'))
+    ? 'project_based'
+    : 'regular';
+
+  const defaultId = isEditing
+    ? staff.employeeId
+    : generateNextEmployeeId(staffList, initialEmploymentType === 'project_based' ? 'PRJ' : 'NKB', 2026);
+
   const [formData, setFormData] = useState({
+    employeeId: staff?.employeeId || defaultId,
     firstName: staff?.firstName || '',
     lastName: staff?.lastName || '',
     email: staff?.email || '',
     phone: staff?.phone || '',
     birthday: staff?.birthday || '',
     address: staff?.address || '',
+    emergencyContactName: staff?.emergencyContactName || '',
+    emergencyContactPhone: staff?.emergencyContactPhone || '',
+    isTeamLeader: Boolean(staff?.isTeamLeader),
     avatar: staff?.avatar || '',
-    employmentType: staff?.employmentType || (staff?.employeeId?.startsWith('PRJ') ? 'contractual' : 'regular'),
+    employmentType: initialEmploymentType,
     positionId: staff?.positionId || positions[0]?.id || '',
     departmentId: staff?.departmentId || departments[0]?.id || '',
     role: staff?.role || 'employee',
@@ -84,10 +98,38 @@ export default function StaffFormModal({ staff, onClose }) {
     pin: staff?.pin || '12345678'
   });
 
-  // Suggested next ID for employee based on employment type (NKB for regular, PRJ for part-time/contractual)
-  const nextId = isEditing
-    ? staff.employeeId
-    : generateNextEmployeeId(staffList, formData.employmentType, 2026);
+  const handlePrefixChange = (prefix) => {
+    const currentId = (formData.employeeId || '').trim();
+    let seq = '0001';
+    const match = currentId.match(/(\d{3,5})$/);
+    if (match) {
+      seq = match[1];
+    } else {
+      const generated = generateNextEmployeeId(staffList, prefix, 2026);
+      const genMatch = generated.match(/(\d{3,5})$/);
+      if (genMatch) seq = genMatch[1];
+    }
+    const newId = `${prefix}-2026-${seq}`;
+    setFormData(prev => ({
+      ...prev,
+      employeeId: newId,
+      employmentType: prefix === 'PRJ' ? 'project_based' : (prefix === 'NKB' ? 'regular' : prev.employmentType)
+    }));
+  };
+
+  const handleEmploymentTypeChange = (type) => {
+    let currentId = formData.employeeId || '';
+    if (type === 'project_based' && currentId.startsWith('NKB')) {
+      currentId = currentId.replace(/^NKB/, 'PRJ');
+    } else if (type === 'regular' && currentId.startsWith('PRJ')) {
+      currentId = currentId.replace(/^PRJ/, 'NKB');
+    }
+    setFormData(prev => ({
+      ...prev,
+      employmentType: type,
+      employeeId: currentId
+    }));
+  };
 
   const handlePhotoUpload = (e) => {
     const file = e.target.files?.[0];
@@ -238,11 +280,15 @@ export default function StaffFormModal({ staff, onClose }) {
       ? Math.round(rateVal * 26) // 26 working days per month for 6-day work week
       : rateVal;
 
+    const chosenEmployeeId = (formData.employeeId || defaultId).trim().toUpperCase();
     const finalData = {
       ...formData,
       workScheduleType: formData.salaryRateType === 'daily' ? '6_days' : formData.workScheduleType,
-      employeeId: isEditing ? staff.employeeId : nextId,
-      barcodeValue: isEditing ? staff.barcodeValue : nextId,
+      employeeId: chosenEmployeeId,
+      barcodeValue: formatBarcodeValue(chosenEmployeeId),
+      emergencyContactName: formData.emergencyContactName?.trim() || '',
+      emergencyContactPhone: formData.emergencyContactPhone?.trim() || '',
+      isTeamLeader: Boolean(formData.isTeamLeader),
       dateHired: formData.dateHired || formData.hireDate,
       hireDate: formData.dateHired || formData.hireDate,
       birthday: formData.birthday || '',
@@ -297,43 +343,97 @@ export default function StaffFormModal({ staff, onClose }) {
           {/* Scrollable Form Body */}
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 text-xs">
           
-          {/* Automated ID & Barcode Card with Employment Classification */}
+          {/* Employee ID, Barcode & Classification Setup */}
           <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="space-y-1 text-left">
-                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
-                  <Sparkles className="h-3 w-3 text-slate-500" />
-                  Automated Employee ID Generator
-                </span>
-                <div className="font-mono text-lg font-black text-slate-900 tracking-wider flex items-center gap-2">
-                  <span>{nextId}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-slate-200 text-slate-800 border border-slate-300">
-                    {formData.employmentType === 'regular' ? 'Regular (NKB)' : formData.employmentType === 'contractual' ? 'Contractual (PRJ)' : 'Part-Time (PRJ)'}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="space-y-1.5 flex-1 w-full text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles className="h-3 w-3 text-slate-500" />
+                    Employee ID &amp; Code 128 Barcode (Editable)
+                  </span>
+                  
+                  {/* Quick Prefix Switchers */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-500 font-semibold mr-1">Prefix:</span>
+                    <button
+                      type="button"
+                      onClick={() => handlePrefixChange('NKB')}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold transition cursor-pointer border ${
+                        formData.employeeId?.startsWith('NKB')
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-300'
+                      }`}
+                      title="Set NKB (Regular Staff) prefix"
+                    >
+                      NKB
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePrefixChange('PRJ')}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold transition cursor-pointer border ${
+                        formData.employeeId?.startsWith('PRJ')
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-300'
+                      }`}
+                      title="Set PRJ (Project-Based) prefix"
+                    >
+                      PRJ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePrefixChange('VYU')}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold transition cursor-pointer border ${
+                        formData.employeeId?.startsWith('VYU')
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-300'
+                      }`}
+                      title="Set VYU (Project / Affiliate) prefix"
+                    >
+                      VYU
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    required
+                    value={formData.employeeId}
+                    onChange={(e) => {
+                      const val = e.target.value.toUpperCase();
+                      setFormData(prev => ({
+                        ...prev,
+                        employeeId: val,
+                        employmentType: val.startsWith('PRJ') ? 'project_based' : prev.employmentType
+                      }));
+                    }}
+                    placeholder="e.g. NKB-2026-0001 or PRJ-2026-0001 or VYU-2026-0001"
+                    className="font-mono text-base font-black px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none w-full shadow-xs tracking-wider"
+                  />
+                  <span className="text-[10px] px-2.5 py-1 rounded-xl font-bold uppercase tracking-wider bg-slate-200 text-slate-800 border border-slate-300 shrink-0">
+                    {formData.employmentType === 'project_based' ? 'Project-Based (PRJ)' : 'Regular (NKB)'}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-600">
-                  {formData.employmentType === 'regular' ? (
-                    <>Prefix: <span className="font-mono text-slate-900 font-bold">NKB-2026-</span> (Regular full-time staff)</>
-                  ) : (
-                    <>Prefix: <span className="font-mono text-slate-900 font-bold">PRJ-2026-</span> (Part-Time &amp; Contractual staff)</>
-                  )}
+                <p className="text-[10px] text-slate-500">
+                  Customizable employee code: Supports <strong>NKB</strong>, <strong>PRJ</strong>, <strong>VYU</strong> or custom code prefixes.
                 </p>
               </div>
 
-              <div className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-sm shrink-0">
-                <BarcodeView value={nextId} width={1.2} height={28} displayValue={false} />
+              <div className="bg-white border border-slate-200 rounded-xl p-2 shadow-xs shrink-0 self-center sm:self-auto">
+                <BarcodeView value={formData.employeeId || 'NKB-2026-0001'} width={1.1} height={26} displayValue={false} />
               </div>
             </div>
 
-            {/* Employment Type Selector */}
+            {/* Employment Type Selector (Regular vs Project-Based) */}
             <div className="pt-2.5 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <label className="text-[11px] font-bold text-slate-700">
                 Employment Classification:
               </label>
-              <div className="grid grid-cols-3 gap-1.5 w-full sm:w-auto">
+              <div className="grid grid-cols-2 gap-1.5 w-full sm:w-auto">
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, employmentType: 'regular' })}
+                  onClick={() => handleEmploymentTypeChange('regular')}
                   className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1 ${
                     formData.employmentType === 'regular'
                       ? 'bg-slate-900 text-white shadow-sm'
@@ -344,27 +444,38 @@ export default function StaffFormModal({ staff, onClose }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, employmentType: 'contractual' })}
+                  onClick={() => handleEmploymentTypeChange('project_based')}
                   className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1 ${
-                    formData.employmentType === 'contractual'
+                    formData.employmentType === 'project_based'
                       ? 'bg-slate-900 text-white shadow-sm'
                       : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
                   }`}
                 >
-                  Contractual (PRJ)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, employmentType: 'part-time' })}
-                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1 ${
-                    formData.employmentType === 'part-time'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
-                  }`}
-                >
-                  Part-Time (PRJ)
+                  Project-Based (PRJ)
                 </button>
               </div>
+            </div>
+
+            {/* Team Leader Designation (HR Toggle) */}
+            <div className="pt-2.5 border-t border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-600">
+                  <Crown className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <span className="font-bold text-slate-800 text-xs block">Team Leader Designation</span>
+                  <span className="text-[10px] text-slate-500">Authorized by HR to submit and endorse Overtime (OT) requests for team members</span>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+                <input
+                  type="checkbox"
+                  checked={Boolean(formData.isTeamLeader)}
+                  onChange={(e) => setFormData({ ...formData, isTeamLeader: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
             </div>
           </div>
 
@@ -507,6 +618,40 @@ export default function StaffFormModal({ staff, onClose }) {
                 placeholder="House No., Street, Barangay, City, Province"
                 className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none text-xs"
               />
+            </div>
+          </div>
+
+          {/* Emergency Contact */}
+          <div className="p-3 bg-rose-50/60 border border-rose-200/80 rounded-xl space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-rose-800 uppercase tracking-wider">
+              <PhoneCall className="h-3.5 w-3.5 text-rose-600" />
+              <span>In Case of Emergency (Emergency Contact)</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1 text-xs">
+                  Contact Person Full Name
+                </label>
+                <input
+                  type="text"
+                  value={formData.emergencyContactName}
+                  onChange={(e) => setFormData({ ...formData, emergencyContactName: e.target.value.toUpperCase() })}
+                  placeholder="e.g. MARIA DELA CRUZ (SPOUSE / PARENT)"
+                  className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 focus:ring-2 focus:ring-rose-500 outline-none text-xs uppercase"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1 text-xs">
+                  Emergency Phone / Mobile Number
+                </label>
+                <input
+                  type="text"
+                  value={formData.emergencyContactPhone}
+                  onChange={(e) => setFormData({ ...formData, emergencyContactPhone: e.target.value })}
+                  placeholder="+63 9XX XXX XXXX"
+                  className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 focus:ring-2 focus:ring-rose-500 outline-none text-xs"
+                />
+              </div>
             </div>
           </div>
 

@@ -174,7 +174,7 @@ export function computeFiledSalaryDeductions(filedSalary) {
  * Actual earnings derive from salaryRate (daily or monthly with 5-day / 6-day schedule),
  * while other deductions (SSS, PhilHealth, HDMF, Tax) derive strictly from filedSalary.
  */
-export function computeEmployeePayroll(staff, attendance = {}, customAdjustments = {}) {
+export function computeEmployeePayroll(staff, attendance = {}, customAdjustments = {}, options = {}) {
   const isSemiMonthly = staff.payFrequency !== 'monthly';
   const salaryRateType = staff.salaryRateType || 'monthly';
   // Daily rate employees are strictly 6 days per week (Monday to Saturday)
@@ -236,13 +236,34 @@ export function computeEmployeePayroll(staff, attendance = {}, customAdjustments
 
   // Statutory "Other Deductions" (SSS, PhilHealth, HDMF, Tax):
   // Rule: In computing other deduction, do NOT use actual salary; use manual "filed salary".
+  // Decided by HR: by cut-off (50/50 split), by month (100% full monthly), or skip (0)
   const filedSalary = Number(staff.filedSalary) || 0;
   const statBreakdown = computeFiledSalaryDeductions(filedSalary);
 
-  const sssDeduction = isSemiMonthly ? statBreakdown.cutoff.sss : statBreakdown.monthly.sss;
-  const philhealthDeduction = isSemiMonthly ? statBreakdown.cutoff.philhealth : statBreakdown.monthly.philhealth;
-  const pagibigDeduction = isSemiMonthly ? statBreakdown.cutoff.pagibig : statBreakdown.monthly.pagibig;
-  const withholdingTax = isSemiMonthly ? statBreakdown.cutoff.tax : statBreakdown.monthly.tax;
+  const statutorySchedule = options.statutorySchedule || customAdjustments.statutorySchedule || 'per_cutoff';
+
+  let sssDeduction = 0;
+  let philhealthDeduction = 0;
+  let pagibigDeduction = 0;
+  let withholdingTax = 0;
+
+  if (statutorySchedule === 'monthly' || statutorySchedule === 'full_month') {
+    sssDeduction = statBreakdown.monthly.sss;
+    philhealthDeduction = statBreakdown.monthly.philhealth;
+    pagibigDeduction = statBreakdown.monthly.pagibig;
+    withholdingTax = statBreakdown.monthly.tax;
+  } else if (statutorySchedule === 'none' || statutorySchedule === 'skip') {
+    sssDeduction = 0;
+    philhealthDeduction = 0;
+    pagibigDeduction = 0;
+    withholdingTax = 0;
+  } else {
+    // Default: per_cutoff (semi-monthly 50% split)
+    sssDeduction = isSemiMonthly ? statBreakdown.cutoff.sss : statBreakdown.monthly.sss;
+    philhealthDeduction = isSemiMonthly ? statBreakdown.cutoff.philhealth : statBreakdown.monthly.philhealth;
+    pagibigDeduction = isSemiMonthly ? statBreakdown.cutoff.pagibig : statBreakdown.monthly.pagibig;
+    withholdingTax = isSemiMonthly ? statBreakdown.cutoff.tax : statBreakdown.monthly.tax;
+  }
   const statutoryTotal = sssDeduction + philhealthDeduction + pagibigDeduction + withholdingTax;
 
   // Other deductions (e.g. company loans & canteen cash advances)
@@ -279,6 +300,7 @@ export function computeEmployeePayroll(staff, attendance = {}, customAdjustments
     pagibigDeduction,
     withholdingTax,
     statutoryTotal,
+    statutorySchedule,
     loanDeduction,
     cashAdvanceDeduction,
     totalDeductions,

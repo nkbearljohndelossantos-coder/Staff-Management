@@ -4,19 +4,18 @@ import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import PayRunDetails from './PayRunDetails';
 import BankPayrollExportModal from './BankPayrollExportModal';
-import BIR2316Modal from './BIR2316Modal';
 
 export default function PayRunList() {
-  const { payRuns, createPayRun, isAccounting, staffList = [] } = useApp();
+  const { payRuns, createPayRun, isAccounting, staffList = [], statutoryDeductionsSchedule } = useApp();
   const [selectedPayRunId, setSelectedPayRunId] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [showBankExport, setShowBankExport] = useState(false);
-  const [selectedBirStaff, setSelectedBirStaff] = useState(null);
 
   const [newTitle, setNewTitle] = useState('1st Half June 2026 Regular Payroll');
   const [newStart, setNewStart] = useState('2026-06-01');
   const [newEnd, setNewEnd] = useState('2026-06-15');
   const [newPayDate, setNewPayDate] = useState('2026-06-15');
+  const [newStatutorySchedule, setNewStatutorySchedule] = useState(statutoryDeductionsSchedule || 'per_cutoff');
 
   const handleCreateRun = (e) => {
     e.preventDefault();
@@ -24,7 +23,8 @@ export default function PayRunList() {
       title: newTitle,
       periodStart: newStart,
       periodEnd: newEnd,
-      payDate: newPayDate
+      payDate: newPayDate,
+      statutorySchedule: newStatutorySchedule
     });
     setIsCreating(false);
     setSelectedPayRunId(run.id);
@@ -68,16 +68,6 @@ export default function PayRunList() {
               <span>PESONet Bank Export</span>
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={() => setSelectedBirStaff(staffList[0] || null)}
-            className="h-10 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition"
-            title="Generate BIR Form 2316 Certificate"
-          >
-            <FileText className="h-4 w-4 text-emerald-600" />
-            <span>BIR Form 2316</span>
-          </button>
 
           {isAccounting && (
             <button
@@ -214,6 +204,58 @@ export default function PayRunList() {
                 />
               </div>
 
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Statutory Deductions Timing (SSS, PhilHealth, Pag-IBIG, Tax)
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewStatutorySchedule('per_cutoff')}
+                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                      newStatutorySchedule === 'per_cutoff'
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    <div className="font-bold text-xs">By Cut-Off</div>
+                    <div className={`text-[10px] mt-0.5 ${newStatutorySchedule === 'per_cutoff' ? 'text-slate-300' : 'text-slate-500'}`}>
+                      50% semi-monthly split
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewStatutorySchedule('monthly')}
+                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                      newStatutorySchedule === 'monthly'
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    <div className="font-bold text-xs">By Month (100%)</div>
+                    <div className={`text-[10px] mt-0.5 ${newStatutorySchedule === 'monthly' ? 'text-slate-300' : 'text-slate-500'}`}>
+                      Full monthly deduction
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewStatutorySchedule('none')}
+                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                      newStatutorySchedule === 'none'
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    <div className="font-bold text-xs">Skip Deductions</div>
+                    <div className={`text-[10px] mt-0.5 ${newStatutorySchedule === 'none' ? 'text-slate-300' : 'text-slate-500'}`}>
+                      0% (e.g. 1st cutoff only)
+                    </div>
+                  </button>
+                </div>
+              </div>
+
               <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
@@ -240,15 +282,6 @@ export default function PayRunList() {
           payRun={payRuns[0]}
           staffList={staffList}
           onClose={() => setShowBankExport(false)}
-        />
-      )}
-
-      {/* BIR 2316 Tax Certificate Modal */}
-      {selectedBirStaff && (
-        <BIR2316Modal
-          staff={selectedBirStaff}
-          payRuns={payRuns}
-          onClose={() => setSelectedBirStaff(null)}
         />
       )}
 

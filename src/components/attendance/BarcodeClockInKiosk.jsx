@@ -179,7 +179,7 @@ export default function BarcodeClockInKiosk() {
     }
     const newReq = fileOvertimeRequest({
       staffId: targetStaff.id,
-      staffName: `${targetStaff.firstName} ${targetStaff.lastName}`,
+      staffName: formatStaffName(targetStaff),
       employeeId: targetStaff.employeeId,
       date: hrOTForm.date,
       hours: Number(hrOTForm.hours) || 2,

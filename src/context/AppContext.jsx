@@ -31,7 +31,7 @@ import { computeEmployeePayroll } from '../utils/payrollCalculations';
 import { logAuditEvent, getAuditLogs } from '../utils/auditLogger';
 import { getOfflineQueue, clearOfflineQueue, initOfflineSyncListener } from '../utils/offlineSync';
 import { scanForAnomalies, saveAnomalyEvaluation, computeExecutiveRiskSummary, getStoredEvaluations } from '../utils/anomalyDetector';
-import { formatStaffName } from '../utils/staffUtils';
+import { formatStaffName, scanStaffMilestones } from '../utils/staffUtils';
 
 const AppContext = createContext(null);
 
@@ -92,6 +92,9 @@ export function AppProvider({ children }) {
               sickLeaveRemaining: s.sickLeaveRemaining !== undefined ? s.sickLeaveRemaining : 5,
               vacationLeaveTotal: s.vacationLeaveTotal !== undefined ? s.vacationLeaveTotal : 5,
               vacationLeaveRemaining: s.vacationLeaveRemaining !== undefined ? s.vacationLeaveRemaining : 5,
+              emergencyContactName: s.emergencyContactName || '',
+              emergencyContactPhone: s.emergencyContactPhone || '',
+              isTeamLeader: Boolean(s.isTeamLeader),
               documents: s.documents || []
             };
           });
@@ -421,6 +424,74 @@ export function AppProvider({ children }) {
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
+
+  // HR Statutory Deductions Timing Schedule ('per_cutoff' = 50% split per cut-off, 'monthly' = 100% full monthly deduction)
+  const [statutoryDeductionsSchedule, setStatutoryDeductionsSchedule] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('nkb_statutory_deductions_schedule') || 'per_cutoff';
+    }
+    return 'per_cutoff';
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nkb_statutory_deductions_schedule', statutoryDeductionsSchedule);
+    }
+  }, [statutoryDeductionsSchedule]);
+
+  // Early Milestone Alerts for HR: Birthday Celebrants & Work Anniversaries (within 7 to 14 days)
+  useEffect(() => {
+    if (!staffList || staffList.length === 0) return;
+    const { birthdays, anniversaries } = scanStaffMilestones(staffList, 14);
+
+    const alertedKey = 'nkb_alerted_milestones';
+    let alerted = {};
+    try {
+      alerted = JSON.parse(localStorage.getItem(alertedKey) || '{}');
+    } catch (e) {}
+
+    const newAlerts = [];
+    const today = new Date().toISOString().split('T')[0];
+
+    birthdays.forEach(({ staff, daysUntil, isToday, isTomorrow, formattedDate, milestoneYear }) => {
+      const alertId = `bday-${staff.id}-${milestoneYear}`;
+      if (!alerted[alertId]) {
+        alerted[alertId] = today;
+        const relativeTimeStr = isToday ? 'TODAY!' : isTomorrow ? 'TOMORROW!' : `in ${daysUntil} days (${formattedDate})`;
+        newAlerts.push({
+          id: `milestone-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          title: `🎂 Birthday Alert: ${formatStaffName(staff)}`,
+          message: `${formatStaffName(staff)} is celebrating a birthday ${relativeTimeStr}. Early greeting & HR milestone notice.`,
+          time: 'Upcoming',
+          type: 'info',
+          read: false
+        });
+      }
+    });
+
+    anniversaries.forEach(({ staff, daysUntil, isToday, isTomorrow, formattedDate, yearsCompleted, milestoneYear }) => {
+      const alertId = `anniv-${staff.id}-${milestoneYear}`;
+      if (!alerted[alertId]) {
+        alerted[alertId] = today;
+        const relativeTimeStr = isToday ? 'TODAY!' : isTomorrow ? 'TOMORROW!' : `in ${daysUntil} days (${formattedDate})`;
+        newAlerts.push({
+          id: `milestone-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          title: `🎖️ Work Anniversary: ${formatStaffName(staff)} (${yearsCompleted} ${yearsCompleted === 1 ? 'Year' : 'Years'})`,
+          message: `${formatStaffName(staff)} will reach ${yearsCompleted} ${yearsCompleted === 1 ? 'year' : 'years'} company milestone ${relativeTimeStr}. Hired: ${staff.dateHired || staff.hireDate}.`,
+          time: 'Upcoming',
+          type: 'success',
+          read: false
+        });
+      }
+    });
+
+    if (newAlerts.length > 0) {
+      setInAppNotifications(prev => [...newAlerts, ...prev].slice(0, 50));
+      try {
+        localStorage.setItem(alertedKey, JSON.stringify(alerted));
+      } catch (e) {}
+    }
+  }, [staffList]);
 
   // Audit Logs State
   const [auditLogs, setAuditLogs] = useState(() => getAuditLogs());
@@ -1028,6 +1099,26 @@ export function AppProvider({ children }) {
     showToast('Staff record deleted.', 'info');
   };
 
+  const toggleTeamLeader = (staffId) => {
+    if (currentUser && !isHR) {
+      showToast('Access Denied: Only HR Management can assign or revoke Team Leader roles.', 'error');
+      return;
+    }
+    setStaffList(prev => prev.map(s => {
+      if (s.id === staffId) {
+        const nextStatus = !s.isTeamLeader;
+        showToast(`${formatStaffName(s)} is now ${nextStatus ? 'designated as Team Leader' : 'relieved of Team Leader role'}.`, 'success');
+        logSystemEvent({
+          category: 'HR_MANAGEMENT',
+          action: 'TOGGLE_TEAM_LEADER',
+          details: `${formatStaffName(s)} (${s.employeeId}) team leader status updated to ${nextStatus}`
+        });
+        return { ...s, isTeamLeader: nextStatus };
+      }
+      return s;
+    }));
+  };
+
   // Positions & Departments CRUD
   const addPosition = (posData) => {
     if (currentUser && !isHR) {
@@ -1630,6 +1721,8 @@ export function AppProvider({ children }) {
       const comp = computeEmployeePayroll(staff, att, {
         loanDeduction,
         cashAdvanceDeduction
+      }, {
+        statutorySchedule: run.statutorySchedule || statutoryDeductionsSchedule || 'per_cutoff'
       });
 
       grossSum += comp.grossPay;
@@ -3346,6 +3439,13 @@ export function AppProvider({ children }) {
         batchApproveOvertimeRequests,
         uploadStaffDocument,
         deleteStaffDocument,
+        // Team Leader & HR Staff Policy
+        toggleTeamLeader,
+        // Statutory Deductions Timing Schedule
+        statutoryDeductionsSchedule,
+        setStatutoryDeductionsSchedule,
+        // Early Milestone Scanner
+        scanStaffMilestones,
         // Notifications Center
         inAppNotifications,
         addInAppNotification,

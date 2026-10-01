@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Search, UserPlus, Filter, Edit3, Trash2, DollarSign, Users, Building, ScanLine, QrCode, Eye, Calendar, Shield, Paperclip } from 'lucide-react';
+import { Search, UserPlus, Filter, Edit3, Trash2, DollarSign, Users, Building, ScanLine, QrCode, Eye, Calendar, Shield, Paperclip, Crown } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
-import { formatStaffName } from '../../utils/staffUtils';
+import { formatStaffName, scanStaffMilestones } from '../../utils/staffUtils';
 import StaffBadgeModal from './StaffBadgeModal';
 import StaffFormModal from './StaffFormModal';
 import StaffDetailModal from './StaffDetailModal';
@@ -10,7 +10,7 @@ import BarcodeView from '../common/BarcodeView';
 import TableActionDropdown from '../common/TableActionDropdown';
 
 export default function StaffDirectory() {
-  const { staffList, departments, positions, deleteStaff, isHR, openDigitalId } = useApp();
+  const { staffList, departments, positions, deleteStaff, isHR, openDigitalId, toggleTeamLeader } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState('ALL');
@@ -18,6 +18,8 @@ export default function StaffDirectory() {
   const [formModalStaff, setFormModalStaff] = useState(null);
   const [detailModalStaff, setDetailModalStaff] = useState(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
+
+  const milestones = scanStaffMilestones ? scanStaffMilestones(staffList, 14) : { birthdays: [], anniversaries: [] };
 
   // Filter staff
   const filteredStaff = staffList.filter(s => {
@@ -105,6 +107,91 @@ export default function StaffDirectory() {
           <p className="text-[11px] text-slate-500 mt-0.5">Code 128 synced to time kiosk</p>
         </div>
       </div>
+
+      {/* Early Milestone Alerts Banner for HR: Birthdays & Work Anniversaries */}
+      {milestones && (milestones.birthdays.length > 0 || milestones.anniversaries.length > 0) && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50 via-rose-50 to-indigo-50 border border-amber-200/80 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+                🎉
+              </div>
+              <div>
+                <h4 className="font-extrabold text-xs text-slate-900 uppercase tracking-wider">
+                  Upcoming Staff Milestones &amp; Celebrations (Early HR Notice)
+                </h4>
+                <p className="text-[11px] text-slate-600">
+                  Birthdays and work anniversaries within the next 14 days. Notify teams and prepare recognitions early.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Birthdays */}
+            {milestones.birthdays.length > 0 && (
+              <div className="p-3 rounded-xl bg-white/90 border border-rose-200/80 shadow-xs space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-rose-800 uppercase tracking-wider">
+                  <span className="text-sm">🎂</span>
+                  <span>Upcoming Birthday Celebrants ({milestones.birthdays.length})</span>
+                </div>
+                <div className="space-y-1.5">
+                  {milestones.birthdays.map(({ staff, daysUntil, isToday, isTomorrow, formattedDate }) => (
+                    <div key={staff.id} className="flex items-center justify-between text-xs p-1.5 rounded-lg bg-rose-50/50 hover:bg-rose-50 transition">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <img
+                          src={staff.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${staff.firstName}`}
+                          alt=""
+                          className="w-6 h-6 rounded-full border border-rose-200 shrink-0 object-cover"
+                        />
+                        <span className="font-bold text-slate-900 truncate">{formatStaffName(staff)}</span>
+                        <span className="text-[10px] text-slate-500 font-mono">({staff.employeeId})</span>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                        isToday ? 'bg-rose-600 text-white animate-pulse' : isTomorrow ? 'bg-amber-500 text-white' : 'bg-rose-100 text-rose-800 border border-rose-300'
+                      }`}>
+                        {isToday ? 'TODAY!' : isTomorrow ? 'TOMORROW!' : `${formattedDate} (${daysUntil}d)`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Work Anniversaries */}
+            {milestones.anniversaries.length > 0 && (
+              <div className="p-3 rounded-xl bg-white/90 border border-indigo-200/80 shadow-xs space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-800 uppercase tracking-wider">
+                  <span className="text-sm">🎖️</span>
+                  <span>Work Anniversaries ({milestones.anniversaries.length})</span>
+                </div>
+                <div className="space-y-1.5">
+                  {milestones.anniversaries.map(({ staff, daysUntil, isToday, isTomorrow, formattedDate, yearsCompleted }) => (
+                    <div key={staff.id} className="flex items-center justify-between text-xs p-1.5 rounded-lg bg-indigo-50/50 hover:bg-indigo-50 transition">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <img
+                          src={staff.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${staff.firstName}`}
+                          alt=""
+                          className="w-6 h-6 rounded-full border border-indigo-200 shrink-0 object-cover"
+                        />
+                        <span className="font-bold text-slate-900 truncate">{formatStaffName(staff)}</span>
+                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200">
+                          {yearsCompleted} {yearsCompleted === 1 ? 'Year' : 'Years'}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                        isToday ? 'bg-indigo-600 text-white animate-pulse' : isTomorrow ? 'bg-amber-500 text-white' : 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                      }`}>
+                        {isToday ? 'TODAY!' : isTomorrow ? 'TOMORROW!' : `${formattedDate} (${daysUntil}d)`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Search & Actions Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white border border-slate-200/90 p-3.5 rounded-2xl shadow-sm">
@@ -212,7 +299,7 @@ export default function StaffDirectory() {
                               {staff.employeeId}
                             </span>
                             <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-                              {staff.employeeId?.startsWith('PRJ') ? 'PRJ' : 'NKB'}
+                              {staff.employmentType === 'project_based' || staff.employeeId?.startsWith('PRJ') ? 'PRJ' : staff.employeeId?.startsWith('VYU') ? 'VYU' : 'NKB'}
                             </span>
                           </div>
                           <div className="bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 w-fit">
@@ -223,7 +310,15 @@ export default function StaffDirectory() {
 
                       {/* Position & Department */}
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">{pos?.title || 'Staff Specialist'}</div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-slate-900">{pos?.title || 'Staff Specialist'}</span>
+                          {staff.isTeamLeader && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-0.5" title="Designated Team Leader (Authorized to file OT)">
+                              <Crown className="h-2.5 w-2.5 text-amber-600" />
+                              TL
+                            </span>
+                          )}
+                        </div>
                         <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] text-slate-600 font-medium inline-block mt-0.5">
                           {dept?.name || 'General'}
                         </span>
@@ -346,6 +441,11 @@ export default function StaffDirectory() {
                               },
                               ...(isHR
                                 ? [
+                                    {
+                                      label: staff.isTeamLeader ? 'Relieve Team Leader Role' : 'Designate as Team Leader',
+                                      icon: Crown,
+                                      onClick: () => toggleTeamLeader(staff.id)
+                                    },
                                     {
                                       label: 'Edit Profile & Salary',
                                       icon: Edit3,

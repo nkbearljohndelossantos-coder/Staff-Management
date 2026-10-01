@@ -151,8 +151,11 @@ export default function PayRunDetails({ payRunId, onBack }) {
             </span>
           </div>
           <h2 className="text-xl font-black text-slate-900">{payRun.title}</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Cut-off: <strong className="text-slate-700">{payRun.periodStart}</strong> to <strong className="text-slate-700">{payRun.periodEnd}</strong> · Payout: {payRun.payDate}
+          <p className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-2">
+            <span>Cut-off: <strong className="text-slate-700">{payRun.periodStart}</strong> to <strong className="text-slate-700">{payRun.periodEnd}</strong> · Payout: {payRun.payDate}</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+              Statutory Timing: {payRun.statutorySchedule === 'monthly' ? 'By Month (100% Full)' : payRun.statutorySchedule === 'none' ? 'Skipped (0%)' : 'By Cut-Off (50% Split)'}
+            </span>
           </p>
         </div>
 
