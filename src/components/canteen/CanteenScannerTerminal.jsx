@@ -148,6 +148,18 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   const [checkoutWizardStep, setCheckoutWizardStep] = useState(null);
   const [lastScannedItemId, setLastScannedItemId] = useState(null);
 
+  // Active Inline Keyboard Shortcut Step for Order Nature & Payment Method
+  // null | 'ORDER_NATURE' | 'PAYMENT_METHOD' | 'CONFIRM'
+  const [activeShortcutStep, setActiveShortcutStep] = useState(null);
+  const pendingShortcutTimerRef = useRef(null);
+
+  // Reset active shortcut step if cart becomes empty
+  useEffect(() => {
+    if (cart.length === 0) {
+      setActiveShortcutStep(null);
+    }
+  }, [cart.length]);
+
   // Global F2 (Items Pop-up) & F9 (Fast Checkout) Shortcuts
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
@@ -174,6 +186,11 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   // 0. Fast Checkout Wizard (Priority 50)
   useEscapeKey('canteen-checkout-wizard', ESCAPE_PRIORITY.MODAL, Boolean(checkoutWizardStep), () => {
     setCheckoutWizardStep(null);
+    barcodeInputRef.current?.focus();
+  });
+  // 0a. Active Inline Shortcut Step (Priority 45)
+  useEscapeKey('canteen-active-shortcut', ESCAPE_PRIORITY.MODAL - 5, Boolean(activeShortcutStep), () => {
+    setActiveShortcutStep(null);
     barcodeInputRef.current?.focus();
   });
   // 0b. Item Scan Modal (Priority 40)
@@ -400,6 +417,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     setBarcodeQuery('');
     setShowSuggestions(false);
     setHighlightedIndex(-1);
+    setActiveShortcutStep('ORDER_NATURE');
     barcodeInputRef.current?.focus();
   };
 
@@ -440,6 +458,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     });
     setBarcodeQuery('');
     setShowSuggestions(false);
+    setActiveShortcutStep('ORDER_NATURE');
     barcodeInputRef.current?.focus();
     return true;
   };
@@ -516,10 +535,132 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     });
 
     setEditingCartItem(null);
+    setActiveShortcutStep('ORDER_NATURE');
+    barcodeInputRef.current?.focus();
+  };
+
+  // Centralized keyboard shortcut processor for zero-mouse cashier flow:
+  // Step 1: ORDER NATURE (Left/1 = Dine In, Right/2 = Gate Pass)
+  // Step 2: PAYMENT METHOD (Left/1 = Salary Deduction, Right/2 = Cash)
+  // Step 3: CONFIRM (Enter = finalize transaction)
+  const processShortcutKey = (key, e = null) => {
+    if (cart.length === 0) return false;
+    if (e && (e.ctrlKey || e.altKey || e.metaKey)) return false;
+
+    if (key === 'Escape') {
+      if (e) e.preventDefault();
+      setActiveShortcutStep(null);
+      barcodeInputRef.current?.focus();
+      return true;
+    }
+
+    // STEP 1: ORDER NATURE
+    if (activeShortcutStep === 'ORDER_NATURE') {
+      if (key === 'ArrowLeft' || key === '1') {
+        if (e) e.preventDefault();
+        setOrderType('Dine In');
+        playBeep('scan');
+        setActiveShortcutStep('PAYMENT_METHOD');
+        setScanStatusNotice({
+          type: 'staff',
+          message: 'Order Nature: Dine In (Cafeteria) · Step 2: Choose Payment [1/Left] Salary Deduction or [2/Right] Cash',
+          timestamp: Date.now()
+        });
+        return true;
+      } else if (key === 'ArrowRight' || key === '2') {
+        if (e) e.preventDefault();
+        setOrderType('Grocery');
+        playBeep('scan');
+        setActiveShortcutStep('PAYMENT_METHOD');
+        setScanStatusNotice({
+          type: 'staff',
+          message: 'Order Nature: Gate Pass (Grocery) · Step 2: Choose Payment [1/Left] Salary Deduction or [2/Right] Cash',
+          timestamp: Date.now()
+        });
+        return true;
+      } else if (key === 'Enter') {
+        if (e) e.preventDefault();
+        playBeep('scan');
+        setActiveShortcutStep('PAYMENT_METHOD');
+        return true;
+      }
+    } 
+    // STEP 2: PAYMENT METHOD
+    else if (activeShortcutStep === 'PAYMENT_METHOD') {
+      if (key === 'ArrowLeft' || key === '1') {
+        if (e) e.preventDefault();
+        setPaymentMethod('Salary Deduction');
+        playBeep('scan');
+        setActiveShortcutStep('CONFIRM');
+        setScanStatusNotice({
+          type: 'staff',
+          message: 'Payment: Salary Deduction · Step 3: Press [ENTER] to Complete Order',
+          timestamp: Date.now()
+        });
+        return true;
+      } else if (key === 'ArrowRight' || key === '2') {
+        if (e) e.preventDefault();
+        setPaymentMethod('Cash');
+        playBeep('scan');
+        setActiveShortcutStep('CONFIRM');
+        setScanStatusNotice({
+          type: 'staff',
+          message: 'Payment: Cash Payment · Step 3: Press [ENTER] to Complete Order',
+          timestamp: Date.now()
+        });
+        return true;
+      } else if (key === 'ArrowUp' || key === 'Backspace') {
+        if (e) e.preventDefault();
+        setActiveShortcutStep('ORDER_NATURE');
+        return true;
+      } else if (key === 'Enter') {
+        if (e) e.preventDefault();
+        playBeep('scan');
+        setActiveShortcutStep('CONFIRM');
+        return true;
+      }
+    } 
+    // STEP 3: CONFIRM
+    else if (activeShortcutStep === 'CONFIRM') {
+      if (key === 'Enter') {
+        if (e) e.preventDefault();
+        setActiveShortcutStep(null);
+        handleFinalizeCheckout();
+        return true;
+      } else if (key === 'ArrowUp' || key === 'Backspace' || key === 'ArrowLeft') {
+        if (e) e.preventDefault();
+        setActiveShortcutStep('PAYMENT_METHOD');
+        return true;
+      }
+    }
+    // QUICK SHORTCUT: If cart has items and arrow keys pressed
+    else if (cart.length > 0) {
+      if (key === 'ArrowLeft') {
+        if (e) e.preventDefault();
+        setOrderType('Dine In');
+        playBeep('scan');
+        setActiveShortcutStep('PAYMENT_METHOD');
+        return true;
+      } else if (key === 'ArrowRight') {
+        if (e) e.preventDefault();
+        setOrderType('Grocery');
+        playBeep('scan');
+        setActiveShortcutStep('PAYMENT_METHOD');
+        return true;
+      }
+    }
+
+    return false;
   };
 
   // Keyboard navigation for product suggestions dropdown & keyboard quick shortcuts
   const handleKeyDown = (e) => {
+    // Clear pending shortcut debounce timer on any key press
+    if (pendingShortcutTimerRef.current) {
+      clearTimeout(pendingShortcutTimerRef.current);
+      pendingShortcutTimerRef.current = null;
+    }
+
     // 1. Suggestions dropdown navigation
     if (showSuggestions && productSuggestions.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -549,24 +690,46 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
         const targetId = lastScannedItemId || cart[cart.length - 1]?.id;
         handleUpdateQuantity(targetId, 1);
         playBeep('scan');
+        setActiveShortcutStep('ORDER_NATURE');
         return;
       } else if (e.key === '-') {
         e.preventDefault();
         const targetId = lastScannedItemId || cart[cart.length - 1]?.id;
         handleUpdateQuantity(targetId, -1);
         playBeep('scan');
+        setActiveShortcutStep('ORDER_NATURE');
         return;
       }
     }
 
-    // 3. Fast Checkout Trigger: If barcode input is empty and cashier presses Enter
+    // 3. Arrow keys, Backspace, or Escape when barcode input is empty
+    if (!barcodeQuery && cart.length > 0) {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Backspace', 'Escape'].includes(e.key)) {
+        if (processShortcutKey(e.key, e)) return;
+      }
+
+      // 4. Numeric shortcut keys '1' and '2' when activeShortcutStep is active
+      if (activeShortcutStep && (e.key === '1' || e.key === '2')) {
+        e.preventDefault();
+        const pressedKey = e.key;
+        // 45ms guard: if a barcode scanner is rapidly streaming characters starting with 1 or 2,
+        // the next character arrives < 40ms, cancelling this timer and letting the barcode stream through.
+        pendingShortcutTimerRef.current = setTimeout(() => {
+          processShortcutKey(pressedKey);
+          pendingShortcutTimerRef.current = null;
+        }, 45);
+        return;
+      }
+    }
+
+    // 5. Fast Checkout Trigger: If barcode input is empty and cashier presses Enter
     if (!barcodeQuery && e.key === 'Enter') {
       if (cart.length > 0) {
         e.preventDefault();
-        if (selectedStaff) {
-          setCheckoutWizardStep('ORDER_NATURE');
+        if (activeShortcutStep) {
+          processShortcutKey('Enter', e);
         } else {
-          initiateCheckout();
+          setActiveShortcutStep('ORDER_NATURE');
         }
         return;
       }
@@ -586,12 +749,12 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     const raw = (barcodeQuery || '').trim();
     const clean = cleanScanInput(raw);
     if (!clean) {
-      // Empty Enter: Trigger checkout wizard if cart has items
+      // Empty Enter: Advance inline shortcut or trigger checkout
       if (cart.length > 0) {
-        if (selectedStaff) {
-          setCheckoutWizardStep('ORDER_NATURE');
+        if (activeShortcutStep) {
+          processShortcutKey('Enter');
         } else {
-          initiateCheckout();
+          setActiveShortcutStep('ORDER_NATURE');
         }
       }
       return;
@@ -624,7 +787,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
 
       // If cart already has items, immediately engage Fast Checkout Wizard!
       if (cart.length > 0) {
-        setCheckoutWizardStep('ORDER_NATURE');
+        setActiveShortcutStep('ORDER_NATURE');
         setScanStatusNotice({
           type: 'staff',
           message: `Customer Verified: ${foundStaff.firstName} ${foundStaff.lastName}. Use ← Left (Dine In) or → Right (Gate Pass)`,
@@ -710,6 +873,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       }
       return item;
     }).filter(Boolean));
+    setActiveShortcutStep('ORDER_NATURE');
   };
 
   // Open Void Modal
@@ -822,7 +986,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       setShowCustomerModal(false);
 
       if (cart.length > 0) {
-        setCheckoutWizardStep('ORDER_NATURE');
+        setActiveShortcutStep('ORDER_NATURE');
         setScanStatusNotice({
           type: 'staff',
           message: `Customer Verified: ${found.firstName} ${found.lastName}. Use ← Left (Dine In) or → Right (Gate Pass)`,
@@ -912,12 +1076,44 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     return () => window.removeEventListener('keydown', handleWizardKeyDown);
   }, [checkoutWizardStep, orderType, paymentMethod, cart, selectedStaff]);
 
+  // Global Keyboard Navigation for Active Inline Shortcuts (when focus is outside barcode input)
+  useEffect(() => {
+    if (!activeShortcutStep || checkoutWizardStep) return;
+
+    const handleGlobalWindowKeyDown = (e) => {
+      // Don't intercept if an overlay modal is open
+      if (showCustomerModal || showVoidModal || showZReadingModal || showItemScanModal) return;
+
+      // If active element is a different text input or textarea, let it handle typing
+      if (e.target && e.target !== barcodeInputRef.current && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        return;
+      }
+
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Backspace', 'Escape'].includes(e.key)) {
+        processShortcutKey(e.key, e);
+      } else if ((e.key === '1' || e.key === '2') && e.target !== barcodeInputRef.current) {
+        processShortcutKey(e.key, e);
+      } else if (e.key === 'Enter' && e.target !== barcodeInputRef.current) {
+        processShortcutKey('Enter', e);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalWindowKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalWindowKeyDown);
+  }, [activeShortcutStep, checkoutWizardStep, showCustomerModal, showVoidModal, showZReadingModal, showItemScanModal, processShortcutKey]);
+
   // Complete Order
-  const handleFinalizeCheckout = () => {
+  function handleFinalizeCheckout() {
     if (cart.length === 0) return;
 
     if (!selectedStaff) {
-      alert('Scanning employee ID badge or entering employee code is required to complete transaction.');
+      setScanStatusNotice({
+        type: 'error',
+        message: 'Scanning employee ID badge or entering employee code is required to complete transaction.',
+        timestamp: Date.now()
+      });
+      alert('Scanning employee ID badge or entering employee code is required to complete transaction.\n\nPlease scan employee ID or select customer from masterlist.');
+      setShowCustomerModal(true);
       return;
     }
 
@@ -956,6 +1152,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       setLateReason('');
       setShowCustomerModal(false);
       setCheckoutWizardStep(null);
+      setActiveShortcutStep(null);
 
       if (onShowReceipt) onShowReceipt(res.receipt);
       if (res.gatePass && onShowGatePass) onShowGatePass(res.gatePass);
@@ -964,7 +1161,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
         broadcastPOSDisplayState({ completedReceipt: null, status: 'IDLE' });
       }, 5000);
     }
-  };
+  }
 
   const grandTotal = cart.reduce((acc, it) => acc + (it.unitPrice * (it.quantity || 1)), 0);
 
@@ -1442,14 +1639,25 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
           )}
 
           {/* Order Nature & Payment Method Selector */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className={`bg-white border rounded-2xl p-5 shadow-sm space-y-4 transition-all duration-200 ${
+            activeShortcutStep ? 'border-blue-400 ring-2 ring-blue-100 shadow-md' : 'border-slate-200'
+          }`}>
             
             {/* Order Nature Selector */}
-            <div>
+            <div className={`transition-all duration-200 rounded-xl p-2.5 -m-2.5 ${
+              activeShortcutStep === 'ORDER_NATURE' 
+                ? 'bg-blue-50/70 border border-blue-300 ring-2 ring-blue-400/20 shadow-xs' 
+                : 'border border-transparent'
+            }`}>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                   <Store className="h-4 w-4 text-slate-900" />
-                  1. Order Nature
+                  <span>1. Order Nature</span>
+                  {activeShortcutStep === 'ORDER_NATURE' && (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white font-mono text-[9px] font-black animate-pulse flex items-center gap-1 shadow-xs">
+                      <Zap className="h-2.5 w-2.5" /> SHORTCUT ACTIVE
+                    </span>
+                  )}
                 </label>
                 <span className="text-[11px] text-slate-500 font-medium">
                   {orderType === 'Grocery' ? 'Generates Exit Gate Pass' : 'Dine-In Pantry Meal'}
@@ -1458,32 +1666,52 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setOrderType('Dine In')}
+                  onClick={() => {
+                    setOrderType('Dine In');
+                    playBeep('scan');
+                    setActiveShortcutStep('PAYMENT_METHOD');
+                  }}
                   className={`p-3 rounded-xl border-2 flex items-center justify-center gap-2.5 transition cursor-pointer text-xs font-bold ${
                     orderType === 'Dine In'
                       ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
                       : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
+                  } ${activeShortcutStep === 'ORDER_NATURE' ? 'ring-2 ring-blue-400/40 hover:border-blue-500' : ''}`}
                 >
                   <Utensils className="h-4 w-4" />
                   <span>Dine In (Cafeteria)</span>
-                  <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] font-bold ${orderType === 'Dine In' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                  <span className={`px-1.5 py-0.5 rounded font-mono text-[9px] font-bold transition ${
+                    orderType === 'Dine In' 
+                      ? 'bg-blue-600 text-white ring-1 ring-blue-300' 
+                      : activeShortcutStep === 'ORDER_NATURE'
+                        ? 'bg-blue-600 text-white animate-pulse shadow-xs'
+                        : 'bg-slate-200 text-slate-700'
+                  }`}>
                     ← Left / 1
                   </span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setOrderType('Grocery')}
+                  onClick={() => {
+                    setOrderType('Grocery');
+                    playBeep('scan');
+                    setActiveShortcutStep('PAYMENT_METHOD');
+                  }}
                   className={`p-3 rounded-xl border-2 flex items-center justify-center gap-2.5 transition cursor-pointer text-xs font-bold ${
                     orderType === 'Grocery'
                       ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
                       : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
+                  } ${activeShortcutStep === 'ORDER_NATURE' ? 'ring-2 ring-blue-400/40 hover:border-blue-500' : ''}`}
                 >
                   <ShoppingBag className="h-4 w-4" />
                   <span>Gate Pass</span>
-                  <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] font-bold ${orderType === 'Grocery' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                  <span className={`px-1.5 py-0.5 rounded font-mono text-[9px] font-bold transition ${
+                    orderType === 'Grocery' 
+                      ? 'bg-blue-600 text-white ring-1 ring-blue-300' 
+                      : activeShortcutStep === 'ORDER_NATURE'
+                        ? 'bg-blue-600 text-white animate-pulse shadow-xs'
+                        : 'bg-slate-200 text-slate-700'
+                  }`}>
                     Right → / 2
                   </span>
                 </button>
@@ -1491,28 +1719,47 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
             </div>
 
             {/* Payment Method Selector */}
-            <div>
+            <div className={`transition-all duration-200 rounded-xl p-2.5 -m-2.5 ${
+              activeShortcutStep === 'PAYMENT_METHOD' 
+                ? 'bg-blue-50/70 border border-blue-300 ring-2 ring-blue-400/20 shadow-xs' 
+                : 'border border-transparent'
+            }`}>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                   <Banknote className="h-4 w-4 text-slate-900" />
-                  2. Payment Method
+                  <span>2. Payment Method</span>
+                  {activeShortcutStep === 'PAYMENT_METHOD' && (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white font-mono text-[9px] font-black animate-pulse flex items-center gap-1 shadow-xs">
+                      <Zap className="h-2.5 w-2.5" /> SHORTCUT ACTIVE
+                    </span>
+                  )}
                 </label>
                 <span className="text-[11px] text-slate-500 font-medium">Select tender</span>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod('Salary Deduction')}
+                  onClick={() => {
+                    setPaymentMethod('Salary Deduction');
+                    playBeep('scan');
+                    setActiveShortcutStep('CONFIRM');
+                  }}
                   className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition cursor-pointer text-xs font-bold ${
                     paymentMethod === 'Salary Deduction'
                       ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
                       : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
+                  } ${activeShortcutStep === 'PAYMENT_METHOD' ? 'ring-2 ring-blue-400/40 hover:border-blue-500' : ''}`}
                 >
                   <div className="flex items-center gap-1.5">
                     <CreditCard className="h-4 w-4" />
                     <span>Salary Deduction</span>
-                    <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] font-bold ${paymentMethod === 'Salary Deduction' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                    <span className={`px-1.5 py-0.5 rounded font-mono text-[9px] font-bold transition ${
+                      paymentMethod === 'Salary Deduction' 
+                        ? 'bg-blue-600 text-white ring-1 ring-blue-300' 
+                        : activeShortcutStep === 'PAYMENT_METHOD'
+                          ? 'bg-blue-600 text-white animate-pulse shadow-xs'
+                          : 'bg-slate-200 text-slate-700'
+                    }`}>
                       ← Left / 1
                     </span>
                   </div>
@@ -1523,17 +1770,27 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
 
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod('Cash')}
+                  onClick={() => {
+                    setPaymentMethod('Cash');
+                    playBeep('scan');
+                    setActiveShortcutStep('CONFIRM');
+                  }}
                   className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition cursor-pointer text-xs font-bold ${
                     paymentMethod === 'Cash'
                       ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
                       : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                  }`}
+                  } ${activeShortcutStep === 'PAYMENT_METHOD' ? 'ring-2 ring-blue-400/40 hover:border-blue-500' : ''}`}
                 >
                   <div className="flex items-center gap-1.5">
                     <Banknote className="h-4 w-4" />
                     <span>Cash Payment</span>
-                    <span className={`px-1.5 py-0.2 rounded font-mono text-[9px] font-bold ${paymentMethod === 'Cash' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                    <span className={`px-1.5 py-0.5 rounded font-mono text-[9px] font-bold transition ${
+                      paymentMethod === 'Cash' 
+                        ? 'bg-blue-600 text-white ring-1 ring-blue-300' 
+                        : activeShortcutStep === 'PAYMENT_METHOD'
+                          ? 'bg-blue-600 text-white animate-pulse shadow-xs'
+                          : 'bg-slate-200 text-slate-700'
+                    }`}>
                       Right → / 2
                     </span>
                   </div>
@@ -1543,6 +1800,30 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                 </button>
               </div>
             </div>
+
+            {/* Step 3 Confirmation / Enter Finalize Action */}
+            {activeShortcutStep === 'CONFIRM' && (
+              <div className="pt-2 border-t border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+                <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 text-white flex items-center justify-between shadow-md">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 font-mono text-[11px] font-black border border-emerald-400/40">
+                      ENTER ↵
+                    </span>
+                    <span className="text-xs font-bold">Press ENTER to Complete Order</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveShortcutStep(null);
+                      handleFinalizeCheckout();
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white text-emerald-900 text-xs font-black hover:bg-emerald-50 transition cursor-pointer shadow-xs"
+                  >
+                    Finish (₱{grandTotal.toFixed(2)})
+                  </button>
+                </div>
+              </div>
+            )}
 
           </div>
 
@@ -1735,21 +2016,28 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                   disabled={cart.length === 0}
                   onClick={() => {
                     if (cart.length === 0) return;
-                    if (selectedStaff) {
+                    if (activeShortcutStep === 'CONFIRM') {
+                      setActiveShortcutStep(null);
+                      handleFinalizeCheckout();
+                    } else if (selectedStaff) {
                       setCheckoutWizardStep('ORDER_NATURE');
                     } else {
                       initiateCheckout();
                     }
                   }}
                   className={`h-12 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer shadow-md ${
-                    cart.length > 0
-                      ? 'bg-blue-600 hover:bg-blue-500 text-white animate-pulse hover:animate-none'
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    activeShortcutStep === 'CONFIRM'
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white ring-4 ring-emerald-400 shadow-xl animate-pulse scale-[1.02]'
+                      : cart.length > 0
+                        ? 'bg-blue-600 hover:bg-blue-500 text-white animate-pulse hover:animate-none'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   }`}
-                  title="Fast Keyboard Checkout [F9 or Enter]"
+                  title={activeShortcutStep === 'CONFIRM' ? "Confirm and Complete Order [Enter]" : "Fast Keyboard Checkout [F9 or Enter]"}
                 >
-                  <span className="px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 font-mono text-[9px] font-bold">F9</span>
-                  <span>Fast Checkout</span>
+                  <span className="px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 font-mono text-[9px] font-bold">
+                    {activeShortcutStep === 'CONFIRM' ? '↵' : 'F9'}
+                  </span>
+                  <span>{activeShortcutStep === 'CONFIRM' ? 'Confirm Sale' : 'Fast Checkout'}</span>
                 </button>
 
                 <button
