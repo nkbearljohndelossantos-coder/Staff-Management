@@ -164,14 +164,22 @@ export function AppProvider({ children }) {
     return saved ? JSON.parse(saved) : INITIAL_CASH_ADVANCES;
   });
 
-  // Canteen Inventory Supplies (Official 355 products from Canteen_Inventory.xlsx)
+  // Canteen Inventory Supplies (Official 355 products from Canteen_Inventory.xlsx with zero initial quantity)
   const [canteenInventory, setCanteenInventory] = useState(() => {
-    const saved = localStorage.getItem('nkb_canteen_inventory');
-    if (saved) {
-      try {
+    try {
+      const zeroedMigration = localStorage.getItem('nkb_canteen_inventory_zeroed_v1');
+      if (!zeroedMigration) {
+        localStorage.setItem('nkb_canteen_inventory_zeroed_v1', 'true');
+        localStorage.setItem('nkb_canteen_inventory', JSON.stringify(INITIAL_CANTEEN_INVENTORY));
+        return [...INITIAL_CANTEEN_INVENTORY];
+      }
+      const saved = localStorage.getItem('nkb_canteen_inventory');
+      if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {}
+      }
+    } catch (e) {
+      console.error('Failed to initialize canteen inventory:', e);
     }
     return [...INITIAL_CANTEEN_INVENTORY];
   });
