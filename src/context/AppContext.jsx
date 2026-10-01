@@ -31,6 +31,7 @@ import { computeEmployeePayroll } from '../utils/payrollCalculations';
 import { logAuditEvent, getAuditLogs } from '../utils/auditLogger';
 import { getOfflineQueue, clearOfflineQueue, initOfflineSyncListener } from '../utils/offlineSync';
 import { scanForAnomalies, saveAnomalyEvaluation, computeExecutiveRiskSummary, getStoredEvaluations } from '../utils/anomalyDetector';
+import { formatStaffName } from '../utils/staffUtils';
 
 const AppContext = createContext(null);
 
@@ -61,8 +62,16 @@ export function AppProvider({ children }) {
           });
           return merged.map(s => {
             const isTargetITAdmin = s.employeeId === 'NKB052026-0014' || s.id === 'emp-nkb052026-0014';
+            const upperLast = (s.lastName || '').trim().toUpperCase();
+            const upperFirst = (s.firstName || '').trim().toUpperCase();
+            const raw = upperLast && upperFirst && upperLast !== upperFirst 
+              ? `${upperLast}, ${upperFirst}` 
+              : (s.rawName ? s.rawName.trim().toUpperCase() : (upperLast || upperFirst || 'STAFF MEMBER'));
             return {
               ...s,
+              firstName: upperFirst,
+              lastName: upperLast,
+              rawName: raw,
               role: isTargetITAdmin ? 'it_admin' : (s.role || 'employee'),
               positionId: isTargetITAdmin ? 'pos-it' : s.positionId,
               positionTitle: isTargetITAdmin ? 'IT Systems Administrator' : s.positionTitle,
@@ -324,6 +333,9 @@ export function AppProvider({ children }) {
         if (parsed) {
           if (parsed.employeeId === 'NKB052026-0014' || parsed.staffId === 'emp-nkb052026-0014' || parsed.email === 'earljohn.delossantos@nkb.com') {
             parsed.role = 'it_admin';
+          }
+          if (parsed.name) {
+            parsed.name = formatStaffName(parsed);
           }
           return parsed;
         }
@@ -874,7 +886,7 @@ export function AppProvider({ children }) {
       }
       const userObj = {
         staffId: found.id,
-        name: `${found.firstName} ${found.lastName}`,
+        name: formatStaffName(found),
         email: found.email,
         role: found.role || 'employee',
         employeeId: found.employeeId,
@@ -912,7 +924,7 @@ export function AppProvider({ children }) {
     const userRole = found.role || 'employee';
     const userObj = {
       staffId: found.id,
-      name: `${found.firstName} ${found.lastName}`,
+      name: formatStaffName(found),
       email: found.email,
       role: userRole,
       employeeId: found.employeeId,
@@ -949,6 +961,9 @@ export function AppProvider({ children }) {
     const employmentType = data.employmentType || 'regular';
     const generatedId = data.employeeId || generateNextEmployeeId(staffList, employmentType, 2026);
     const barcodeVal = formatBarcodeValue(generatedId);
+    const upperFirst = (data.firstName || '').trim().toUpperCase();
+    const upperLast = (data.lastName || '').trim().toUpperCase();
+    const raw = upperLast && upperFirst ? `${upperLast}, ${upperFirst}` : (data.rawName || upperLast || upperFirst).toUpperCase();
     
     const newStaff = {
       id: `staff-${Date.now()}`,
@@ -956,13 +971,16 @@ export function AppProvider({ children }) {
       barcodeValue: barcodeVal,
       status: 'active',
       employmentType,
-      avatar: data.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.firstName}_${data.lastName}`,
+      avatar: data.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${upperFirst}_${upperLast}`,
       pin: data.pin || '12345678',
-      ...data
+      ...data,
+      firstName: upperFirst,
+      lastName: upperLast,
+      rawName: raw
     };
 
     setStaffList(prev => [newStaff, ...prev]);
-    showToast(`Added staff ${newStaff.firstName} ${newStaff.lastName} with ID ${generatedId}`);
+    showToast(`Added staff ${formatStaffName(newStaff)} with ID ${generatedId}`);
     return newStaff;
   };
 
@@ -971,14 +989,29 @@ export function AppProvider({ children }) {
       showToast('Access Denied: Only HR Management can modify staff profiles.', 'error');
       return;
     }
-    setStaffList(prev => prev.map(s => s.id === id ? { ...s, ...data } : s));
+    const cleanData = { ...data };
+    if (cleanData.firstName !== undefined) cleanData.firstName = cleanData.firstName.trim().toUpperCase();
+    if (cleanData.lastName !== undefined) cleanData.lastName = cleanData.lastName.trim().toUpperCase();
+    if (cleanData.firstName && cleanData.lastName) {
+      cleanData.rawName = `${cleanData.lastName}, ${cleanData.firstName}`;
+    }
+    setStaffList(prev => prev.map(s => {
+      if (s.id === id) {
+        const merged = { ...s, ...cleanData };
+        if (!cleanData.rawName) {
+          merged.rawName = formatStaffName(merged);
+        }
+        return merged;
+      }
+      return s;
+    }));
     setCurrentUser(prev => {
       if (prev && prev.staffId === id) {
         return {
           ...prev,
-          ...data,
-          name: data.firstName && data.lastName ? `${data.firstName} ${data.lastName}` : prev.name,
-          avatar: data.avatar !== undefined ? data.avatar : prev.avatar
+          ...cleanData,
+          name: formatStaffName({ ...prev, ...cleanData }),
+          avatar: cleanData.avatar !== undefined ? cleanData.avatar : prev.avatar
         };
       }
       return prev;
@@ -1085,7 +1118,7 @@ export function AppProvider({ children }) {
       const otMsg = approvedOT 
         ? ` (${approvedOT.hours}h OT credited · HR authorized)` 
         : ` (Reminder: Overtime requires prior HR request with reason)`;
-      showToast(`Clock-Out registered for ${staff.firstName} ${staff.lastName} at ${nowTimeStr}${otMsg}`);
+      showToast(`Clock-Out registered for ${formatStaffName(staff)} at ${nowTimeStr}${otMsg}`);
       return { success: true, action: 'out', staff, time: nowTimeStr, otCredited: creditedOtHours };
     } else {
       // Clock In
@@ -1100,7 +1133,7 @@ export function AppProvider({ children }) {
         lateMinutes: 0
       };
       setAttendanceLogs(prev => [newLog, ...prev]);
-      showToast(`Clock-In registered for ${staff.firstName} ${staff.lastName} at ${nowTimeStr}`);
+      showToast(`Clock-In registered for ${formatStaffName(staff)} at ${nowTimeStr}`);
       return { success: true, action: 'in', staff, time: nowTimeStr };
     }
   };
@@ -2497,7 +2530,7 @@ export function AppProvider({ children }) {
       id: `po-${Date.now()}`,
       poNumber,
       staffId,
-      staffName: `${staff.firstName} ${staff.lastName}`,
+      staffName: formatStaffName(staff),
       departmentName: staff.departmentId,
       items: items.map(it => ({
         id: it.id,

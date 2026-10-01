@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import PayslipDocument from '../payslip/PayslipDocument';
 import GovernmentRemittanceModal from './GovernmentRemittanceModal';
+import { formatStaffName } from '../../utils/staffUtils';
 
 export default function PayRunDetails({ payRunId, onBack }) {
   const { payRuns, staffList, calculatePayRun, approvePayRun, disbursePayRun, isAccounting } = useApp();
@@ -23,7 +24,7 @@ export default function PayRunDetails({ payRunId, onBack }) {
     payRun.items.forEach(item => {
       const staff = staffList.find(s => s.id === item.staffId);
       if (staff) {
-        const line = `"${staff.employeeId}","${staff.firstName} ${staff.lastName}","${staff.bankName}","${staff.bankAccount}","${item.netPay}"`;
+        const line = `"${staff.employeeId}","${formatStaffName(staff)}","${staff.bankName}","${staff.bankAccount}","${item.netPay}"`;
         csvContent += line + "\n";
       }
     });
@@ -209,7 +210,7 @@ export default function PayRunDetails({ payRunId, onBack }) {
                   return (
                     <tr key={item.staffId} className="hover:bg-slate-50/80 transition">
                       <td className="py-3 px-4">
-                        <div className="font-bold text-slate-900">{staff.firstName} {staff.lastName}</div>
+                        <div className="font-bold text-slate-900">{formatStaffName(staff)}</div>
                         <div className="font-mono text-[10px] text-slate-500">{staff.employeeId}</div>
                       </td>
                       <td className="py-3 px-4 font-mono">

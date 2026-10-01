@@ -44,7 +44,6 @@ import CardVoidModal from './CardVoidModal';
 import GatePassModal from './GatePassModal';
 import CanteenScannerTerminal from './CanteenScannerTerminal';
 import CanteenReportsSection from './CanteenReportsSection';
-import CanteenPassModal from './CanteenPassModal';
 import ThermalReceiptView from './ThermalReceiptView';
 import BarcodeLabelSheet from './BarcodeLabelSheet';
 import CanteenZReadingModal from './CanteenZReadingModal';
@@ -102,7 +101,6 @@ export default function CanteenHub() {
   } = useApp();
 
   const [activeSubtab, setActiveSubtab] = useState('pos'); // 'pos', 'inventory', 'barcodes', 'orders', 'tracking', 'reports'
-  const [showCanteenPassModal, setShowCanteenPassModal] = useState(false);
   
   // POS Register State
   const [posBarcodeQuery, setPosBarcodeQuery] = useState('');
@@ -172,7 +170,6 @@ export default function CanteenHub() {
   // Progressive Escape dismissal (Priority 40 - MODAL)
   useEscapeKey('canteen-edit-supply-modal', ESCAPE_PRIORITY.MODAL, Boolean(editingSupplyItem), () => setEditingSupplyItem(null));
   useEscapeKey('canteen-category-modal', ESCAPE_PRIORITY.MODAL, showCategoryModal, () => setShowCategoryModal(false));
-  useEscapeKey('canteen-pass-modal-hub', ESCAPE_PRIORITY.MODAL, showCanteenPassModal, () => setShowCanteenPassModal(false));
   useEscapeKey('canteen-void-receipt-hub', ESCAPE_PRIORITY.MODAL, Boolean(selectedVoidReceipt), () => setSelectedVoidReceipt(null));
 
   // Helper to detect if a product has no valid barcode assigned
@@ -490,16 +487,6 @@ export default function CanteenHub() {
             >
               <Tag className="h-3.5 w-3.5 text-cyan-400" />
               <span>🏷️ Barcode Stickers</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowCanteenPassModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-bold transition cursor-pointer shadow-sm"
-              title="Print & View Official Canteen Barcode Pass (NKBCANTEEN)"
-            >
-              <Store className="h-3.5 w-3.5 text-amber-400" />
-              <span>🪪 Canteen Barcode Pass</span>
             </button>
 
             <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 font-mono">
@@ -1397,7 +1384,6 @@ export default function CanteenHub() {
         <CanteenReportsSection 
           onShowReceipt={(r) => { setLastReceipt(r); }}
           onShowGatePass={(gp) => { setLastGatePass(gp); setSelectedGatePass(gp); }}
-          onShowCanteenPass={() => setShowCanteenPassModal(true)}
         />
       )}
 
@@ -1857,13 +1843,6 @@ export default function CanteenHub() {
         <GatePassModal
           gatePass={selectedGatePass}
           onClose={() => setSelectedGatePass(null)}
-        />
-      )}
-
-      {/* Official Canteen Barcode Pass Modal */}
-      {showCanteenPassModal && (
-        <CanteenPassModal
-          onClose={() => setShowCanteenPassModal(false)}
         />
       )}
 

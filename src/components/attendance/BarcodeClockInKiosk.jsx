@@ -22,6 +22,7 @@ import { useApp } from '../../context/AppContext';
 import { getOfflineQueue, queueOfflineAction, clearOfflineQueue } from '../../utils/offlineSync';
 import { playPunchChime, playErrorBuzz } from '../../utils/audioFeedback';
 import { resolveStaffFromScan } from '../../utils/scanResolver';
+import { formatStaffName } from '../../utils/staffUtils';
 
 export default function BarcodeClockInKiosk() {
   const {
@@ -341,7 +342,7 @@ export default function BarcodeClockInKiosk() {
                           CLOCK-{scanResult.action.toUpperCase()} CONFIRMED
                         </span>
                         <h4 className="text-sm font-black text-slate-900 mt-1">
-                          {scanResult.staff.firstName} {scanResult.staff.lastName} ({scanResult.staff.employeeId})
+                          {formatStaffName(scanResult.staff)} ({scanResult.staff.employeeId})
                         </h4>
                         <p className="text-xs text-slate-600">
                           Timestamp: <strong className="text-slate-900 font-mono">{scanResult.time}</strong> · Logged into payroll timesheet.
@@ -387,7 +388,7 @@ export default function BarcodeClockInKiosk() {
                       <tr key={log.id} className="hover:bg-slate-50/80 transition">
                         <td className="py-3 px-4">
                           <div className="font-bold text-slate-900">
-                            {staff ? `${staff.firstName} ${staff.lastName}` : 'Employee'}
+                            {staff ? formatStaffName(staff) : 'Employee'}
                           </div>
                           <div className="text-[10px] font-mono text-slate-500">{staff?.employeeId}</div>
                         </td>

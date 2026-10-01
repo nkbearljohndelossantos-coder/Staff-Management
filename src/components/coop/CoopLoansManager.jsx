@@ -22,6 +22,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import { LOAN_CATEGORIES } from '../../data/mockData';
+import { formatStaffName } from '../../utils/staffUtils';
 
 export default function CoopLoansManager() {
   const {
@@ -526,7 +527,7 @@ export default function CoopLoansManager() {
                             />
                             <div>
                               <div className="font-bold text-slate-900">
-                                {staff.firstName} {staff.lastName}
+                                {formatStaffName(staff)}
                               </div>
                               <div className="text-[11px] text-slate-500">{staff.email}</div>
                             </div>

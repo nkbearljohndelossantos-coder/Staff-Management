@@ -3,6 +3,7 @@ import { X, Printer, ShieldCheck, QrCode, Copy, Check, ScanLine } from 'lucide-r
 import BarcodeView from '../common/BarcodeView';
 import QRCodeView from '../common/QRCodeView';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
+import { formatStaffName } from '../../utils/staffUtils';
 
 export default function StaffBadgeModal({ staff, department, position, onClose }) {
   if (!staff) return null;
@@ -77,7 +78,7 @@ export default function StaffBadgeModal({ staff, department, position, onClose }
             {/* Staff Info */}
             <div className="text-center mt-3">
               <h4 className="font-extrabold text-base tracking-tight text-slate-900">
-                {staff.firstName} {staff.lastName}
+                {formatStaffName(staff)}
               </h4>
               <p className="text-xs text-slate-700 font-semibold mt-0.5">
                 {position?.title || 'Team Member'}

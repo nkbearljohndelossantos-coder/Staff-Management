@@ -31,10 +31,16 @@ export const INITIAL_POSITIONS = [
   { id: 'pos-it', title: 'IT Systems Administrator', departmentId: 'dept-it' }
 ];
 
-// Registered Personnel from Employee Masterlist.xlsx (all salaries = 0, no demo accounts)
-export const INITIAL_STAFF = generatedStaffData.staff.map(s => ({
-  ...s,
-  dateHired: s.hireDate || '2026-05-01',
+export const INITIAL_STAFF = generatedStaffData.staff.map(s => {
+  const last = (s.lastName || '').trim().toUpperCase();
+  const first = (s.firstName || '').trim().toUpperCase();
+  const raw = last && first && last !== first ? `${last}, ${first}` : (s.rawName || last || first).trim().toUpperCase();
+  return {
+    ...s,
+    firstName: first,
+    lastName: last,
+    rawName: raw,
+    dateHired: s.hireDate || '2026-05-01',
   hireDate: s.hireDate || '2026-05-01',
   birthday: s.birthday || '1995-06-15',
   address: s.address || 'Subic Bay Gateway Park, Olongapo City, Zambales',
@@ -50,7 +56,8 @@ export const INITIAL_STAFF = generatedStaffData.staff.map(s => ({
   vacationLeaveTotal: s.vacationLeaveTotal !== undefined ? s.vacationLeaveTotal : 5,
   vacationLeaveRemaining: s.vacationLeaveRemaining !== undefined ? s.vacationLeaveRemaining : 5,
   documents: s.documents || []
-}));
+  };
+});
 
 // No demo attendance logs
 export const INITIAL_ATTENDANCE = [];

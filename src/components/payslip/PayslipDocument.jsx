@@ -3,6 +3,7 @@ import { X, Printer } from 'lucide-react';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import BarcodeView from '../common/BarcodeView';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
+import { formatStaffName } from '../../utils/staffUtils';
 
 export default function PayslipDocument({ staff, payRun, item, payItem, onClose }) {
   const currentItem = item || payItem;
@@ -81,7 +82,7 @@ export default function PayslipDocument({ staff, payRun, item, payItem, onClose 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <span className="text-[10px] text-slate-500 uppercase font-semibold block">Employee Name</span>
-                <span className="font-bold text-slate-900 text-xs">{staff.firstName} {staff.lastName}</span>
+                <span className="font-bold text-slate-900 text-xs">{formatStaffName(staff)}</span>
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 uppercase font-semibold block">Employee ID</span>

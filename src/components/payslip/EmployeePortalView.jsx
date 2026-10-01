@@ -33,6 +33,7 @@ import PayslipDocument from './PayslipDocument';
 import GatePassModal from '../canteen/GatePassModal';
 import BIR2316Modal from '../payroll/BIR2316Modal';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
+import { formatStaffName } from '../../utils/staffUtils';
 
 export default function EmployeePortalView() {
   const {
@@ -221,7 +222,7 @@ export default function EmployeePortalView() {
               )}
             </div>
             <h2 className="text-2xl font-black text-slate-900">
-              {currentStaff?.firstName} {currentStaff?.lastName}
+              {currentStaff ? formatStaffName(currentStaff) : 'EMPLOYEE'}
             </h2>
             <p className="text-xs text-slate-600">
               {pos?.title || 'Staff'} · <span className="text-slate-800 font-semibold">{dept?.name || 'Department'}</span>
@@ -2055,7 +2056,7 @@ export default function EmployeePortalView() {
                   }
                   fileLeaveRequest({
                     staffId: currentStaff.id,
-                    staffName: `${currentStaff.firstName} ${currentStaff.lastName}`,
+                    staffName: formatStaffName(currentStaff),
                     employeeId: currentStaff.employeeId,
                     type: leaveForm.type,
                     startDate: leaveForm.startDate,
@@ -2198,7 +2199,7 @@ export default function EmployeePortalView() {
                   const isRetro = otForm.date < new Date().toISOString().split('T')[0];
                   fileOvertimeRequest({
                     staffId: currentStaff.id,
-                    staffName: `${currentStaff.firstName} ${currentStaff.lastName}`,
+                    staffName: formatStaffName(currentStaff),
                     employeeId: currentStaff.employeeId,
                     date: otForm.date,
                     hours: Number(otForm.hours),

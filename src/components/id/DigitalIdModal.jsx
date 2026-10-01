@@ -19,6 +19,7 @@ import BarcodeView from '../common/BarcodeView';
 import QRCodeView from '../common/QRCodeView';
 import QRCode from 'qrcode';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
+import { formatStaffName } from '../../utils/staffUtils';
 
 export default function DigitalIdModal({ staff, department, position, onClose }) {
   if (!staff) return null;
@@ -32,7 +33,7 @@ export default function DigitalIdModal({ staff, department, position, onClose })
 
   const employeeId = staff.employeeId || staff.id || 'NKB-STAFF';
   const barcodeValue = staff.barcodeValue || employeeId;
-  const fullName = `${staff.firstName || ''} ${staff.lastName || ''}`.trim() || 'Employee';
+  const fullName = formatStaffName(staff);
   const deptName = department?.name || staff.departmentName || 'Operations';
   const posTitle = position?.title || staff.positionTitle || 'Staff Member';
   const qrPayload = `NKB-STAFF:${employeeId}:${fullName.replace(/\s+/g, '_')}:AUTH-2026`;

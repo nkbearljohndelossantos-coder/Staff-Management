@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Search, UserPlus, Filter, Edit3, Trash2, DollarSign, Users, Building, ScanLine, QrCode, Eye, Calendar, Shield } from 'lucide-react';
+import { Search, UserPlus, Filter, Edit3, Trash2, DollarSign, Users, Building, ScanLine, QrCode, Eye, Calendar, Shield, Paperclip } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
+import { formatStaffName } from '../../utils/staffUtils';
 import StaffBadgeModal from './StaffBadgeModal';
 import StaffFormModal from './StaffFormModal';
 import StaffDetailModal from './StaffDetailModal';
@@ -161,7 +162,7 @@ export default function StaffDirectory() {
                 <th className="py-3 px-4">Position &amp; Department</th>
                 <th className="py-3 px-4">Date Hired</th>
                 <th className="py-3 px-4">Salary Rate &amp; Filed Basis</th>
-                <th className="py-3 px-4 text-center">Badge</th>
+                <th className="py-3 px-4 text-center">201 Files &amp; Pass</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -196,7 +197,7 @@ export default function StaffDirectory() {
                           />
                           <div>
                             <div className="font-bold text-slate-900 text-xs group-hover:text-blue-600 transition">
-                              {staff.firstName} {staff.lastName}
+                              {formatStaffName(staff)}
                             </div>
                             <div className="text-[11px] text-slate-500">{staff.email}</div>
                           </div>
@@ -269,17 +270,32 @@ export default function StaffDirectory() {
                         </div>
                       </td>
 
-                      {/* Digital ID (Barcode & QR) Button */}
+                      {/* 201 Files & Digital ID Pass Button */}
                       <td className="py-3 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => openDigitalId(staff)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1.5 transition cursor-pointer shadow-sm"
-                          title="View Digital ID with Barcode & QR"
-                        >
-                          <QrCode className="h-3.5 w-3.5 text-cyan-600" />
-                          <span>Digital ID</span>
-                        </button>
+                        <div className="inline-flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setDetailModalStaff(staff)}
+                            className={`px-2 py-1 rounded-lg border text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer shadow-xs ${
+                              (staff.documents && staff.documents.length > 0)
+                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                            }`}
+                            title="Upload or view 201 Requirements & Attachments"
+                          >
+                            <Paperclip className="h-3 w-3 text-emerald-600" />
+                            <span>{staff.documents?.length ? `${staff.documents.length} Files` : 'Attach'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openDigitalId(staff)}
+                            className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer shadow-xs"
+                            title="View Digital ID with Barcode & QR"
+                          >
+                            <QrCode className="h-3 w-3 text-cyan-600" />
+                            <span>Pass</span>
+                          </button>
+                        </div>
                       </td>
 
                       {/* Actions */}
@@ -308,6 +324,11 @@ export default function StaffDirectory() {
                           <TableActionDropdown
                             id={`staff-${staff.id}`}
                             actions={[
+                              {
+                                label: `201 Attachments (${staff.documents?.length || 0})`,
+                                icon: Paperclip,
+                                onClick: () => setDetailModalStaff(staff)
+                              },
                               {
                                 label: 'View Profile & Deductions',
                                 icon: Eye,

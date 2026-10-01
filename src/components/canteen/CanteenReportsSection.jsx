@@ -31,7 +31,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import CanteenZReadingModal from './CanteenZReadingModal';
 
-export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, onShowCanteenPass }) {
+export default function CanteenReportsSection({ onShowReceipt, onShowGatePass }) {
   const { 
     canteenReceipts = [], 
     personalPurchaseOrders = [], 
@@ -431,18 +431,6 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass, o
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {onShowCanteenPass && (
-            <button
-              type="button"
-              onClick={onShowCanteenPass}
-              className="h-10 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-2 border border-slate-700 transition cursor-pointer"
-              title="View and print official Canteen Barcode Pass"
-            >
-              <Store className="h-4 w-4 text-emerald-400" />
-              <span>🪪 Canteen Barcode Pass</span>
-            </button>
-          )}
-
           <button
             type="button"
             onClick={() => {
