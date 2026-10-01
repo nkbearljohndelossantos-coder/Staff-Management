@@ -1821,55 +1821,74 @@ export function AppProvider({ children }) {
 
   // Canteen Hub & Inventory Operations
   const addSupplyItem = (data) => {
-    if (currentUser && !isCanteen) {
-      showToast('Access Denied: Only Canteen Management or Super Admin can encode supplies.', 'error');
+    if (currentUser && !isCanteen && !isHR) {
+      showToast('Access Denied: Only Canteen Management, HR, or Super Admin can encode supplies.', 'error');
       return { success: false };
     }
+    const cleanName = (data.name || '').trim();
+    if (!cleanName) {
+      showToast('Product name is required.', 'error');
+      return { success: false };
+    }
+    const qty = Math.max(0, Number(data.quantity) || 0);
+    const reorder = Math.max(1, Number(data.reorderLevel) || 10);
+    const finalBarcode = (data.barcode && data.barcode.trim()) 
+      ? data.barcode.trim() 
+      : `NKB-CAN-${Math.floor(100000 + Math.random() * 900000)}`;
+
     const newItem = {
-      id: `prod-${Date.now()}`,
-      barcode: (data.barcode && data.barcode.trim()) ? data.barcode.trim() : '',
-      name: data.name,
-      company: data.company || 'Direct Supplier',
-      brand: data.brand || 'General',
+      id: data.id || `prod-${Date.now()}`,
+      barcode: finalBarcode,
+      name: cleanName,
+      company: (data.company || '').trim() || 'Direct Supplier',
+      brand: (data.brand || '').trim() || 'General',
       category: data.category || 'General Supplies',
       costPrice: Number(data.costPrice) || 0,
       sellingPrice: Number(data.sellingPrice) || 0,
-      quantity: Number(data.quantity) || 0,
-      size: data.size || '',
-      reorderLevel: Number(data.reorderLevel) || 10,
+      quantity: qty,
+      size: (data.size || '').trim() || 'Standard',
+      reorderLevel: reorder,
+      stockStatus: qty > reorder ? 'In Stock' : (qty > 0 ? 'Low Stock' : 'Out of Stock'),
       unit: data.unit || 'Piece',
       expirationDate: data.expirationDate || '',
       isLateEncoded: !!data.isLateEncoded,
       lateReason: data.isLateEncoded ? (data.lateReason || 'Delayed vendor delivery invoice encoding') : null,
       encodedAt: data.isLateEncoded && data.customDate ? new Date(data.customDate).toISOString() : new Date().toISOString(),
-      notes: data.notes || (data.isLateEncoded ? '[Late Encoded Inbound Stock]' : 'Standard inbound')
+      notes: data.notes || (data.isLateEncoded ? '[Late Encoded Inbound Stock]' : 'Standard catalog entry')
     };
 
     setCanteenInventory(prev => [newItem, ...prev]);
-    showToast(`Added supply item "${newItem.name}" (${newItem.isLateEncoded ? 'Late Encoded' : 'Regular Entry'}).`);
+    showToast(`Added "${newItem.name}" (${newItem.size}) with ${newItem.quantity} units to inventory.`);
     return { success: true, item: newItem };
   };
 
   const updateSupplyItem = (id, data) => {
-    if (currentUser && !isCanteen) {
-      showToast('Access Denied: Only Canteen Management or Super Admin can update supplies.', 'error');
+    if (currentUser && !isCanteen && !isHR) {
+      showToast('Access Denied: Only Canteen Management, HR, or Super Admin can update supplies.', 'error');
       return { success: false };
     }
-    setCanteenInventory(prev => prev.map(item => item.id === id ? {
-      ...item,
-      ...data,
-      size: data.size !== undefined ? data.size : item.size,
-      costPrice: data.costPrice !== undefined ? Number(data.costPrice) : item.costPrice,
-      sellingPrice: data.sellingPrice !== undefined ? Number(data.sellingPrice) : item.sellingPrice,
-      quantity: data.quantity !== undefined ? Number(data.quantity) : item.quantity
-    } : item));
+    setCanteenInventory(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      const nextQty = data.quantity !== undefined ? Math.max(0, Number(data.quantity)) : item.quantity;
+      const nextReorder = data.reorderLevel !== undefined ? Number(data.reorderLevel) : (item.reorderLevel || 10);
+      return {
+        ...item,
+        ...data,
+        size: data.size !== undefined ? data.size : item.size,
+        costPrice: data.costPrice !== undefined ? Number(data.costPrice) : item.costPrice,
+        sellingPrice: data.sellingPrice !== undefined ? Number(data.sellingPrice) : item.sellingPrice,
+        quantity: nextQty,
+        reorderLevel: nextReorder,
+        stockStatus: nextQty > nextReorder ? 'In Stock' : (nextQty > 0 ? 'Low Stock' : 'Out of Stock')
+      };
+    }));
     showToast('Supply item inventory record updated.');
     return { success: true };
   };
 
   const deleteSupplyItem = (id) => {
-    if (currentUser && !isCanteen) {
-      showToast('Access Denied: Only Canteen Management or Super Admin can remove supplies.', 'error');
+    if (currentUser && !isCanteen && !isHR) {
+      showToast('Access Denied: Only Canteen Management, HR, or Super Admin can remove supplies.', 'error');
       return { success: false };
     }
     setCanteenInventory(prev => prev.filter(item => item.id !== id));
@@ -1878,8 +1897,8 @@ export function AppProvider({ children }) {
   };
 
   const clearAllCanteenInventory = () => {
-    if (currentUser && !isCanteen) {
-      showToast('Access Denied: Only Canteen Management or Super Admin can clear inventory.', 'error');
+    if (currentUser && !isCanteen && !isHR) {
+      showToast('Access Denied: Only Canteen Management, HR, or Super Admin can clear inventory.', 'error');
       return { success: false };
     }
     setCanteenInventory([]);

@@ -50,6 +50,7 @@ import CanteenZReadingModal from './CanteenZReadingModal';
 import SalesInvoiceModal from './SalesInvoiceModal';
 import SalesInvoiceDetailModal from './SalesInvoiceDetailModal';
 import BarcodeView from '../common/BarcodeView';
+import NewSupplyItemModal from './NewSupplyItemModal';
 import canteenInventoryData from '../../data/canteenInventory.json';
 import { playScanBeep, playErrorBuzz } from '../../utils/audioFeedback';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
@@ -121,6 +122,31 @@ export default function CanteenHub() {
   const [selectedInvoiceDetail, setSelectedInvoiceDetail] = useState(null);
   const [invoiceSearch, setInvoiceSearch] = useState('');
 
+  // New Supply Item Modal State & Keyboard Shortcut (Alt+N, Alt+I, or Insert)
+  const [showNewItemModal, setShowNewItemModal] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (showNewItemModal) return;
+
+      const isAltN = e.altKey && (e.key === 'n' || e.key === 'N');
+      const isAltI = e.altKey && (e.key === 'i' || e.key === 'I');
+      const isInsert = e.key === 'Insert' && activeSubtab === 'inventory';
+
+      if (isAltN || isAltI || isInsert) {
+        e.preventDefault();
+        if (activeSubtab !== 'inventory') {
+          setActiveSubtab('inventory');
+        }
+        setShowNewItemModal(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showNewItemModal, activeSubtab]);
+
+  useEscapeKey('canteen-new-item-modal', ESCAPE_PRIORITY.MODAL, showNewItemModal, () => setShowNewItemModal(false));
   useEscapeKey('canteen-hub-z-reading-modal', ESCAPE_PRIORITY.MODAL, showZReadingModal, () => setShowZReadingModal(false));
 
 
@@ -551,6 +577,20 @@ export default function CanteenHub() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 justify-end">
+              {/* New Item Button with Keyboard Shortcut Badge */}
+              <button
+                type="button"
+                onClick={() => setShowNewItemModal(true)}
+                className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-black flex items-center gap-2 transition cursor-pointer shadow-sm shadow-emerald-600/20"
+                title="Add New Supply Item into Inventory (Shortcut: Alt + N or Alt + I)"
+              >
+                <Plus className="h-4 w-4 text-white" />
+                <span>New Item</span>
+                <kbd className="px-1.5 py-0.5 rounded bg-emerald-700/90 text-[10px] font-mono text-emerald-100 border border-emerald-500/40">
+                  Alt+N
+                </kbd>
+              </button>
+
               {/* Manage / Add Categories Button */}
               <button
                 type="button"
@@ -615,8 +655,20 @@ export default function CanteenHub() {
                           {inventorySearch ? 'No supply items match your search filter.' : 'No supply items found in inventory.'}
                         </p>
                         <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
-                          Canteen inventory is empty. Intake and record new supplies via the Sales Invoices subtab.
+                          Click "New Item" (Alt+N) to add a product or intake bulk supplies via New Sales Invoice.
                         </p>
+                        {!inventorySearch && (
+                          <div className="mt-4 flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowNewItemModal(true)}
+                              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              <span>Add New Item (Alt+N)</span>
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ) : (
@@ -1882,6 +1934,14 @@ export default function CanteenHub() {
         <SalesInvoiceDetailModal
           invoice={selectedInvoiceDetail}
           onClose={() => setSelectedInvoiceDetail(null)}
+        />
+      )}
+
+      {/* New Supply Item Modal */}
+      {showNewItemModal && (
+        <NewSupplyItemModal
+          isOpen={showNewItemModal}
+          onClose={() => setShowNewItemModal(false)}
         />
       )}
 
