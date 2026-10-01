@@ -388,6 +388,9 @@ export default function CanteenHub() {
       size: (editingSupplyItem.size || '').trim(),
       costPrice: cost,
       sellingPrice: price,
+      hasRetailPiece: Boolean(editingSupplyItem.hasRetailPiece || (Number(editingSupplyItem.retailPiecePrice) > 0)),
+      retailPiecePrice: parseFloat(editingSupplyItem.retailPiecePrice) || 0,
+      piecesPerPack: parseInt(editingSupplyItem.piecesPerPack, 10) || 0,
       quantity: qty,
       unit: editingSupplyItem.unit || 'Piece',
       expirationDate: editingSupplyItem.expirationDate || '',
@@ -640,7 +643,7 @@ export default function CanteenHub() {
                     <th className="px-4 py-3.5">Brand &amp; Category</th>
                     <th className="px-4 py-3.5 text-center">Size</th>
                     <th className="px-4 py-3.5 text-right">Cost Price</th>
-                    <th className="px-4 py-3.5 text-right">Selling Price</th>
+                    <th className="px-4 py-3.5 text-right">Wholesale / Retail Price</th>
                     <th className="px-4 py-3.5 text-center">Stock Qty</th>
                     <th className="px-4 py-3.5">Expiration (Optional)</th>
                     <th className="px-3 py-3.5 text-center">Action</th>
@@ -713,8 +716,30 @@ export default function CanteenHub() {
                           ₱{item.costPrice?.toFixed(2)}
                         </td>
 
-                        <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
-                          ₱{item.sellingPrice?.toFixed(2)}
+                        <td className="px-4 py-3 text-right">
+                          <div className="font-mono font-bold text-slate-900">
+                            ₱{item.sellingPrice?.toFixed(2)}
+                            {(item.unit === 'Box' || item.unit === 'Pack' || item.hasRetailPiece) && (
+                              <span className="text-[10px] text-slate-500 font-normal ml-1">
+                                /{item.unit || 'pack'}
+                              </span>
+                            )}
+                          </div>
+                          {Number(item.retailPiecePrice) > 0 && (
+                            <div className="mt-1 flex flex-col items-end">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-[10px] font-mono font-bold">
+                                <span>₱{Number(item.retailPiecePrice).toFixed(2)}/pc</span>
+                                <span className="text-[8px] uppercase tracking-wider text-amber-700 bg-amber-100 px-1 rounded font-black">
+                                  Retail
+                                </span>
+                              </span>
+                              {item.piecesPerPack > 0 && item.sellingPrice > 0 && (
+                                <span className="text-[9px] text-slate-400 font-mono mt-0.5">
+                                  ({item.piecesPerPack} pcs · ₱{(item.sellingPrice / item.piecesPerPack).toFixed(2)}/pc wholesale)
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </td>
 
                         <td className="px-4 py-3 text-center">
@@ -1720,6 +1745,118 @@ export default function CanteenHub() {
                     <option value="Box">Box</option>
                     <option value="Kg">Kg</option>
                   </select>
+                </div>
+
+                {/* Box & Pack Breakdown & Retail Piece Price Option in Edit Modal */}
+                <div className="sm:col-span-2 p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(editingSupplyItem.hasRetailPiece || (editingSupplyItem.unit === 'Box' || editingSupplyItem.unit === 'Pack') || Number(editingSupplyItem.retailPiecePrice) > 0)}
+                        onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, hasRetailPiece: e.target.checked }))}
+                        className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                      />
+                      <span className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+                        <Boxes className="h-4 w-4 text-amber-600" />
+                        <span>Box / Pack: Set Retail Price per Piece</span>
+                      </span>
+                    </label>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-200/70 text-amber-800 text-[10px] font-bold">
+                      Wholesale vs Retail
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-amber-800/90 leading-relaxed">
+                    Set a separate retail price for single pieces when sold separately from the box/pack. <strong>The retail price per piece will be more expensive than the wholesale price per piece</strong>.
+                  </p>
+
+                  {(editingSupplyItem.hasRetailPiece || editingSupplyItem.unit === 'Box' || editingSupplyItem.unit === 'Pack' || Number(editingSupplyItem.retailPiecePrice) > 0) && (
+                    <div className="space-y-3 pt-2 border-t border-amber-200/60 animate-in fade-in duration-150">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Pieces per Box/Pack */}
+                        <div>
+                          <label className="block text-xs font-bold text-amber-900 mb-1">
+                            Pieces per Box / Pack
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={editingSupplyItem.piecesPerPack ?? ''}
+                            onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, piecesPerPack: e.target.value }))}
+                            placeholder="e.g., 10, 24, 50 pcs"
+                            className="w-full h-10 px-3 rounded-xl border border-amber-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                          {Number(editingSupplyItem.piecesPerPack) > 0 && Number(editingSupplyItem.sellingPrice) > 0 && (
+                            <p className="text-[10px] text-amber-800 font-mono mt-1">
+                              Wholesale rate: <strong>₱{(Number(editingSupplyItem.sellingPrice) / Number(editingSupplyItem.piecesPerPack)).toFixed(2)}</strong> / piece
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Retail Price per Piece */}
+                        <div>
+                          <label className="block text-xs font-bold text-amber-900 mb-1">
+                            Retail Price per Piece (₱)
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2.5 text-xs font-bold text-amber-600">₱</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={editingSupplyItem.retailPiecePrice ?? ''}
+                              onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, retailPiecePrice: e.target.value }))}
+                              placeholder="e.g., 12.00"
+                              className="w-full h-10 pl-7 pr-3 rounded-xl border border-amber-400 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quick Markup Suggestions */}
+                      {Number(editingSupplyItem.piecesPerPack) > 0 && Number(editingSupplyItem.sellingPrice) > 0 && (
+                        <div className="p-2.5 rounded-xl bg-white/90 border border-amber-200 flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-bold text-amber-800">Suggested Retail Markups:</span>
+                          {[15, 20, 25, 30].map(pct => {
+                            const base = Number(editingSupplyItem.sellingPrice) / Number(editingSupplyItem.piecesPerPack);
+                            const sug = Math.ceil(base * (1 + pct / 100));
+                            return (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => setEditingSupplyItem(prev => ({ ...prev, retailPiecePrice: sug.toFixed(2) }))}
+                                className="px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-mono text-[10px] font-bold transition cursor-pointer"
+                              >
+                                +{pct}% (₱{sug.toFixed(2)})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Validation / Comparison Feedback */}
+                      {Number(editingSupplyItem.retailPiecePrice) > 0 && Number(editingSupplyItem.piecesPerPack) > 0 && Number(editingSupplyItem.sellingPrice) > 0 && (
+                        <div>
+                          {Number(editingSupplyItem.retailPiecePrice) > (Number(editingSupplyItem.sellingPrice) / Number(editingSupplyItem.piecesPerPack)) ? (
+                            <div className="flex items-center gap-1.5 text-emerald-800 text-[11px] font-bold bg-emerald-100/80 px-2.5 py-1.5 rounded-lg border border-emerald-300">
+                              <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                              <span>
+                                Retail price (₱{Number(editingSupplyItem.retailPiecePrice).toFixed(2)}/pc) is {Math.round(((Number(editingSupplyItem.retailPiecePrice) - (Number(editingSupplyItem.sellingPrice) / Number(editingSupplyItem.piecesPerPack))) / (Number(editingSupplyItem.sellingPrice) / Number(editingSupplyItem.piecesPerPack))) * 100)}% more expensive than wholesale rate (₱{(Number(editingSupplyItem.sellingPrice) / Number(editingSupplyItem.piecesPerPack)).toFixed(2)}/pc).
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-rose-800 text-[11px] font-bold bg-rose-100/80 px-2.5 py-1.5 rounded-lg border border-rose-300">
+                              <AlertCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                              <span>
+                                Note: Retail price (₱{Number(editingSupplyItem.retailPiecePrice).toFixed(2)}/pc) is not higher than wholesale rate (₱{(Number(editingSupplyItem.sellingPrice) / Number(editingSupplyItem.piecesPerPack)).toFixed(2)}/pc). Single pieces should be more expensive.
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div>

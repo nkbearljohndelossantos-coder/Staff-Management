@@ -56,6 +56,9 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
   const [barcode, setBarcode] = useState('');
   const [costPrice, setCostPrice] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
+  const [hasRetailPiece, setHasRetailPiece] = useState(false);
+  const [piecesPerPack, setPiecesPerPack] = useState('');
+  const [retailPiecePrice, setRetailPiecePrice] = useState('');
   const [category, setCategory] = useState('');
   const [brand, setBrand] = useState('');
   const [company, setCompany] = useState('');
@@ -81,6 +84,9 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
       setBarcode('');
       setCostPrice('');
       setSellingPrice('');
+      setHasRetailPiece(false);
+      setPiecesPerPack('');
+      setRetailPiecePrice('');
       setCategory(canteenCategories?.[0] || 'General Supplies');
       setBrand('');
       setCompany('R/L Abad Distribution');
@@ -96,6 +102,16 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
       }, 100);
     }
   }, [isOpen, canteenCategories]);
+
+  // Auto-activate retail piece option if size or unit indicates Box or Pack
+  useEffect(() => {
+    const s = (size || '').toLowerCase();
+    const u = (unit || '').toLowerCase();
+    if (s.includes('box') || s.includes('pack') || u === 'box' || u === 'pack') {
+      setHasRetailPiece(true);
+      setShowOptionalDetails(true);
+    }
+  }, [size, unit]);
 
   if (!isOpen) return null;
 
@@ -142,6 +158,9 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
       barcode: finalBarcode,
       costPrice: cost,
       sellingPrice: price,
+      hasRetailPiece: Boolean(hasRetailPiece || (Number(retailPiecePrice) > 0)),
+      retailPiecePrice: parseFloat(retailPiecePrice) || 0,
+      piecesPerPack: parseInt(piecesPerPack, 10) || 0,
       category: category || canteenCategories?.[0] || 'General Supplies',
       brand: brand.trim() || 'General',
       company: company.trim() || 'Direct Supplier',
@@ -160,6 +179,9 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
         setBarcode('');
         setCostPrice('');
         setSellingPrice('');
+        setHasRetailPiece(false);
+        setPiecesPerPack('');
+        setRetailPiecePrice('');
         setExpirationDate('');
         setErrorMessage('');
         setTimeout(() => {
@@ -440,6 +462,118 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
                       />
                     </div>
                   </div>
+                </div>
+
+                {/* Box & Pack Breakdown & Retail Piece Price Option */}
+                <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={hasRetailPiece}
+                        onChange={(e) => setHasRetailPiece(e.target.checked)}
+                        className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                      />
+                      <span className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+                        <Boxes className="h-4 w-4 text-amber-600" />
+                        <span>Box / Pack: Set Retail Price per Piece</span>
+                      </span>
+                    </label>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-200/70 text-amber-800 text-[10px] font-bold">
+                      Wholesale vs Retail
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-amber-800/90 leading-relaxed">
+                    Set a separate retail price for individual pieces when sold separately from the box/pack. <strong>The retail price per piece will be more expensive than the wholesale price per piece</strong>.
+                  </p>
+
+                  {hasRetailPiece && (
+                    <div className="space-y-3 pt-2 border-t border-amber-200/60 animate-in fade-in duration-150">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Pieces per Box/Pack */}
+                        <div>
+                          <label className="block text-xs font-bold text-amber-900 mb-1">
+                            Pieces per Box / Pack
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={piecesPerPack}
+                            onChange={(e) => setPiecesPerPack(e.target.value)}
+                            placeholder="e.g., 10, 24, 50 pcs"
+                            className="w-full h-10 px-3 rounded-xl border border-amber-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                          {piecesPerPack > 0 && Number(sellingPrice) > 0 && (
+                            <p className="text-[10px] text-amber-800 font-mono mt-1">
+                              Wholesale equivalent: <strong>₱{(Number(sellingPrice) / Number(piecesPerPack)).toFixed(2)}</strong> / piece
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Retail Price per Piece */}
+                        <div>
+                          <label className="block text-xs font-bold text-amber-900 mb-1">
+                            Retail Price per Piece (₱)
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2.5 text-xs font-bold text-amber-600">₱</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={retailPiecePrice}
+                              onChange={(e) => setRetailPiecePrice(e.target.value)}
+                              placeholder="e.g., 12.00"
+                              className="w-full h-10 pl-7 pr-3 rounded-xl border border-amber-400 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quick Markup Suggestions */}
+                      {piecesPerPack > 0 && Number(sellingPrice) > 0 && (
+                        <div className="p-2.5 rounded-xl bg-white/90 border border-amber-200 flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-bold text-amber-800">Suggested Retail Markups:</span>
+                          {[15, 20, 25, 30].map(pct => {
+                            const base = Number(sellingPrice) / Number(piecesPerPack);
+                            const sug = Math.ceil(base * (1 + pct / 100));
+                            return (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => setRetailPiecePrice(sug.toFixed(2))}
+                                className="px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-mono text-[10px] font-bold transition cursor-pointer"
+                              >
+                                +{pct}% (₱{sug.toFixed(2)})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Validation badge */}
+                      {Number(retailPiecePrice) > 0 && piecesPerPack > 0 && Number(sellingPrice) > 0 && (
+                        <div>
+                          {Number(retailPiecePrice) > (Number(sellingPrice) / Number(piecesPerPack)) ? (
+                            <div className="flex items-center gap-1.5 text-emerald-800 text-[11px] font-bold bg-emerald-100/80 px-2.5 py-1.5 rounded-lg border border-emerald-300">
+                              <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                              <span>
+                                Retail price (₱{Number(retailPiecePrice).toFixed(2)}/pc) is {Math.round(((Number(retailPiecePrice) - (Number(sellingPrice) / Number(piecesPerPack))) / (Number(sellingPrice) / Number(piecesPerPack))) * 100)}% more expensive than wholesale rate (₱{(Number(sellingPrice) / Number(piecesPerPack)).toFixed(2)}/pc).
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-rose-800 text-[11px] font-bold bg-rose-100/80 px-2.5 py-1.5 rounded-lg border border-rose-300">
+                              <AlertCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                              <span>
+                                Note: Retail price (₱{Number(retailPiecePrice).toFixed(2)}/pc) is not higher than wholesale rate (₱{(Number(sellingPrice) / Number(piecesPerPack)).toFixed(2)}/pc). Single pieces should be more expensive.
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Category & Unit */}

@@ -63,6 +63,7 @@ export default function CanteenItemScanModal({
   // Detail Entry Fields
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
+  const [pricingTier, setPricingTier] = useState('wholesale'); // 'wholesale' | 'retail_piece'
   const [discountPercent, setDiscountPercent] = useState(0);
   const [itemOrderType, setItemOrderType] = useState(defaultOrderType);
   const [notes, setNotes] = useState('');
@@ -236,6 +237,7 @@ export default function CanteenItemScanModal({
     setActiveItem(item);
     setIsCustomMode(false);
     setQuantity(1);
+    setPricingTier('wholesale');
     setUnitPrice(Number(item.sellingPrice || item.unitPrice || 0));
     setDiscountPercent(0);
     setItemOrderType(defaultOrderType);
@@ -300,12 +302,13 @@ export default function CanteenItemScanModal({
       return;
     }
 
+    const isRetail = pricingTier === 'retail_piece' && Number(activeItem.retailPiecePrice) > 0;
     onConfirmItem({
       id: initialItem?.id || activeItem.id || `item-${Date.now()}`,
       barcode: activeItem.barcode || '',
-      name: activeItem.name,
+      name: isRetail ? `${activeItem.name} (Piece)` : activeItem.name,
       brand: activeItem.brand || 'NKB',
-      size: activeItem.size || activeItem.unit || '',
+      size: isRetail ? 'Piece' : (activeItem.size || activeItem.unit || ''),
       unitPrice: finalUnitPrice,
       originalPrice: unitPrice,
       discountPercent: discountPercent,
@@ -313,10 +316,11 @@ export default function CanteenItemScanModal({
       orderType: itemOrderType,
       category: activeItem.category || 'General',
       notes: notes.trim(),
-      isCustom: false
+      isCustom: false,
+      isRetailPiece: isRetail
     });
     onClose();
-  }, [isCustomMode, customName, unitPrice, finalUnitPrice, discountPercent, quantity, itemOrderType, customCategory, notes, initialItem, activeItem, onConfirmItem, onClose]);
+  }, [isCustomMode, customName, unitPrice, finalUnitPrice, discountPercent, quantity, itemOrderType, customCategory, notes, initialItem, activeItem, pricingTier, onConfirmItem, onClose]);
 
   // Global Keyboard Listener for Ergonomic Hotkeys
   useEffect(() => {
@@ -707,9 +711,15 @@ export default function CanteenItemScanModal({
                         <div className="text-base font-black font-mono text-cyan-300">
                           ₱{Number(item.sellingPrice || item.unitPrice || 0).toFixed(2)}
                         </div>
-                        <div className="text-[10px] text-slate-400">
-                          {item.size || item.unit || 'Unit'}
-                        </div>
+                        {Number(item.retailPiecePrice) > 0 ? (
+                          <div className="text-[10px] font-mono font-bold text-amber-400">
+                            ₱{Number(item.retailPiecePrice).toFixed(2)} / pc
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-slate-400">
+                            {item.size || item.unit || 'Unit'}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -830,6 +840,61 @@ export default function CanteenItemScanModal({
                   ))}
                 </div>
               </div>
+
+              {/* Optional Tier Switcher for Box/Pack items with Retail Piece Pricing */}
+              {Number(activeItem?.retailPiecePrice) > 0 && (
+                <div className="space-y-1.5 p-2.5 rounded-xl bg-slate-900 border border-amber-500/40">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-amber-300">
+                    <span className="flex items-center gap-1.5">
+                      <Boxes className="h-3.5 w-3.5 text-amber-400" />
+                      <span>Select Selling Option:</span>
+                    </span>
+                    <span className="text-[10px] text-amber-400/80 font-mono">Wholesale vs Retail</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPricingTier('wholesale');
+                        setUnitPrice(Number(activeItem.sellingPrice || activeItem.unitPrice || 0));
+                      }}
+                      className={`p-2 rounded-lg text-left transition border cursor-pointer ${
+                        pricingTier === 'wholesale'
+                          ? 'bg-cyan-500/20 border-cyan-400 text-white shadow-xs'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-cyan-300">
+                        Wholesale ({activeItem.unit || 'Pack'})
+                      </div>
+                      <div className="text-sm font-black font-mono text-white mt-0.5">
+                        ₱{Number(activeItem.sellingPrice || activeItem.unitPrice || 0).toFixed(2)}
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPricingTier('retail_piece');
+                        setUnitPrice(Number(activeItem.retailPiecePrice || 0));
+                      }}
+                      className={`p-2 rounded-lg text-left transition border cursor-pointer ${
+                        pricingTier === 'retail_piece'
+                          ? 'bg-amber-500/20 border-amber-400 text-white shadow-xs'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-amber-200'
+                      }`}
+                    >
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300 flex items-center justify-between">
+                        <span>Retail (Piece)</span>
+                        <span className="px-1 rounded bg-amber-500/30 text-amber-200 text-[8px] font-mono">Single</span>
+                      </div>
+                      <div className="text-sm font-black font-mono text-amber-400 mt-0.5">
+                        ₱{Number(activeItem.retailPiecePrice || 0).toFixed(2)}
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Field 2: Unit Price with Ergonomic Hotkey Alt+P */}
               <div className="space-y-1.5">
