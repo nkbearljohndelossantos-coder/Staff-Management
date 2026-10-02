@@ -4,6 +4,7 @@ import {
   X, 
   Boxes, 
   Barcode, 
+  ScanBarcode,
   Wand2, 
   Tag, 
   Check, 
