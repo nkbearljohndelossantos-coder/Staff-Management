@@ -77,12 +77,27 @@ export const TAB_PERMISSIONS = {
   }
 };
 
+import { getEffectiveSectionPermission, PERMISSION_LEVELS } from './sectionAuthorization.js';
+
 /**
- * Checks if a given role is authorized to access and view a specific navigation tab
+ * Checks if a given role or user is authorized to access and view a specific navigation tab
  */
-export const isTabAuthorized = (tabId, role) => {
-  if (!role) return false;
+export const isTabAuthorized = (tabId, roleOrUser, roleMatrix = null, userOverrides = null) => {
+  if (!roleOrUser) return false;
+  
+  // If roleOrUser is a user object
+  if (typeof roleOrUser === 'object') {
+    const role = (roleOrUser.role || '').toLowerCase();
+    if (role === 'ceo' || role === 'it_admin') return true;
+    if (tabId === 'employeePortal') return true;
+    const perm = getEffectiveSectionPermission(tabId, roleOrUser, roleMatrix, userOverrides);
+    return perm !== PERMISSION_LEVELS.NONE;
+  }
+
+  // If roleOrUser is a role string
+  const role = String(roleOrUser).toLowerCase();
   if (role === 'ceo' || role === 'it_admin') return true;
+  if (tabId === 'employeePortal') return true;
   const config = TAB_PERMISSIONS[tabId];
   return config ? config.authorizedRoles.includes(role) : false;
 };

@@ -71,7 +71,7 @@ export default function App() {
 
   // Automatically ensure the active tab is authorized for the current user
   useEffect(() => {
-    if (currentUser && !isTabAuthorized(activeTab, currentUser.role)) {
+    if (currentUser && !isTabAuthorized(activeTab, currentUser)) {
       setActiveTab(getDefaultTabForRole(currentUser.role));
     }
   }, [currentUser, activeTab, setActiveTab]);
@@ -90,7 +90,7 @@ export default function App() {
   }
 
   const isEmployee = currentUser?.role === 'employee';
-  const authorized = isTabAuthorized(activeTab, currentUser?.role);
+  const authorized = isTabAuthorized(activeTab, currentUser);
 
   // Authenticated Portal: Dark Header + Dark Side Tabs + Crisp Light Body
   return (

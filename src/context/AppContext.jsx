@@ -33,6 +33,15 @@ import { getOfflineQueue, clearOfflineQueue, initOfflineSyncListener } from '../
 import { scanForAnomalies, saveAnomalyEvaluation, computeExecutiveRiskSummary, getStoredEvaluations } from '../utils/anomalyDetector';
 import { formatStaffName, scanStaffMilestones } from '../utils/staffUtils';
 import { isBoxOrPackItem, extractPiecesFromItem, getEffectiveRetailPiecePrice } from '../utils/canteenPricing';
+import { 
+  DEFAULT_ROLE_PERMISSIONS, 
+  getEffectiveSectionPermission, 
+  isSectionViewable, 
+  isSectionManageable, 
+  PERMISSION_LEVELS,
+  SYSTEM_SECTIONS,
+  SYSTEM_ROLES
+} from '../utils/sectionAuthorization';
 
 const AppContext = createContext(null);
 
@@ -547,6 +556,312 @@ export function AppProvider({ children }) {
       targetId: anomalyId
     });
     return updated;
+  };
+
+  // --- IT SECTION AUTHORIZATIONS & ACCESS CONTROL MATRIX ---
+  const [sectionAuthorizations, setSectionAuthorizations] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_hr_role_authorizations');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return DEFAULT_ROLE_PERMISSIONS;
+  });
+
+  const [userAuthorizationOverrides, setUserAuthorizationOverrides] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_hr_user_authorization_overrides');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {};
+  });
+
+  // --- IT TRANSACTION OVERDRIVE LOGS ---
+  const [overdriveAuditLogs, setOverdriveAuditLogs] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_hr_overdrive_logs');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
+
+  // --- IT DIAGNOSTIC TRACE EVENTS ---
+  const [itDiagnosticEvents, setItDiagnosticEvents] = useState(() => [
+    {
+      id: `diag-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      level: 'INFO',
+      subsystem: 'BOOT',
+      message: 'IT Diagnostic Event tracing initialized in memory.'
+    }
+  ]);
+
+  const logDiagnosticEvent = (level, message, metadata = null) => {
+    const newEvent = {
+      id: `diag-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: new Date().toISOString(),
+      level: (level || 'INFO').toUpperCase(),
+      message,
+      metadata
+    };
+    setItDiagnosticEvents(prev => [newEvent, ...prev].slice(0, 200));
+    return newEvent;
+  };
+
+  const getSectionPermission = (sectionId, targetUser = currentUser) => {
+    return getEffectiveSectionPermission(sectionId, targetUser, sectionAuthorizations, userAuthorizationOverrides);
+  };
+
+  const updateRoleSectionPermission = (role, sectionId, permission) => {
+    setSectionAuthorizations(prev => {
+      const updated = {
+        ...prev,
+        [role]: {
+          ...(prev[role] || DEFAULT_ROLE_PERMISSIONS[role] || {}),
+          [sectionId]: permission
+        }
+      };
+      try {
+        localStorage.setItem('nkb_hr_role_authorizations', JSON.stringify(updated));
+      } catch (e) {}
+      logSystemEvent({
+        category: 'SECURITY',
+        action: 'UPDATE_ROLE_PERMISSION',
+        details: `Updated ${role} access for section ${sectionId} to ${permission}`,
+        targetId: `${role}:${sectionId}`
+      });
+      logDiagnosticEvent('INFO', `Role authorization updated: ${role} -> ${sectionId}: ${permission}`);
+      return updated;
+    });
+  };
+
+  const updateUserSectionPermission = (userId, sectionId, permission) => {
+    setUserAuthorizationOverrides(prev => {
+      const userSettings = prev[userId] || {};
+      const updated = {
+        ...prev,
+        [userId]: {
+          ...userSettings,
+          [sectionId]: permission
+        }
+      };
+      try {
+        localStorage.setItem('nkb_hr_user_authorization_overrides', JSON.stringify(updated));
+      } catch (e) {}
+      logSystemEvent({
+        category: 'SECURITY',
+        action: 'UPDATE_USER_OVERRIDE',
+        details: `Updated user override for ${userId} on ${sectionId} to ${permission}`,
+        targetId: `${userId}:${sectionId}`
+      });
+      logDiagnosticEvent('INFO', `Custom user override updated: User ${userId} -> ${sectionId}: ${permission}`);
+      return updated;
+    });
+  };
+
+  const clearUserSectionOverrides = (userId) => {
+    setUserAuthorizationOverrides(prev => {
+      const copy = { ...prev };
+      delete copy[userId];
+      try {
+        localStorage.setItem('nkb_hr_user_authorization_overrides', JSON.stringify(copy));
+      } catch (e) {}
+      logSystemEvent({
+        category: 'SECURITY',
+        action: 'CLEAR_USER_OVERRIDE',
+        details: `Cleared all custom permission overrides for staff ${userId}`,
+        targetId: userId
+      });
+      logDiagnosticEvent('INFO', `Cleared custom overrides for User ${userId}`);
+      return copy;
+    });
+  };
+
+  const resetSectionAuthorizationsToDefault = () => {
+    setSectionAuthorizations(DEFAULT_ROLE_PERMISSIONS);
+    setUserAuthorizationOverrides({});
+    try {
+      localStorage.setItem('nkb_hr_role_authorizations', JSON.stringify(DEFAULT_ROLE_PERMISSIONS));
+      localStorage.removeItem('nkb_hr_user_authorization_overrides');
+    } catch (e) {}
+    logSystemEvent({
+      category: 'SECURITY',
+      action: 'RESET_SECTION_AUTHORIZATIONS',
+      details: 'IT Administrator reset all section authorizations to recommended factory defaults.'
+    });
+    logDiagnosticEvent('WARN', 'All section authorizations reset to recommended factory defaults.');
+    showToast('Section authorizations successfully reset to factory defaults.');
+  };
+
+  const recordTransactionOverdrive = (overdriveData) => {
+    const entry = {
+      id: `OD-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      timestamp: new Date().toISOString(),
+      adminId: currentUser?.employeeId || currentUser?.id || 'IT-ADMIN',
+      adminName: currentUser?.name || 'Authorized IT Administrator',
+      adminRole: currentUser?.role || 'it_admin',
+      ...overdriveData
+    };
+    setOverdriveAuditLogs(prev => {
+      const next = [entry, ...prev].slice(0, 500);
+      try {
+        localStorage.setItem('nkb_hr_overdrive_logs', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+    logSystemEvent({
+      category: 'OVERDRIVE',
+      action: overdriveData.action || 'TRANSACTION_OVERDRIVE',
+      details: `[OVERDRIVE] ${overdriveData.summary || overdriveData.reason || 'Transaction modified by IT admin'}`,
+      targetId: overdriveData.targetId || 'UNKNOWN'
+    });
+    logDiagnosticEvent('WARN', `Transaction overdrive executed: ${overdriveData.summary || overdriveData.action}`, entry);
+    return entry;
+  };
+
+  const executeTransactionOverdrive = ({
+    targetType,
+    targetId,
+    action,
+    newStatus,
+    newPaymentMethod,
+    newStaffId,
+    newStaffName,
+    restoreStock = true,
+    adjustCashDrawer = true,
+    calibrationAmount = 0,
+    calibrationType = 'CALIBRATION_ADJUST',
+    reason = '',
+    itNotes = ''
+  }) => {
+    const adminName = currentUser?.name || 'IT Administrator';
+
+    let previousData = null;
+    let summary = '';
+
+    if (targetType === 'receipt') {
+      const receipt = canteenReceipts.find(r => r.receiptNo === targetId || r.id === targetId);
+      if (!receipt) throw new Error(`Receipt #${targetId} not found`);
+      previousData = { ...receipt };
+
+      if (action === 'FORCE_VOID') {
+        adminVoidCanteenReceipt(receipt.receiptNo, {
+          reason: reason || 'IT Emergency Force-Void Overdrive',
+          restoreStock,
+          adjustCashDrawer,
+          voidedBy: adminName
+        });
+        summary = `Force-voided POS receipt #${receipt.receiptNo} (₱${Number(receipt.total || 0).toFixed(2)})`;
+      } else if (action === 'FORCE_UNVOID') {
+        adminUnvoidCanteenReceipt(receipt.receiptNo, {
+          reason: reason || 'IT Force Un-Void Overdrive',
+          deductStock: restoreStock,
+          restoreCashDrawer: adjustCashDrawer,
+          unvoidedBy: adminName
+        });
+        summary = `Reactivated / Unvoided POS receipt #${receipt.receiptNo}`;
+      } else if (action === 'STATUS_OVERRIDE') {
+        setCanteenReceipts(prev => prev.map(r => {
+          if (r.receiptNo === targetId || r.id === targetId) {
+            return { ...r, status: newStatus, itOverriddenAt: new Date().toISOString(), itOverriddenBy: adminName };
+          }
+          return r;
+        }));
+        summary = `Overrode status on receipt #${receipt.receiptNo} from ${receipt.status || 'COMPLETED'} to ${newStatus}`;
+      } else if (action === 'PAYMENT_OVERRIDE') {
+        setCanteenReceipts(prev => prev.map(r => {
+          if (r.receiptNo === targetId || r.id === targetId) {
+            return { ...r, paymentMethod: newPaymentMethod, itOverriddenAt: new Date().toISOString(), itOverriddenBy: adminName };
+          }
+          return r;
+        }));
+        summary = `Overrode payment method on receipt #${receipt.receiptNo} from ${receipt.paymentMethod || 'Cash'} to ${newPaymentMethod}`;
+      } else if (action === 'REASSIGN_CUSTOMER') {
+        setCanteenReceipts(prev => prev.map(r => {
+          if (r.receiptNo === targetId || r.id === targetId) {
+            return { ...r, staffId: newStaffId, customerName: newStaffName, itOverriddenAt: new Date().toISOString(), itOverriddenBy: adminName };
+          }
+          return r;
+        }));
+        summary = `Reassigned receipt #${receipt.receiptNo} to staff ${newStaffName} (${newStaffId})`;
+      }
+    } else if (targetType === 'drawer') {
+      if (action === 'CALIBRATE_DRAWER') {
+        const calTx = {
+          id: `cal-${Date.now()}`,
+          type: calibrationType,
+          amount: Number(calibrationAmount) || 0,
+          description: `IT Admin Drawer Calibration: ${reason || 'Manual Balance Realignment'}`,
+          operator: adminName,
+          timestamp: new Date().toISOString(),
+          isOverdrive: true
+        };
+        setCanteenDrawer(prev => ({
+          ...prev,
+          currentBalance: Math.max(0, (prev?.currentBalance || 0) + (Number(calibrationAmount) || 0)),
+          transactions: [calTx, ...(prev?.transactions || [])]
+        }));
+        summary = `Calibrated cash register drawer balance by ₱${Number(calibrationAmount).toFixed(2)}`;
+      } else if (action === 'STATUS_OVERRIDE') {
+        setCanteenDrawer(prev => ({
+          ...prev,
+          transactions: (prev?.transactions || []).map(t => t.id === targetId ? { ...t, status: newStatus, itOverridden: true } : t)
+        }));
+        summary = `Overrode status of drawer transaction #${targetId} to ${newStatus}`;
+      }
+    } else if (targetType === 'loan') {
+      const loan = cashLoans.find(l => l.id === targetId);
+      if (loan) {
+        previousData = { ...loan };
+        if (action === 'STATUS_OVERRIDE') {
+          updateCashLoan(targetId, { status: newStatus, itOverriddenBy: adminName, itOverriddenAt: new Date().toISOString() });
+          summary = `Overrode loan #${targetId} status to ${newStatus}`;
+        }
+      }
+    } else if (targetType === 'gatePass') {
+      const gp = canteenGatePasses.find(g => g.id === targetId || g.gatePassNo === targetId);
+      if (gp) {
+        previousData = { ...gp };
+        if (action === 'STATUS_OVERRIDE') {
+          updateGatePass(gp.id, { status: newStatus, itOverriddenBy: adminName, itOverriddenAt: new Date().toISOString() });
+          summary = `Overrode grocery gate pass #${gp.gatePassNo} status to ${newStatus}`;
+        }
+      }
+    } else if (targetType === 'po') {
+      const po = personalPurchaseOrders.find(p => p.id === targetId || p.poNumber === targetId);
+      if (po) {
+        previousData = { ...po };
+        if (action === 'STATUS_OVERRIDE') {
+          updatePersonalPurchaseOrder(po.id, { status: newStatus, itOverriddenBy: adminName, itOverriddenAt: new Date().toISOString() });
+          summary = `Overrode purchase order #${po.poNumber || po.id} status to ${newStatus}`;
+        }
+      }
+    } else if (targetType === 'attendance') {
+      const att = attendanceLogs.find(a => a.id === targetId);
+      if (att) {
+        previousData = { ...att };
+        if (action === 'STATUS_OVERRIDE') {
+          updateAttendanceRecord(targetId, { status: newStatus, itOverriddenBy: adminName, itOverriddenAt: new Date().toISOString() });
+          summary = `Overrode attendance record #${targetId} status to ${newStatus}`;
+        }
+      }
+    }
+
+    const overdriveLog = recordTransactionOverdrive({
+      action,
+      targetType,
+      targetId,
+      summary: summary || `${action} on ${targetType} #${targetId}`,
+      reason: reason || 'IT Administrative Override',
+      itNotes,
+      previousData,
+      newStatus,
+      newPaymentMethod,
+      newStaffId,
+      newStaffName
+    });
+
+    showToast(`Transaction overdrive executed: ${summary || action}`);
+    return { success: true, overdriveLog };
   };
 
   // Offline Sync Listener
@@ -3539,6 +3854,21 @@ export function AppProvider({ children }) {
         // IT Anomaly Detection & Evaluations
         anomalyEvaluations,
         recordAnomalyEvaluation,
+        // IT Section Authorizations & Access Matrix
+        sectionAuthorizations,
+        userAuthorizationOverrides,
+        getSectionPermission,
+        updateRoleSectionPermission,
+        updateUserSectionPermission,
+        clearUserSectionOverrides,
+        resetSectionAuthorizationsToDefault,
+        // IT Transaction Overdrives
+        overdriveAuditLogs,
+        recordTransactionOverdrive,
+        executeTransactionOverdrive,
+        // IT Diagnostics & Telemetry
+        itDiagnosticEvents,
+        logDiagnosticEvent,
         // Global Digital ID Modal
         digitalIdStaff,
         isDigitalIdOpen,

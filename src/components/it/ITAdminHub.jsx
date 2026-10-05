@@ -31,13 +31,19 @@ import {
   Wallet,
   Undo2,
   ArrowDownRight,
-  ArrowUpRight
+  ArrowUpRight,
+  Wrench,
+  Zap,
+  KeyRound
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 import TableActionDropdown from '../common/TableActionDropdown';
 import ITAnomalyEvaluationView from './ITAnomalyEvaluationView';
 import ITSystemAuditLogView from './ITSystemAuditLogView';
+import ITTroubleshootingView from './ITTroubleshootingView';
+import ITTransactionOverdrivesView from './ITTransactionOverdrivesView';
+import ITSectionAuthorizationsView from './ITSectionAuthorizationsView';
 import { detectSystemAnomalies } from '../../utils/anomalyDetector';
 
 export default function ITAdminHub() {
@@ -84,7 +90,10 @@ export default function ITAdminHub() {
     importFullSystemBackup,
     resetTestTransactions,
     auditLogs = [],
-    anomalyEvaluations = {}
+    anomalyEvaluations = {},
+    overdriveAuditLogs = [],
+    sectionAuthorizations = {},
+    itDiagnosticEvents = []
   } = useApp();
 
   // Active collection sub-tab
@@ -560,7 +569,10 @@ export default function ITAdminHub() {
       {/* Workspace Section Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200">
         {[
-          { id: 'anomalies', label: 'Security & Anomaly Evaluation', count: detectedAnomalies.length, icon: AlertTriangle, highlight: true },
+          { id: 'troubleshooting', label: 'Troubleshooting & Diagnostics', count: itDiagnosticEvents.length, icon: Wrench, highlight: true },
+          { id: 'overdrives', label: 'Transaction Overdrives', count: overdriveAuditLogs.length, icon: Zap, highlight: true },
+          { id: 'authorizations', label: 'Section Authorizations (RBAC)', count: 10, icon: KeyRound, highlight: true },
+          { id: 'anomalies', label: 'Security & Anomaly Evaluation', count: detectedAnomalies.length, icon: AlertTriangle },
           { id: 'auditLogs', label: 'System Audit Trail', count: auditLogs.length, icon: ShieldCheck },
           { id: 'receipts', label: 'POS Receipts', count: canteenReceipts.length, icon: Receipt },
           { id: 'canteenDrawer', label: 'Canteen Head & Register Drawer', count: canteenDrawer?.transactions?.length || 0, icon: Wallet },
@@ -601,14 +613,23 @@ export default function ITAdminHub() {
         })}
       </div>
 
-      {/* 0. ANOMALY EVALUATION SUBTAB */}
+      {/* 0.1 TROUBLESHOOTING & DIAGNOSTICS SUBTAB */}
+      {activeCategory === 'troubleshooting' && <ITTroubleshootingView />}
+
+      {/* 0.2 TRANSACTION OVERDRIVES SUBTAB */}
+      {activeCategory === 'overdrives' && <ITTransactionOverdrivesView />}
+
+      {/* 0.3 SECTION AUTHORIZATIONS SUBTAB */}
+      {activeCategory === 'authorizations' && <ITSectionAuthorizationsView />}
+
+      {/* 0.4. ANOMALY EVALUATION SUBTAB */}
       {activeCategory === 'anomalies' && <ITAnomalyEvaluationView />}
 
       {/* 0.5. SYSTEM AUDIT TRAIL SUBTAB */}
       {activeCategory === 'auditLogs' && <ITSystemAuditLogView />}
 
       {/* Master Records Filters and Tables */}
-      {activeCategory !== 'anomalies' && activeCategory !== 'auditLogs' && (
+      {activeCategory !== 'troubleshooting' && activeCategory !== 'overdrives' && activeCategory !== 'authorizations' && activeCategory !== 'anomalies' && activeCategory !== 'auditLogs' && (
         <>
           {/* Control Filter Bar */}
           <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">

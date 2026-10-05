@@ -120,7 +120,7 @@ export default function CommandPalette({ isOpen, onClose }) {
 
     // 1. Authorized Nav Items
     const authorizedNavs = allNavItems
-      .filter(item => isTabAuthorized(item.id, currentUser?.role))
+      .filter(item => isTabAuthorized(item.id, currentUser))
       .map(item => ({
         ...item,
         type: 'tab',

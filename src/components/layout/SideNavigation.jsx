@@ -5,7 +5,7 @@ import { isTabAuthorized } from '../../utils/rolePermissions';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 
 export default function SideNavigation({ isOpen, onClose }) {
-  const { activeTab, setActiveTab, currentUser } = useApp();
+  const { activeTab, setActiveTab, currentUser, getSectionPermission } = useApp();
 
   // Progressive Escape dismissal: Closes mobile flyout drawer at Priority 20 (FLYOUT)
   useEscapeKey('sidebar-drawer', ESCAPE_PRIORITY.FLYOUT, isOpen, onClose);
@@ -27,8 +27,14 @@ export default function SideNavigation({ isOpen, onClose }) {
     { id: 'employeePortal', label: 'My Payslips (ESS)', icon: FileText, roleBadge: null }
   ];
 
-  // Strictly remove access to any tabs the user is not authorized to manage
-  const tabs = allTabs.filter(tab => isTabAuthorized(tab.id, currentUser?.role));
+  // Strictly remove access to any tabs the user is not authorized to view
+  const tabs = allTabs.filter(tab => {
+    if (tab.id === 'employeePortal') return true;
+    if (typeof getSectionPermission === 'function') {
+      return getSectionPermission(tab.id, currentUser) !== 'none';
+    }
+    return isTabAuthorized(tab.id, currentUser);
+  });
 
   const handleSelectTab = (id) => {
     setActiveTab(id);
@@ -61,6 +67,8 @@ export default function SideNavigation({ isOpen, onClose }) {
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
+          const perm = typeof getSectionPermission === 'function' ? getSectionPermission(tab.id, currentUser) : null;
+          const isViewOnly = perm === 'view';
 
           return (
             <button
@@ -81,7 +89,14 @@ export default function SideNavigation({ isOpen, onClose }) {
                 <span className="truncate">{tab.label}</span>
               </div>
 
-              {tab.roleBadge && (
+              {isViewOnly ? (
+                <span
+                  className="text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 bg-amber-500/10 text-amber-400 border-amber-500/30"
+                  title="Viewing only authorization"
+                >
+                  View Only
+                </span>
+              ) : tab.roleBadge ? (
                 <span
                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${
                     isActive
@@ -91,7 +106,7 @@ export default function SideNavigation({ isOpen, onClose }) {
                 >
                   {tab.roleBadge}
                 </span>
-              )}
+              ) : null}
             </button>
           );
         })}
