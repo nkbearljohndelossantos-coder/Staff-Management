@@ -66,6 +66,9 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
   const [piecesPerPack, setPiecesPerPack] = useState('');
   const [retailPiecePrice, setRetailPiecePrice] = useState('');
   const [pieceBarcode, setPieceBarcode] = useState('');
+  const [hasMultiBuy, setHasMultiBuy] = useState(false);
+  const [multiBuyQty, setMultiBuyQty] = useState('');
+  const [multiBuyPrice, setMultiBuyPrice] = useState('');
   const [category, setCategory] = useState('');
   const [brand, setBrand] = useState('');
   const [company, setCompany] = useState('');
@@ -94,6 +97,10 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
       setHasRetailPiece(false);
       setPiecesPerPack('');
       setRetailPiecePrice('');
+      setPieceBarcode('');
+      setHasMultiBuy(false);
+      setMultiBuyQty('');
+      setMultiBuyPrice('');
       setCategory(canteenCategories?.[0] || 'General Supplies');
       setBrand('');
       setCompany('R/L Abad Distribution');
@@ -171,6 +178,9 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
       hasRetailPiece: Boolean(hasRetailPiece || (Number(retailPiecePrice) > 0) || pieceBarcode.trim()),
       retailPiecePrice: parseFloat(retailPiecePrice) || 0,
       piecesPerPack: parseInt(piecesPerPack, 10) || 0,
+      hasMultiBuy: Boolean(hasMultiBuy || (Number(multiBuyQty) > 1 && Number(multiBuyPrice) > 0)),
+      multiBuyQty: parseInt(multiBuyQty, 10) || 0,
+      multiBuyPrice: parseFloat(multiBuyPrice) || 0,
       category: category || canteenCategories?.[0] || 'General Supplies',
       brand: brand.trim() || 'General',
       company: company.trim() || 'Direct Supplier',
@@ -193,6 +203,9 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
         setHasRetailPiece(false);
         setPiecesPerPack('');
         setRetailPiecePrice('');
+        setHasMultiBuy(false);
+        setMultiBuyQty('');
+        setMultiBuyPrice('');
         setExpirationDate('');
         setErrorMessage('');
         setTimeout(() => {
@@ -609,6 +622,80 @@ export default function NewSupplyItemModal({ isOpen, onClose }) {
                           )}
                         </div>
                       )}
+
+                      {/* Multi-Buy Promotion Sub-Card */}
+                      <div className="p-3 rounded-xl bg-purple-50/80 border border-purple-200 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={hasMultiBuy || (Number(multiBuyQty) > 1 && Number(multiBuyPrice) > 0)}
+                              onChange={(e) => setHasMultiBuy(e.target.checked)}
+                              className="rounded border-purple-300 text-purple-600 focus:ring-purple-500 h-4 w-4 cursor-pointer"
+                            />
+                            <span className="text-xs font-black text-purple-900 flex items-center gap-1.5">
+                              <Sparkles className="h-4 w-4 text-purple-600" />
+                              <span>Multi-Buy Promotion (e.g. 3 candies for ₱5.00)</span>
+                            </span>
+                          </label>
+                          <span className="px-2 py-0.5 rounded-full bg-purple-200/80 text-purple-800 text-[10px] font-bold">
+                            Bundle Discount
+                          </span>
+                        </div>
+
+                        <p className="text-[10px] text-purple-800/90 leading-relaxed">
+                          Enable multi-buy promotions for single pieces (e.g., candy, biscuits, sachets). Customers pay standard retail price for 1–2 pieces, but get the bundle discount for every {multiBuyQty || 3} pieces.
+                        </p>
+
+                        {(hasMultiBuy || (Number(multiBuyQty) > 1 && Number(multiBuyPrice) > 0)) && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 animate-in fade-in duration-150">
+                            <div>
+                              <label className="block text-xs font-bold text-purple-900 mb-1">
+                                Promo Quantity (Pieces)
+                              </label>
+                              <input
+                                type="number"
+                                min="2"
+                                value={multiBuyQty}
+                                onChange={(e) => setMultiBuyQty(e.target.value)}
+                                placeholder="e.g. 3"
+                                className="w-full h-10 px-3 rounded-xl border border-purple-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-purple-900 mb-1">
+                                Promo Bundle Price (₱)
+                              </label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-2.5 text-xs font-bold text-purple-600">₱</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={multiBuyPrice}
+                                  onChange={(e) => setMultiBuyPrice(e.target.value)}
+                                  placeholder="e.g. 5.00"
+                                  className="w-full h-10 pl-7 pr-3 rounded-xl border border-purple-400 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                />
+                              </div>
+                            </div>
+
+                            {Number(multiBuyQty) > 1 && Number(multiBuyPrice) > 0 && Number(retailPiecePrice) > 0 && (
+                              <div className="sm:col-span-2">
+                                <div className="p-2 rounded-lg bg-white border border-purple-200 text-[11px] font-mono text-purple-950 flex flex-wrap items-center justify-between gap-1">
+                                  <span>
+                                    Regular: {multiBuyQty} pcs × ₱{Number(retailPiecePrice).toFixed(2)} = <strong>₱{(Number(multiBuyQty) * Number(retailPiecePrice)).toFixed(2)}</strong>
+                                  </span>
+                                  <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    Promo: ₱{Number(multiBuyPrice).toFixed(2)} (Customer saves ₱{Math.max(0, (Number(multiBuyQty) * Number(retailPiecePrice)) - Number(multiBuyPrice)).toFixed(2)})
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

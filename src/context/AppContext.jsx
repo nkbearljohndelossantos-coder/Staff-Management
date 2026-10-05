@@ -1869,6 +1869,9 @@ export function AppProvider({ children }) {
       hasRetailPiece: Boolean(data.hasRetailPiece || (Number(data.retailPiecePrice) > 0) || Boolean(data.pieceBarcode)),
       retailPiecePrice: Number(data.retailPiecePrice) || 0,
       piecesPerPack: Math.max(0, parseInt(data.piecesPerPack, 10) || 0),
+      hasMultiBuy: Boolean(data.hasMultiBuy || (Number(data.multiBuyQty) > 1 && Number(data.multiBuyPrice) > 0)),
+      multiBuyQty: Math.max(0, parseInt(data.multiBuyQty, 10) || 0),
+      multiBuyPrice: Math.max(0, parseFloat(data.multiBuyPrice) || 0),
       expirationDate: data.expirationDate || '',
       isLateEncoded: !!data.isLateEncoded,
       lateReason: data.isLateEncoded ? (data.lateReason || 'Delayed vendor delivery invoice encoding') : null,
@@ -1900,6 +1903,11 @@ export function AppProvider({ children }) {
         hasRetailPiece: data.hasRetailPiece !== undefined ? Boolean(data.hasRetailPiece || (data.pieceBarcode && data.pieceBarcode.trim())) : item.hasRetailPiece,
         retailPiecePrice: data.retailPiecePrice !== undefined ? Number(data.retailPiecePrice) : item.retailPiecePrice,
         piecesPerPack: data.piecesPerPack !== undefined ? Math.max(0, parseInt(data.piecesPerPack, 10) || 0) : item.piecesPerPack,
+        hasMultiBuy: data.hasMultiBuy !== undefined 
+          ? Boolean(data.hasMultiBuy || (Number(data.multiBuyQty) > 1 && Number(data.multiBuyPrice) > 0)) 
+          : (item.hasMultiBuy || (Number(item.multiBuyQty) > 1 && Number(item.multiBuyPrice) > 0)),
+        multiBuyQty: data.multiBuyQty !== undefined ? Math.max(0, parseInt(data.multiBuyQty, 10) || 0) : (item.multiBuyQty || 0),
+        multiBuyPrice: data.multiBuyPrice !== undefined ? Math.max(0, parseFloat(data.multiBuyPrice) || 0) : (item.multiBuyPrice || 0),
         quantity: nextQty,
         reorderLevel: nextReorder,
         stockStatus: nextQty > nextReorder ? 'In Stock' : (nextQty > 0 ? 'Low Stock' : 'Out of Stock')
@@ -2327,9 +2335,13 @@ export function AppProvider({ children }) {
 
     const staffObj = staffId ? staffList.find(s => s.id === staffId) : null;
     const receiptNo = `RCT-2026-${String(Math.floor(100000 + Math.random() * 900000))}`;
-    const subtotal = items.reduce((acc, it) => acc + (it.unitPrice * it.quantity), 0);
+    const subtotal = items.reduce((acc, it) => {
+      const lineTotal = it.subtotal !== undefined ? Number(it.subtotal) : (it.unitPrice * it.quantity);
+      return acc + lineTotal;
+    }, 0);
     const tax = 0;
     const total = subtotal;
+    const totalSavings = items.reduce((acc, it) => acc + Number(it.promoSavings || 0), 0);
 
     // Actual system recording time
     const actualEncodedAt = new Date().toISOString();
@@ -2379,11 +2391,14 @@ export function AppProvider({ children }) {
         plantLocation: 'Main Plant Facility',
         items: items.map(it => ({
           barcode: it.barcode,
+          pieceBarcode: it.pieceBarcode || '',
           name: it.name,
           quantity: it.quantity,
           unit: it.unit || 'pcs',
           unitPrice: it.unitPrice,
-          total: it.unitPrice * it.quantity
+          total: it.subtotal !== undefined ? Number(it.subtotal) : (it.unitPrice * it.quantity),
+          promoSavings: Number(it.promoSavings || 0),
+          promoDescription: it.promoDescription || ''
         })),
         totalAmount: total,
         paymentMethod,
@@ -2415,12 +2430,17 @@ export function AppProvider({ children }) {
       isDeductedToCoop: false,
       items: items.map(it => ({
         barcode: it.barcode,
+        pieceBarcode: it.pieceBarcode || '',
         name: it.name,
         quantity: it.quantity,
         unitPrice: it.unitPrice,
-        total: it.unitPrice * it.quantity
+        total: it.subtotal !== undefined ? Number(it.subtotal) : (it.unitPrice * it.quantity),
+        promoSavings: Number(it.promoSavings || 0),
+        promoDescription: it.promoDescription || '',
+        isRetailPiece: Boolean(it.isRetailPiece)
       })),
       subtotal,
+      totalSavings,
       tax,
       total,
       status: 'COMPLETED' // Immutable records - receipts cannot be modified, only card-voided

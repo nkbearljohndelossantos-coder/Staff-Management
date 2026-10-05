@@ -114,6 +114,11 @@ export function getEffectiveRetailPiecePrice(item) {
   const baseWholesale = Number(item.sellingPrice || item.unitPrice || item.wholesalePrice || 0);
   if (baseWholesale <= 0) return 0;
 
+  // If item is not a box or pack item, base price is already its retail piece price
+  if (!isBoxOrPackItem(item)) {
+    return baseWholesale;
+  }
+
   const pieces = extractPiecesFromItem(item);
 
   if (pieces > 1) {
@@ -124,8 +129,7 @@ export function getEffectiveRetailPiecePrice(item) {
     return calculatedRetail > wholesalePerPiece ? calculatedRetail : Math.ceil(wholesalePerPiece + 1);
   }
 
-  // Single unit fallback: 20% retail premium
-  return Math.ceil(baseWholesale * 1.20);
+  return baseWholesale;
 }
 
 /**
@@ -134,4 +138,98 @@ export function getEffectiveRetailPiecePrice(item) {
 export function getEffectiveWholesalePrice(item) {
   if (!item) return 0;
   return Number(item.wholesalePrice || item.sellingPrice || item.unitPrice || 0);
+}
+
+/**
+ * Determines if an item has an active multi-buy promotion configured
+ * (e.g. 3 candies for ₱5.00)
+ */
+export function hasMultiBuyPromo(item) {
+  if (!item) return false;
+  const promoQty = parseInt(item.multiBuyQty, 10);
+  const promoPrice = Number(item.multiBuyPrice);
+  return Boolean(
+    (item.hasMultiBuy || item.hasMultiBuyPromo) ||
+    (promoQty > 1 && promoPrice > 0)
+  );
+}
+
+/**
+ * Calculates item subtotal, savings, and bundle breakdown for Multi-Buy Promotions.
+ * 
+ * E.g., Item with retail price ₱2.00, multi-buy 3 for ₱5.00:
+ * - qty 1 -> ₱2.00 (savings: ₱0)
+ * - qty 2 -> ₱4.00 (savings: ₱0)
+ * - qty 3 -> ₱5.00 (savings: ₱1.00)
+ * - qty 4 -> ₱7.00 (savings: ₱1.00)
+ * - qty 6 -> ₱10.00 (savings: ₱2.00)
+ */
+export function calculateMultiBuySubtotal(item, quantity = 1, isRetailPiece = null) {
+  if (!item) {
+    return {
+      subtotal: 0,
+      regularSubtotal: 0,
+      savings: 0,
+      bundleCount: 0,
+      remainderCount: 0,
+      promoQty: 0,
+      promoPrice: 0,
+      isPromoApplied: false,
+      unitPrice: 0,
+      promoDescription: ''
+    };
+  }
+
+  const qty = Math.max(1, parseInt(quantity, 10) || 1);
+  const isBoxPack = isBoxOrPackItem(item);
+  const isRetail = isBoxPack
+    ? (isRetailPiece !== null ? Boolean(isRetailPiece) : Boolean(item.isRetailPiece))
+    : true; // Non-box items are inherently single retail units
+
+  const retailUnit = getEffectiveRetailPiecePrice(item);
+  const wholesaleUnit = getEffectiveWholesalePrice(item);
+  const baseUnitPrice = isRetail ? retailUnit : wholesaleUnit;
+
+  // Multi-buy applies when item is sold as retail single piece (or standalone unit item)
+  if (isRetail && hasMultiBuyPromo(item)) {
+    const promoQty = parseInt(item.multiBuyQty, 10) || 1;
+    const promoPrice = Number(item.multiBuyPrice) || 0;
+
+    if (promoQty > 1 && promoPrice > 0) {
+      const bundleCount = Math.floor(qty / promoQty);
+      const remainderCount = qty % promoQty;
+      const subtotal = (bundleCount * promoPrice) + (remainderCount * retailUnit);
+      const regularSubtotal = qty * retailUnit;
+      const savings = Math.max(0, regularSubtotal - subtotal);
+      const isPromoApplied = bundleCount > 0;
+
+      return {
+        subtotal: parseFloat(subtotal.toFixed(2)),
+        regularSubtotal: parseFloat(regularSubtotal.toFixed(2)),
+        savings: parseFloat(savings.toFixed(2)),
+        bundleCount,
+        remainderCount,
+        promoQty,
+        promoPrice,
+        isPromoApplied,
+        unitPrice: retailUnit,
+        promoDescription: `${promoQty} for ₱${promoPrice.toFixed(2)}`
+      };
+    }
+  }
+
+  // Regular pricing without promo
+  const regSubtotal = qty * baseUnitPrice;
+  return {
+    subtotal: parseFloat(regSubtotal.toFixed(2)),
+    regularSubtotal: parseFloat(regSubtotal.toFixed(2)),
+    savings: 0,
+    bundleCount: 0,
+    remainderCount: qty,
+    promoQty: 0,
+    promoPrice: 0,
+    isPromoApplied: false,
+    unitPrice: baseUnitPrice,
+    promoDescription: ''
+  };
 }

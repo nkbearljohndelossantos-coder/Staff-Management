@@ -40,7 +40,15 @@ export default function ThermalReceiptView({ receipt, onClose }) {
       const qty = String(item.quantity || 1).padEnd(4, ' ');
       const total = `P${Number(item.total || (item.unitPrice * item.quantity)).toFixed(2)}`.padStart(10, ' ');
       text += `${qty}${name}${total}\n`;
+      if (item.promoSavings > 0) {
+        text += `    Promo Disc (-P${Number(item.promoSavings).toFixed(2)})\n`;
+      }
     });
+
+    const totalPromoSavings = (receipt.items || []).reduce((acc, it) => acc + (Number(it.promoSavings) || 0), 0);
+    if (totalPromoSavings > 0) {
+      text += `Multi-Buy Savings:       -P${totalPromoSavings.toFixed(2)}\n`;
+    }
 
     text += divider;
     text += `TOTAL AMOUNT:            P${Number(receipt.total || 0).toFixed(2)}\n`;
@@ -181,16 +189,24 @@ export default function ThermalReceiptView({ receipt, onClose }) {
                 <span>Amount</span>
               </div>
               {(receipt.items || []).map((item, idx) => (
-                <div key={idx} className="flex justify-between items-start text-[11px]">
-                  <div className="min-w-0 pr-2">
-                    <div className="font-bold text-slate-900">{item.name}</div>
-                    <div className="text-[9px] text-slate-500">
-                      {item.quantity} x ₱{Number(item.unitPrice || 0).toFixed(2)}
+                <div key={idx} className="space-y-0.5">
+                  <div className="flex justify-between items-start text-[11px]">
+                    <div className="min-w-0 pr-2">
+                      <div className="font-bold text-slate-900">{item.name}</div>
+                      <div className="text-[9px] text-slate-500">
+                        {item.quantity} x ₱{Number(item.unitPrice || 0).toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="font-bold font-mono text-slate-900 shrink-0">
+                      ₱{Number(item.total || (item.unitPrice * item.quantity)).toFixed(2)}
                     </div>
                   </div>
-                  <div className="font-bold font-mono text-slate-900 shrink-0">
-                    ₱{Number(item.total || (item.unitPrice * item.quantity)).toFixed(2)}
-                  </div>
+                  {item.promoSavings > 0 && (
+                    <div className="text-[9px] font-bold text-emerald-700 flex items-center justify-between pl-2">
+                      <span>✨ {item.promoDescription || 'Multi-Buy Promo'}</span>
+                      <span className="font-mono">-₱{Number(item.promoSavings).toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -199,6 +215,14 @@ export default function ThermalReceiptView({ receipt, onClose }) {
 
             {/* Totals */}
             <div className="space-y-1 text-xs">
+              {(receipt.items || []).some(it => it.promoSavings > 0) && (
+                <div className="flex justify-between text-[11px] text-emerald-700 font-bold">
+                  <span>Multi-Buy Savings:</span>
+                  <span className="font-mono">
+                    -₱{(receipt.items || []).reduce((sum, it) => sum + (Number(it.promoSavings) || 0), 0).toFixed(2)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between font-black text-sm">
                 <span>TOTAL:</span>
                 <span className="font-mono">₱{Number(receipt.total || 0).toFixed(2)}</span>

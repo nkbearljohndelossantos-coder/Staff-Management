@@ -399,6 +399,9 @@ export default function CanteenHub() {
       hasRetailPiece: Boolean(editingSupplyItem.hasRetailPiece || (Number(editingSupplyItem.retailPiecePrice) > 0) || (editingSupplyItem.pieceBarcode && editingSupplyItem.pieceBarcode.trim())),
       retailPiecePrice: parseFloat(editingSupplyItem.retailPiecePrice) || 0,
       piecesPerPack: parseInt(editingSupplyItem.piecesPerPack, 10) || 0,
+      hasMultiBuy: Boolean(editingSupplyItem.hasMultiBuy || (Number(editingSupplyItem.multiBuyQty) > 1 && Number(editingSupplyItem.multiBuyPrice) > 0)),
+      multiBuyQty: parseInt(editingSupplyItem.multiBuyQty, 10) || 0,
+      multiBuyPrice: parseFloat(editingSupplyItem.multiBuyPrice) || 0,
       quantity: qty,
       unit: editingSupplyItem.unit || 'Piece',
       expirationDate: editingSupplyItem.expirationDate || '',
@@ -1333,8 +1336,24 @@ export default function CanteenHub() {
                             </td>
 
                             {/* Selling Price */}
-                            <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
-                              ₱{Number(item.sellingPrice || 0).toFixed(2)}
+                            <td className="px-4 py-3 text-right font-mono whitespace-nowrap">
+                              <div className="font-bold text-slate-900">
+                                ₱{Number(item.sellingPrice || 0).toFixed(2)}
+                                {isBoxOrPackItem(item) && (
+                                  <span className="text-[10px] text-slate-400 font-normal ml-0.5">/{item.unit || 'pack'}</span>
+                                )}
+                              </div>
+                              {isBoxOrPackItem(item) && (
+                                <div className="text-[10px] text-amber-700 font-bold">
+                                  ₱{getEffectiveRetailPiecePrice(item).toFixed(2)}/pc
+                                </div>
+                              )}
+                              {(item.hasMultiBuy || (Number(item.multiBuyQty) > 1 && Number(item.multiBuyPrice) > 0)) && (
+                                <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-100 text-purple-900 font-bold text-[9px] mt-0.5">
+                                  <Sparkles className="h-2.5 w-2.5 text-purple-600" />
+                                  <span>{item.multiBuyQty} for ₱{Number(item.multiBuyPrice).toFixed(2)}</span>
+                                </div>
+                              )}
                             </td>
 
                             {/* In-Stock Qty */}
@@ -1905,6 +1924,80 @@ export default function CanteenHub() {
                           )}
                         </div>
                       )}
+
+                      {/* Multi-Buy Promotion Sub-Card */}
+                      <div className="p-3 rounded-xl bg-purple-50/80 border border-purple-200 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(editingSupplyItem.hasMultiBuy || (Number(editingSupplyItem.multiBuyQty) > 1 && Number(editingSupplyItem.multiBuyPrice) > 0))}
+                              onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, hasMultiBuy: e.target.checked }))}
+                              className="rounded border-purple-300 text-purple-600 focus:ring-purple-500 h-4 w-4 cursor-pointer"
+                            />
+                            <span className="text-xs font-black text-purple-900 flex items-center gap-1.5">
+                              <Sparkles className="h-4 w-4 text-purple-600" />
+                              <span>Multi-Buy Promotion (e.g. 3 candies for ₱5.00)</span>
+                            </span>
+                          </label>
+                          <span className="px-2 py-0.5 rounded-full bg-purple-200/80 text-purple-800 text-[10px] font-bold">
+                            Bundle Discount
+                          </span>
+                        </div>
+
+                        <p className="text-[10px] text-purple-800/90 leading-relaxed">
+                          Enable multi-buy promotions for single pieces (e.g., candy, biscuits, sachets). Customers pay standard retail price for 1–2 pieces, but get the bundle discount for every {editingSupplyItem.multiBuyQty || 3} pieces.
+                        </p>
+
+                        {(editingSupplyItem.hasMultiBuy || (Number(editingSupplyItem.multiBuyQty) > 1 && Number(editingSupplyItem.multiBuyPrice) > 0)) && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 animate-in fade-in duration-150">
+                            <div>
+                              <label className="block text-xs font-bold text-purple-900 mb-1">
+                                Promo Quantity (Pieces)
+                              </label>
+                              <input
+                                type="number"
+                                min="2"
+                                value={editingSupplyItem.multiBuyQty ?? ''}
+                                onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, multiBuyQty: e.target.value }))}
+                                placeholder="e.g. 3"
+                                className="w-full h-10 px-3 rounded-xl border border-purple-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-purple-900 mb-1">
+                                Promo Bundle Price (₱)
+                              </label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-2.5 text-xs font-bold text-purple-600">₱</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={editingSupplyItem.multiBuyPrice ?? ''}
+                                  onChange={(e) => setEditingSupplyItem(prev => ({ ...prev, multiBuyPrice: e.target.value }))}
+                                  placeholder="e.g. 5.00"
+                                  className="w-full h-10 pl-7 pr-3 rounded-xl border border-purple-400 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                />
+                              </div>
+                            </div>
+
+                            {Number(editingSupplyItem.multiBuyQty) > 1 && Number(editingSupplyItem.multiBuyPrice) > 0 && Number(editingSupplyItem.retailPiecePrice || getEffectiveRetailPiecePrice(editingSupplyItem)) > 0 && (
+                              <div className="sm:col-span-2">
+                                <div className="p-2 rounded-lg bg-white border border-purple-200 text-[11px] font-mono text-purple-950 flex flex-wrap items-center justify-between gap-1">
+                                  <span>
+                                    Regular: {editingSupplyItem.multiBuyQty} pcs × ₱{Number(editingSupplyItem.retailPiecePrice || getEffectiveRetailPiecePrice(editingSupplyItem)).toFixed(2)} = <strong>₱{(Number(editingSupplyItem.multiBuyQty) * Number(editingSupplyItem.retailPiecePrice || getEffectiveRetailPiecePrice(editingSupplyItem))).toFixed(2)}</strong>
+                                  </span>
+                                  <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    Promo: ₱{Number(editingSupplyItem.multiBuyPrice).toFixed(2)} (Customer saves ₱{Math.max(0, (Number(editingSupplyItem.multiBuyQty) * Number(editingSupplyItem.retailPiecePrice || getEffectiveRetailPiecePrice(editingSupplyItem))) - Number(editingSupplyItem.multiBuyPrice)).toFixed(2)})
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

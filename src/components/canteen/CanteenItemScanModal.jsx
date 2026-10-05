@@ -28,7 +28,9 @@ import {
   isBoxOrPackItem, 
   extractPiecesFromItem, 
   getEffectiveRetailPiecePrice, 
-  getEffectiveWholesalePrice 
+  getEffectiveWholesalePrice,
+  hasMultiBuyPromo,
+  calculateMultiBuySubtotal
 } from '../../utils/canteenPricing';
 
 // Standard fallback catalog for barcode gun recognition
@@ -283,6 +285,21 @@ export default function CanteenItemScanModal({
   const subtotal = finalUnitPrice * Math.max(1, quantity);
   const discountSavings = (unitPrice * (discountPercent / 100)) * Math.max(1, quantity);
 
+  const isRetailTier = pricingTier === 'retail_piece';
+  const multiBuyBreakdown = useMemo(() => {
+    if (!activeItem || isCustomMode) return null;
+    const effectivePiecePrice = Number(boxPackPiecePrice) || Number(activeItem.retailPiecePrice) || unitPrice;
+    return calculateMultiBuySubtotal({
+      ...activeItem,
+      unitPrice: isRetailTier ? effectivePiecePrice : finalUnitPrice,
+      retailPiecePrice: effectivePiecePrice
+    }, Math.max(1, quantity), isRetailTier);
+  }, [activeItem, isCustomMode, finalUnitPrice, boxPackPiecePrice, unitPrice, quantity, isRetailTier]);
+
+  const effectiveSubtotal = (multiBuyBreakdown && multiBuyBreakdown.isPromoApplied)
+    ? multiBuyBreakdown.subtotal
+    : subtotal;
+
   // Confirm and Submit Item to Cart
   const handleConfirm = useCallback(() => {
     if (isCustomMode) {
@@ -338,6 +355,9 @@ export default function CanteenItemScanModal({
       wholesalePrice: Number(activeItem.sellingPrice || 0),
       retailPiecePrice: effectivePiecePrice,
       originalPrice: isRetail ? effectivePiecePrice : unitPrice,
+      hasMultiBuy: Boolean(activeItem.hasMultiBuy || (Number(activeItem.multiBuyQty) > 1 && Number(activeItem.multiBuyPrice) > 0)),
+      multiBuyQty: parseInt(activeItem.multiBuyQty, 10) || 0,
+      multiBuyPrice: parseFloat(activeItem.multiBuyPrice) || 0,
       discountPercent: discountPercent,
       quantity: Math.max(1, quantity),
       orderType: itemOrderType,
@@ -759,6 +779,11 @@ export default function CanteenItemScanModal({
                             {item.size || item.unit || 'Unit'}
                           </div>
                         )}
+                        {hasMultiBuyPromo(item) && (
+                          <div className="text-[9px] font-black text-emerald-400 bg-emerald-950/60 px-1 py-0.2 rounded border border-emerald-500/30">
+                            ✨ {item.multiBuyQty} for ₱{Number(item.multiBuyPrice).toFixed(2)}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -997,6 +1022,40 @@ export default function CanteenItemScanModal({
                 </div>
               )}
 
+              {/* Multi-Buy Promotion Card for Active Item */}
+              {activeItem && hasMultiBuyPromo(activeItem) && (
+                <div className="p-3 rounded-2xl bg-emerald-950/30 border border-emerald-500/40 space-y-2 animate-in fade-in duration-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs text-emerald-300 font-extrabold">
+                      <Sparkles className="h-4 w-4 text-emerald-400 shrink-0" />
+                      <span>Multi-Buy Promo Available</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 border border-emerald-500/30 text-[10px] font-mono font-bold">
+                      {activeItem.multiBuyQty} for ₱{Number(activeItem.multiBuyPrice).toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-300">
+                    <span>Bundle: {activeItem.multiBuyQty} pcs for ₱{Number(activeItem.multiBuyPrice).toFixed(2)}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isBoxOrPackItem(activeItem) && pricingTier !== 'retail_piece') {
+                          setPricingTier('retail_piece');
+                          const defaultP = Number(boxPackPiecePrice) || getEffectiveRetailPiecePrice(activeItem);
+                          setUnitPrice(defaultP);
+                        }
+                        setQuantity(activeItem.multiBuyQty || 3);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[10px] font-black cursor-pointer shadow-xs transition flex items-center gap-1"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>Set Qty to {activeItem.multiBuyQty}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Field 2: Unit Price with Ergonomic Hotkey Alt+P */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -1145,11 +1204,22 @@ export default function CanteenItemScanModal({
                   <div className="text-[11px] font-mono text-slate-400 mt-0.5">
                     ₱{finalUnitPrice.toFixed(2)} × {quantity} {quantity === 1 ? 'item' : 'items'}
                   </div>
+                  {multiBuyBreakdown && multiBuyBreakdown.savings > 0 && (
+                    <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 mt-1">
+                      <Sparkles className="h-3 w-3 text-emerald-400" />
+                      <span>{multiBuyBreakdown.bundleCount}x Promo ({multiBuyBreakdown.promoQty} for ₱{multiBuyBreakdown.promoPrice.toFixed(2)}) · Saved ₱{multiBuyBreakdown.savings.toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="text-right">
+                  {multiBuyBreakdown && multiBuyBreakdown.savings > 0 && (
+                    <div className="text-xs font-mono line-through text-slate-500">
+                      ₱{subtotal.toFixed(2)}
+                    </div>
+                  )}
                   <div className="text-2xl sm:text-3xl font-black font-mono text-white tracking-tight">
-                    ₱{subtotal.toFixed(2)}
+                    ₱{effectiveSubtotal.toFixed(2)}
                   </div>
                 </div>
               </div>

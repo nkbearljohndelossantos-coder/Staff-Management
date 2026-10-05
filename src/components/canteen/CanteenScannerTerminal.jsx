@@ -55,7 +55,9 @@ import {
   isBoxOrPackItem, 
   extractPiecesFromItem, 
   getEffectiveRetailPiecePrice, 
-  getEffectiveWholesalePrice 
+  getEffectiveWholesalePrice,
+  hasMultiBuyPromo,
+  calculateMultiBuySubtotal
 } from '../../utils/canteenPricing';
 
 // Standard fallback catalog for barcode gun recognition
@@ -249,19 +251,36 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
 
   // Broadcast current register state to 2nd monitor whenever cart, orderType, payment, or customer changes
   useEffect(() => {
-    const total = cart.reduce((acc, it) => acc + (it.unitPrice * (it.quantity || 1)), 0);
+    const total = cart.reduce((acc, it) => {
+      const breakdown = calculateMultiBuySubtotal(it, it.quantity, it.isRetailPiece);
+      return acc + breakdown.subtotal;
+    }, 0);
+    const totalSavings = cart.reduce((acc, it) => {
+      const breakdown = calculateMultiBuySubtotal(it, it.quantity, it.isRetailPiece);
+      return acc + breakdown.savings;
+    }, 0);
     const customerPayload = selectedStaff ? {
       ...selectedStaff,
       name: selectedStaff.name || `${selectedStaff.firstName || ''} ${selectedStaff.lastName || ''}`.trim() || selectedStaff.rawName || 'Employee'
     } : null;
 
     broadcastPOSDisplayState({
-      cart,
+      cart: cart.map(it => {
+        const breakdown = calculateMultiBuySubtotal(it, it.quantity, it.isRetailPiece);
+        return {
+          ...it,
+          subtotal: breakdown.subtotal,
+          promoSavings: breakdown.savings,
+          isPromoApplied: breakdown.isPromoApplied,
+          promoDescription: breakdown.promoDescription
+        };
+      }),
       lastScannedItem: lastScanned,
       orderType,
       paymentMethod,
       customer: customerPayload,
       grandTotal: total,
+      totalSavings,
       status: cart.length > 0 ? 'SCANNING' : 'IDLE'
     });
   }, [cart, orderType, paymentMethod, selectedStaff, lastScanned]);
@@ -378,7 +397,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   }, [canteenInventory]);
 
   // Centralized helper to add product to cart with audio & display feedback
-  const addItemToCart = (item, tier = 'wholesale') => {
+  const addItemToCart = (item, tier = 'wholesale', addQty = 1) => {
     if (!item) return;
     playBeep('success');
 
@@ -392,6 +411,11 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     const cleanRawName = item.rawName || item.name.replace(' (Piece)', '');
     const finalName = isRetail ? `${cleanRawName} (Piece)` : cleanRawName;
     const finalSize = isRetail ? 'Piece' : (item.size || item.unit || 'Unit');
+    const initialQty = Math.max(1, parseInt(addQty, 10) || 1);
+
+    const hasPromo = Boolean(item.hasMultiBuy || (Number(item.multiBuyQty) > 1 && Number(item.multiBuyPrice) > 0));
+    const mQty = parseInt(item.multiBuyQty, 10) || 0;
+    const mPrice = parseFloat(item.multiBuyPrice) || 0;
 
     setLastScanned({
       id: item.id,
@@ -403,12 +427,15 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       unitPrice: finalUnitPrice,
       wholesalePrice: baseSellingPrice,
       retailPiecePrice: effectiveRetailPiecePrice,
+      hasMultiBuy: hasPromo,
+      multiBuyQty: mQty,
+      multiBuyPrice: mPrice,
       isBoxOrPack: isBoxOrPack,
       isRetailPiece: isRetail,
       piecesPerPack: piecesCount,
       unit: item.unit || 'Pack',
       size: finalSize,
-      quantity: 1
+      quantity: initialQty
     });
 
     setCart(prev => {
@@ -419,8 +446,14 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
 
       if (idx !== -1) {
         const copy = [...prev];
-        const nextQty = (copy[idx].quantity || 1) + 1;
-        copy[idx] = { ...copy[idx], quantity: nextQty };
+        const nextQty = (copy[idx].quantity || 1) + initialQty;
+        copy[idx] = { 
+          ...copy[idx], 
+          quantity: nextQty,
+          hasMultiBuy: hasPromo,
+          multiBuyQty: mQty,
+          multiBuyPrice: mPrice
+        };
         setLastScannedItemId(copy[idx].id);
         setLastScanned(prevLs => prevLs ? { ...prevLs, quantity: nextQty } : null);
         return copy;
@@ -442,18 +475,32 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
           unitPrice: finalUnitPrice,
           wholesalePrice: baseSellingPrice,
           retailPiecePrice: effectiveRetailPiecePrice,
+          hasMultiBuy: hasPromo,
+          multiBuyQty: mQty,
+          multiBuyPrice: mPrice,
           isBoxOrPack: isBoxOrPack,
           isRetailPiece: isRetail,
           piecesPerPack: piecesCount,
           unit: item.unit || 'Pack',
-          quantity: 1
+          quantity: initialQty
         }
       ];
     });
 
+    const breakdown = calculateMultiBuySubtotal({
+      ...item,
+      unitPrice: finalUnitPrice,
+      retailPiecePrice: effectiveRetailPiecePrice,
+      hasMultiBuy: hasPromo,
+      multiBuyQty: mQty,
+      multiBuyPrice: mPrice
+    }, initialQty, isRetail);
+
     setScanStatusNotice({
       type: 'staff',
-      message: `Added: ${finalName} [${isRetail ? 'Retail Piece' : 'Wholesale'}] · ₱${finalUnitPrice.toFixed(2)}`,
+      message: breakdown.savings > 0 
+        ? `Added: ${initialQty}x ${finalName} · ₱${breakdown.subtotal.toFixed(2)} (✨ Promo applied: saved ₱${breakdown.savings.toFixed(2)})`
+        : `Added: ${initialQty > 1 ? `${initialQty}x ` : ''}${finalName} [${isRetail ? 'Retail Piece' : 'Wholesale'}] · ₱${breakdown.subtotal.toFixed(2)}`,
       timestamp: Date.now()
     });
 
@@ -1270,11 +1317,22 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       return;
     }
 
+    const enrichedCart = cart.map(it => {
+      const breakdown = calculateMultiBuySubtotal(it, it.quantity, it.isRetailPiece);
+      return {
+        ...it,
+        subtotal: breakdown.subtotal,
+        promoSavings: breakdown.savings,
+        isPromoApplied: breakdown.isPromoApplied,
+        promoDescription: breakdown.promoDescription
+      };
+    });
+
     const res = recordCanteenSale({
       customerName: `${selectedStaff.firstName} ${selectedStaff.lastName}`,
       customerType: 'Staff Member',
       staffId: selectedStaff.id,
-      items: cart,
+      items: enrichedCart,
       orderType,
       paymentMethod,
       isLateEncoded,
@@ -1288,6 +1346,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
         cart: [],
         lastScannedItem: null,
         grandTotal: 0,
+        totalSavings: 0,
         customer: selectedStaff ? {
           ...selectedStaff,
           name: selectedStaff.name || `${selectedStaff.firstName || ''} ${selectedStaff.lastName || ''}`.trim() || selectedStaff.rawName || 'Employee'
@@ -1316,7 +1375,14 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
     }
   }
 
-  const grandTotal = cart.reduce((acc, it) => acc + (it.unitPrice * (it.quantity || 1)), 0);
+  const grandTotal = cart.reduce((acc, it) => {
+    const breakdown = calculateMultiBuySubtotal(it, it.quantity, it.isRetailPiece);
+    return acc + breakdown.subtotal;
+  }, 0);
+  const totalCartSavings = cart.reduce((acc, it) => {
+    const breakdown = calculateMultiBuySubtotal(it, it.quantity, it.isRetailPiece);
+    return acc + breakdown.savings;
+  }, 0);
 
   return (
     <div className="space-y-6">
@@ -1680,6 +1746,11 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                             <div className="text-[10px] font-mono font-bold text-amber-700">
                               ₱{getEffectiveRetailPiecePrice(item).toFixed(2)}/pc
                             </div>
+                            {hasMultiBuyPromo(item) && (
+                              <div className="text-[9px] font-black text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
+                                ✨ {item.multiBuyQty} for ₱{Number(item.multiBuyPrice).toFixed(2)}
+                              </div>
+                            )}
                           </div>
                           <div className="flex flex-col sm:flex-row gap-1">
                             <button
@@ -1706,6 +1777,20 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                               <Tag className="h-3 w-3" />
                               <span>+Piece (Retail)</span>
                             </button>
+                            {hasMultiBuyPromo(item) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addItemToCart(item, 'retail_piece', item.multiBuyQty);
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black flex items-center gap-1 shadow-xs transition cursor-pointer"
+                                title={`Add promo bundle (${item.multiBuyQty} pcs for ₱${Number(item.multiBuyPrice).toFixed(2)})`}
+                              >
+                                <Sparkles className="h-3 w-3 text-emerald-200" />
+                                <span>+{item.multiBuyQty} Promo</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       ) : (
@@ -1717,18 +1802,39 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                             <div className="text-[9px] text-slate-400 uppercase font-semibold">
                               {item.size || item.unit || 'Unit'}
                             </div>
+                            {hasMultiBuyPromo(item) && (
+                              <div className="text-[9px] font-black text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
+                                ✨ {item.multiBuyQty} for ₱{Number(item.multiBuyPrice).toFixed(2)}
+                              </div>
+                            )}
                           </div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              addItemToCart(item);
-                            }}
-                            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm transition cursor-pointer"
-                          >
-                            <Plus className="h-3 w-3" />
-                            Add
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addItemToCart(item);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                            >
+                              <Plus className="h-3 w-3" />
+                              Add
+                            </button>
+                            {hasMultiBuyPromo(item) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addItemToCart(item, 'wholesale', item.multiBuyQty);
+                                }}
+                                className="px-2 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                title={`Add promo bundle (${item.multiBuyQty} pcs for ₱${Number(item.multiBuyPrice).toFixed(2)})`}
+                              >
+                                <Sparkles className="h-3 w-3 text-emerald-200" />
+                                <span>+{item.multiBuyQty} Promo</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1888,7 +1994,61 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                       <Tag className="h-3.5 w-3.5" />
                       <span>Retail (Piece): ₱{getEffectiveRetailPiecePrice(lastScanned).toFixed(2)}</span>
                     </button>
+
+                    {hasMultiBuyPromo(lastScanned) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!lastScanned.isRetailPiece) {
+                            handleSetLastScannedTier('retail_piece');
+                          }
+                          const targetId = lastScannedItemId || cart[cart.length - 1]?.id;
+                          if (targetId) {
+                            setRecentItemQuantity(lastScanned.multiBuyQty || 3, targetId);
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                          lastScanned.isRetailPiece && (lastScanned.quantity || 1) >= (lastScanned.multiBuyQty || 3)
+                            ? 'bg-emerald-400 text-slate-950 border-emerald-300 shadow font-black'
+                            : 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900'
+                        }`}
+                        title={`Apply Multi-Buy Promo (${lastScanned.multiBuyQty} pcs for ₱${Number(lastScanned.multiBuyPrice).toFixed(2)})`}
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>Promo ({lastScanned.multiBuyQty} pcs): ₱{Number(lastScanned.multiBuyPrice).toFixed(2)}</span>
+                      </button>
+                    )}
                   </div>
+                </div>
+              )}
+
+              {/* Multi-Buy Option for non-box single items on Just Scanned Card */}
+              {!isBoxOrPackItem(lastScanned) && hasMultiBuyPromo(lastScanned) && (
+                <div className="pt-2.5 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 animate-in fade-in duration-100">
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-300 font-bold">
+                    <Sparkles className="h-4 w-4 text-emerald-400" />
+                    <span>Multi-Buy Promo Available:</span>
+                    <span className="text-emerald-200 font-mono">
+                      {lastScanned.multiBuyQty} for ₱{Number(lastScanned.multiBuyPrice).toFixed(2)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetId = lastScannedItemId || cart[cart.length - 1]?.id;
+                      if (targetId) {
+                        setRecentItemQuantity(lastScanned.multiBuyQty || 3, targetId);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                      (lastScanned.quantity || 1) >= (lastScanned.multiBuyQty || 3)
+                        ? 'bg-emerald-400 text-slate-950 border-emerald-300 shadow font-black'
+                        : 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900'
+                    }`}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>Set to {lastScanned.multiBuyQty} pcs (₱{Number(lastScanned.multiBuyPrice).toFixed(2)})</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -2124,113 +2284,158 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                   </p>
                 </div>
               ) : (
-                cart.map(item => (
-                  <div key={item.id} className="py-3 px-2 flex items-center justify-between gap-3 hover:bg-slate-50/80 rounded-xl transition group">
-                    <div 
-                      onClick={() => {
-                        setEditingCartItem(item);
-                        setShowItemScanModal(true);
-                      }}
-                      className="min-w-0 flex-1 cursor-pointer"
-                      title="Click to edit item quantity, unit price, discount, or notes [F2]"
-                    >
-                      <div className="font-bold text-xs text-slate-900 truncate hover:text-cyan-700 flex items-center gap-1.5">
-                        <span>{item.name}</span>
-                        {item.discountPercent > 0 && (
-                          <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold">
-                            -{item.discountPercent}%
-                          </span>
-                        )}
-                        {item.isCustom && (
-                          <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 text-[9px] font-bold">
-                            Custom
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 mt-0.5">
-                        <span>{item.brand}</span>
-                        {item.size && <span>· {item.size}</span>}
-                        <span className="font-mono text-slate-400">₱{item.unitPrice.toFixed(2)}</span>
-                        {item.notes && <span className="italic text-slate-600 bg-slate-100 px-1 rounded truncate max-w-[150px]">"{item.notes}"</span>}
-                      </div>
+                cart.map(item => {
+                  const itemPromo = calculateMultiBuySubtotal(item, item.quantity || 1, item.isRetailPiece);
+                  const isEligibleForMulti = hasMultiBuyPromo(item) && (!isBoxOrPackItem(item) || item.isRetailPiece);
 
-                      {/* Box & Pack Tier Switch Button right on Cart Item */}
-                      {isBoxOrPackItem(item) && (
-                        <div className="mt-1 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleCartItemTier(item.id)}
-                            className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1.5 transition cursor-pointer border shadow-2xs ${
-                              item.isRetailPiece
-                                ? 'bg-amber-100 border-amber-300 text-amber-950 hover:bg-amber-200'
-                                : 'bg-cyan-50 border-cyan-300 text-cyan-950 hover:bg-cyan-100'
-                            }`}
-                            title="Click to toggle between Wholesale (Box/Pack) and Retail (Piece)"
-                          >
-                            <Boxes className="h-3 w-3 text-amber-600 shrink-0" />
-                            <span>{item.isRetailPiece ? `🏷️ Retail Piece (₱${Number(item.unitPrice).toFixed(2)})` : `📦 Wholesale ${item.unit || 'Pack'} (₱${Number(item.unitPrice).toFixed(2)})`}</span>
-                            <span className="text-[9px] font-black underline text-indigo-700 ml-1">
-                              Switch to {item.isRetailPiece ? 'Wholesale' : 'Retail Piece'}
+                  return (
+                    <div key={item.id} className="py-3 px-2 flex items-center justify-between gap-3 hover:bg-slate-50/80 rounded-xl transition group">
+                      <div 
+                        onClick={() => {
+                          setEditingCartItem(item);
+                          setShowItemScanModal(true);
+                        }}
+                        className="min-w-0 flex-1 cursor-pointer"
+                        title="Click to edit item quantity, unit price, discount, or notes [F2]"
+                      >
+                        <div className="font-bold text-xs text-slate-900 truncate hover:text-cyan-700 flex items-center gap-1.5">
+                          <span>{item.name}</span>
+                          {item.discountPercent > 0 && (
+                            <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold">
+                              -{item.discountPercent}%
                             </span>
-                          </button>
+                          )}
+                          {item.isCustom && (
+                            <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 text-[9px] font-bold">
+                              Custom
+                            </span>
+                          )}
                         </div>
-                      )}
-                    </div>
+                        <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                          <span>{item.brand}</span>
+                          {item.size && <span>· {item.size}</span>}
+                          <span className="font-mono text-slate-400">₱{item.unitPrice.toFixed(2)}</span>
+                          {item.notes && <span className="italic text-slate-600 bg-slate-100 px-1 rounded truncate max-w-[150px]">"{item.notes}"</span>}
+                        </div>
 
-                    {/* Quantity Modifier */}
-                    <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Multi-Buy Promotion Applied Badge */}
+                        {itemPromo.savings > 0 && (
+                          <div className="mt-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
+                            <Sparkles className="h-3 w-3 text-emerald-600 shrink-0" />
+                            <span>✨ Promo: {itemPromo.bundleCount}x ({itemPromo.promoQty} for ₱{itemPromo.promoPrice.toFixed(2)}) · Saved ₱{itemPromo.savings.toFixed(2)}</span>
+                          </div>
+                        )}
+
+                        {/* Quick Add Remainder to Trigger Multi-Buy Promo */}
+                        {isEligibleForMulti && itemPromo.remainderCount > 0 && (
+                          <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQuantity(item.id, itemPromo.promoQty - itemPromo.remainderCount)}
+                              className="text-[9px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded transition cursor-pointer flex items-center gap-1"
+                              title={`Add ${itemPromo.promoQty - itemPromo.remainderCount} more piece(s) to get promo discount`}
+                            >
+                              <Plus className="h-2.5 w-2.5" />
+                              <span>+Add {itemPromo.promoQty - itemPromo.remainderCount} more for {itemPromo.promoQty} for ₱{itemPromo.promoPrice.toFixed(2)} Promo</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Box & Pack Tier Switch Button right on Cart Item */}
+                        {isBoxOrPackItem(item) && (
+                          <div className="mt-1 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleCartItemTier(item.id)}
+                              className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1.5 transition cursor-pointer border shadow-2xs ${
+                                item.isRetailPiece
+                                  ? 'bg-amber-100 border-amber-300 text-amber-950 hover:bg-amber-200'
+                                  : 'bg-cyan-50 border-cyan-300 text-cyan-950 hover:bg-cyan-100'
+                              }`}
+                              title="Click to toggle between Wholesale (Box/Pack) and Retail (Piece)"
+                            >
+                              <Boxes className="h-3 w-3 text-amber-600 shrink-0" />
+                              <span>{item.isRetailPiece ? `🏷️ Retail Piece (₱${Number(item.unitPrice).toFixed(2)})` : `📦 Wholesale ${item.unit || 'Pack'} (₱${Number(item.unitPrice).toFixed(2)})`}</span>
+                              <span className="text-[9px] font-black underline text-indigo-700 ml-1">
+                                Switch to {item.isRetailPiece ? 'Wholesale' : 'Retail Piece'}
+                              </span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Quantity Modifier */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateQuantity(item.id, -1)}
+                          className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs cursor-pointer"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="w-6 text-center font-mono font-bold text-xs text-slate-900">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateQuantity(item.id, 1)}
+                          className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs cursor-pointer"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+
+                      <div className="w-20 text-right font-mono shrink-0">
+                        {itemPromo.savings > 0 && (
+                          <div className="text-[10px] line-through text-slate-400">
+                            ₱{itemPromo.regularSubtotal.toFixed(2)}
+                          </div>
+                        )}
+                        <div className="font-bold text-xs text-slate-900">
+                          ₱{itemPromo.subtotal.toFixed(2)}
+                        </div>
+                      </div>
+
+                      {/* Edit Details Button */}
                       <button
                         type="button"
-                        onClick={() => handleUpdateQuantity(item.id, -1)}
-                        className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs cursor-pointer"
+                        onClick={() => {
+                          setEditingCartItem(item);
+                          setShowItemScanModal(true);
+                        }}
+                        title="Edit item details, price, discount, or notes"
+                        className="p-1 rounded-md text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 transition cursor-pointer shrink-0"
                       >
-                        <Minus className="h-3 w-3" />
+                        <Tag className="h-3.5 w-3.5" />
                       </button>
-                      <span className="w-6 text-center font-mono font-bold text-xs text-slate-900">
-                        {item.quantity}
-                      </span>
+
+                      {/* Void Item Button (Requires Supervisor Barcode) */}
                       <button
                         type="button"
-                        onClick={() => handleUpdateQuantity(item.id, 1)}
-                        className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs cursor-pointer"
+                        onClick={() => initiateVoidItem(item)}
+                        title="Supervisor barcode authorization required to void item"
+                        className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer shrink-0"
                       >
-                        <Plus className="h-3 w-3" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
-
-                    <div className="w-16 text-right font-mono font-bold text-xs text-slate-900 shrink-0">
-                      ₱{(item.unitPrice * (item.quantity || 1)).toFixed(2)}
-                    </div>
-
-                    {/* Edit Details Button */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingCartItem(item);
-                        setShowItemScanModal(true);
-                      }}
-                      title="Edit item details, price, discount, or notes"
-                      className="p-1 rounded-md text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 transition cursor-pointer shrink-0"
-                    >
-                      <Tag className="h-3.5 w-3.5" />
-                    </button>
-
-                    {/* Void Item Button (Requires Supervisor Barcode) */}
-                    <button
-                      type="button"
-                      onClick={() => initiateVoidItem(item)}
-                      title="Supervisor barcode authorization required to void item"
-                      className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer shrink-0"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
             {/* Subtotal & Checkout Action Area */}
             <div className="p-4 bg-slate-50 border-t border-slate-200 space-y-3">
+              {totalCartSavings > 0 && (
+                <div className="flex items-center justify-between text-xs text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                    Multi-Buy Savings:
+                  </span>
+                  <span className="font-mono font-black">-₱{totalCartSavings.toFixed(2)}</span>
+                </div>
+              )}
+
               <div className="flex items-center justify-between text-xs text-slate-600">
                 <span>Subtotal ({cart.reduce((a, b) => a + (b.quantity || 1), 0)} items):</span>
                 <span className="font-mono font-bold text-slate-900">₱{grandTotal.toFixed(2)}</span>
