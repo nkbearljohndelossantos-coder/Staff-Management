@@ -26,7 +26,10 @@ import {
   Crown,
   PhoneCall,
   Phone,
-  Shield
+  Shield,
+  AlertTriangle,
+  X,
+  Send
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
@@ -62,7 +65,10 @@ export default function EmployeePortalView() {
     leaveRequests = [],
     fileLeaveRequest,
     overtimeRequests = [],
-    fileOvertimeRequest
+    fileOvertimeRequest,
+    misconductReports = [],
+    acknowledgeMisconductNotice,
+    submitStaffExplanation
   } = useApp();
 
   const [copiedSnippet, setCopiedSnippet] = useState(null);
@@ -94,6 +100,14 @@ export default function EmployeePortalView() {
   useEscapeKey('ess-payslip-modal', ESCAPE_PRIORITY.MODAL, Boolean(selectedPayslipData), () => setSelectedPayslipData(null));
   useEscapeKey('ess-leave-modal', ESCAPE_PRIORITY.MODAL, showLeaveModal, () => setShowLeaveModal(false));
   useEscapeKey('ess-ot-modal', ESCAPE_PRIORITY.MODAL, showOTModal, () => setShowOTModal(false));
+
+  // Misconduct & HR Call-Out Notice Modal State
+  const [activeNoticeReport, setActiveNoticeReport] = useState(null);
+  const [staffExplanationText, setStaffExplanationText] = useState('');
+  const [acknowledgingNotice, setAcknowledgingNotice] = useState(false);
+  const [submittingExplanation, setSubmittingExplanation] = useState(false);
+
+  useEscapeKey('ess-misconduct-notice-modal', ESCAPE_PRIORITY.MODAL, Boolean(activeNoticeReport), () => setActiveNoticeReport(null));
 
   // Form States
   const [loanForm, setLoanForm] = useState({ category: 'cash', principal: '', termMonths: 3, purpose: '' });
@@ -172,9 +186,74 @@ export default function EmployeePortalView() {
     }
   });
 
+  // Filter active misconduct callouts for this staff
+  const myMisconductNotices = (misconductReports || []).filter(r => 
+    (r.staffId === currentStaff?.id || r.staffEmployeeId === currentStaff?.employeeId) &&
+    r.notifyStaff &&
+    r.status !== 'RESOLVED_WARNED' &&
+    r.status !== 'RESOLVED_SUSPENDED' &&
+    r.status !== 'RESOLVED_DISMISSED'
+  );
+
   return (
     <div className="space-y-6">
       
+      {/* URGENT HR CALL-OUT & NOTICE TO EXPLAIN ALERT BANNER */}
+      {myMisconductNotices.length > 0 && (
+        <div className="rounded-3xl border-2 border-rose-500 bg-gradient-to-r from-rose-950 via-rose-900 to-slate-950 p-5 text-white shadow-2xl space-y-3 relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="h-12 w-12 rounded-2xl bg-rose-600 border border-rose-400 text-white flex items-center justify-center shrink-0 shadow-lg animate-pulse">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black uppercase tracking-wider">
+                    URGENT HR DIRECTIVE
+                  </span>
+                  <span className="text-xs text-rose-200 font-bold">
+                    Immediate HR Office Call-Out Required
+                  </span>
+                </div>
+                <h3 className="text-base sm:text-lg font-black mt-0.5">
+                  Notice to Explain: {myMisconductNotices[0].categoryLabel}
+                </h3>
+                <p className="text-xs text-rose-200/90 leading-relaxed mt-0.5">
+                  You are required to report immediately to the HR Office regarding incident #{myMisconductNotices[0].id}.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveNoticeReport(myMisconductNotices[0]);
+                  setStaffExplanationText(myMisconductNotices[0].explanationText || '');
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-white hover:bg-rose-50 text-rose-950 text-xs font-black flex items-center justify-center gap-2 shadow-xl transition cursor-pointer"
+              >
+                <FileText className="h-4 w-4 text-rose-600" />
+                <span>Review Notice &amp; Instructions</span>
+                {!myMisconductNotices[0].acknowledgedAt && (
+                  <span className="h-2 w-2 rounded-full bg-rose-600 animate-ping"></span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-rose-800/80 text-[11px] text-rose-300">
+            <span>Incident Date: {myMisconductNotices[0].incidentDate} at {myMisconductNotices[0].incidentTime}</span>
+            <span>
+              Status:{' '}
+              <strong className={myMisconductNotices[0].acknowledgedAt ? 'text-emerald-300' : 'text-amber-300 underline'}>
+                {myMisconductNotices[0].acknowledgedAt ? 'Receipt Acknowledged by You' : 'Unacknowledged - Immediate Action Required'}
+              </strong>
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner (White Card, High Contrast) */}
       <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
         <div className="flex items-center gap-4 text-center md:text-left flex-col md:flex-row">
@@ -2153,6 +2232,193 @@ export default function EmployeePortalView() {
                 Submit Application to HR
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Formal Notice to Explain & HR Call-Out Modal */}
+      {activeNoticeReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border-2 border-rose-500 rounded-3xl shadow-2xl overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
+            
+            {/* Header */}
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-rose-950 via-rose-900 to-slate-950 text-white flex items-center justify-between border-b border-rose-800">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-rose-600 border border-rose-400 text-white flex items-center justify-center shrink-0">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-300">
+                    Official Disciplinary Directive · Ref #{activeNoticeReport.id}
+                  </span>
+                  <h3 className="text-base font-black text-white">
+                    Formal Notice to Explain (NTE)
+                  </h3>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveNoticeReport(null)}
+                className="p-1.5 rounded-lg text-rose-200 hover:text-white hover:bg-white/10 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 sm:p-6 space-y-5 max-h-[calc(85vh-120px)] overflow-y-auto">
+              
+              {/* Directive Call-Out Alert */}
+              <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 space-y-1">
+                <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300 font-black text-xs uppercase tracking-wider">
+                  <AlertCircle className="h-4 w-4 text-rose-600" />
+                  <span>Immediate HR Office Call-Out Required</span>
+                </div>
+                <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed font-semibold">
+                  You are instructed to report immediately to the HR Office (Admin Bldg, 2nd Floor) to explain and confer regarding an alleged workplace incident.
+                </p>
+              </div>
+
+              {/* Incident Details Summary */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold">Misconduct</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{activeNoticeReport.categoryLabel}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold">Incident Date</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{activeNoticeReport.incidentDate}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 col-span-2 sm:col-span-1">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold">Location</span>
+                  <span className="font-bold text-slate-900 dark:text-white truncate block">{activeNoticeReport.location}</span>
+                </div>
+              </div>
+
+              {/* Official Memo Text */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  HR Directive &amp; Formal Notification Text
+                </label>
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 font-mono text-xs text-slate-800 dark:text-slate-200 whitespace-pre-line leading-relaxed">
+                  {activeNoticeReport.notificationMessage}
+                </div>
+              </div>
+
+              {/* Acknowledgement Status / Action */}
+              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Step 1: Notice Acknowledgement
+                  </span>
+                  {activeNoticeReport.acknowledgedAt && (
+                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Check className="h-3 w-3" />
+                      Acknowledged on {new Date(activeNoticeReport.acknowledgedAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+
+                {!activeNoticeReport.acknowledgedAt ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                      By clicking below, you confirm receipt of this formal Notice to Explain and acknowledge that you must report to the HR Office.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={acknowledgingNotice}
+                      onClick={() => {
+                        setAcknowledgingNotice(true);
+                        acknowledgeMisconductNotice(activeNoticeReport.id, 'Confirmed receipt via employee portal.');
+                        setActiveNoticeReport(prev => ({
+                          ...prev,
+                          acknowledgedAt: new Date().toISOString(),
+                          status: 'ACKNOWLEDGED'
+                        }));
+                        setAcknowledgingNotice(false);
+                      }}
+                      className="w-full py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 transition cursor-pointer"
+                    >
+                      <Check className="h-4 w-4" />
+                      <span>Confirm &amp; Acknowledge Receipt of Notice</span>
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                    ✓ You have acknowledged this notice. Please proceed directly to the HR Office.
+                  </p>
+                )}
+              </div>
+
+              {/* Step 2: Written Explanation Submission */}
+              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Step 2: Submit Written Explanation (Optional)
+                  </span>
+                  {activeNoticeReport.explanationSubmittedAt && (
+                    <span className="text-[10px] font-bold text-sky-700 dark:text-sky-400 bg-sky-100 dark:bg-sky-950 px-2 py-0.5 rounded-full">
+                      Submitted on {new Date(activeNoticeReport.explanationSubmittedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+
+                {activeNoticeReport.explanationSubmittedAt ? (
+                  <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-line leading-relaxed">
+                    {activeNoticeReport.explanationText}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      You may encode your written statement below before appearing in the HR office:
+                    </p>
+                    <textarea
+                      rows={3}
+                      value={staffExplanationText}
+                      onChange={(e) => setStaffExplanationText(e.target.value)}
+                      placeholder="Write your explanation or statement regarding the alleged incident here..."
+                      className="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-rose-500"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        disabled={submittingExplanation || !staffExplanationText.trim()}
+                        onClick={() => {
+                          if (!staffExplanationText.trim()) return;
+                          setSubmittingExplanation(true);
+                          submitStaffExplanation(activeNoticeReport.id, staffExplanationText.trim());
+                          setActiveNoticeReport(prev => ({
+                            ...prev,
+                            explanationText: staffExplanationText.trim(),
+                            explanationSubmittedAt: new Date().toISOString(),
+                            status: 'EXPLANATION_SUBMITTED'
+                          }));
+                          setSubmittingExplanation(false);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        <span>Submit Written Explanation</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setActiveNoticeReport(null)}
+                className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition cursor-pointer"
+              >
+                Close Notice
+              </button>
+            </div>
+
           </div>
         </div>
       )}

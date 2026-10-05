@@ -42,6 +42,7 @@ import {
   SYSTEM_SECTIONS,
   SYSTEM_ROLES
 } from '../utils/sectionAuthorization';
+import { generateDefaultMisconductMemo } from '../utils/misconductUtils.js';
 
 const AppContext = createContext(null);
 
@@ -605,6 +606,188 @@ export function AppProvider({ children }) {
     };
     setItDiagnosticEvents(prev => [newEvent, ...prev].slice(0, 200));
     return newEvent;
+  };
+
+  // --- EMPLOYEE MISCONDUCT & CCTV INCIDENT REPORTS ---
+  const [misconductReports, setMisconductReports] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_misconduct_reports');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
+
+  const fileMisconductReport = (reportData) => {
+    const reporterName = currentUser?.name || 'Authorized Security/HR Officer';
+    const reporterRole = currentUser?.role || 'hr';
+    const reporterId = currentUser?.employeeId || currentUser?.id || 'OFFICER';
+
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const randSuffix = Math.floor(1000 + Math.random() * 9000);
+    const reportId = `MISC-${dateStr}-${randSuffix}`;
+
+    const newReport = {
+      id: reportId,
+      createdAt: now.toISOString(),
+      reporterId,
+      reporterName,
+      reporterRole,
+      staffId: reportData.staffId,
+      staffName: reportData.staffName,
+      staffEmployeeId: reportData.staffEmployeeId,
+      staffDepartment: reportData.staffDepartment,
+      staffPosition: reportData.staffPosition,
+      involvedStaffIds: reportData.involvedStaffIds || [],
+      category: reportData.category || 'OTHER_MISCONDUCT',
+      categoryLabel: reportData.categoryLabel || 'Workplace Misconduct',
+      severity: reportData.severity || 'MODERATE',
+      incidentDate: reportData.incidentDate || now.toISOString().split('T')[0],
+      incidentTime: reportData.incidentTime || now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      location: reportData.location || 'Company Premises',
+      narrative: reportData.narrative || '',
+      cctvCameraId: reportData.cctvCameraId || '',
+      cctvTimecode: reportData.cctvTimecode || '',
+      cctvExternalLink: reportData.cctvExternalLink || '',
+      attachment: reportData.attachment || null, // { name, type, size, dataUrl, isVideo }
+      notifyStaff: Boolean(reportData.notifyStaff),
+      calloutRequired: Boolean(reportData.calloutRequired),
+      urgency: reportData.urgency || 'IMMEDIATE',
+      scheduledTime: reportData.scheduledTime || '',
+      notificationMessage: reportData.notificationMessage || '',
+      status: reportData.calloutRequired ? 'PENDING_EXPLANATION' : 'UNDER_HR_INVESTIGATION',
+      acknowledgedAt: null,
+      acknowledgementNotes: null,
+      explanationText: null,
+      explanationSubmittedAt: null,
+      resolutionSanction: null,
+      resolutionNotes: null,
+      resolvedAt: null,
+      resolvedBy: null
+    };
+
+    setMisconductReports(prev => {
+      const next = [newReport, ...prev];
+      try {
+        localStorage.setItem('nkb_misconduct_reports', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    if (newReport.notifyStaff) {
+      addInAppNotification({
+        title: `🚨 URGENT HR DIRECTIVE: Immediate HR Call-Out (Notice to Explain)`,
+        message: newReport.notificationMessage || `You are instructed to report immediately to the HR office regarding incident #${reportId}.`,
+        type: 'danger',
+        targetStaffId: newReport.staffId,
+        misconductReportId: reportId,
+        actionType: 'HR_CALLOUT'
+      });
+    }
+
+    logSystemEvent({
+      category: 'DISCIPLINE',
+      action: 'FILE_MISCONDUCT_REPORT',
+      details: `Filed misconduct report #${reportId} against ${newReport.staffName} (${newReport.staffEmployeeId}) for ${newReport.categoryLabel}. Callout: ${newReport.calloutRequired ? 'YES' : 'NO'}.`,
+      targetId: newReport.staffId
+    });
+
+    showToast(`Misconduct report #${reportId} filed successfully.`);
+    return newReport;
+  };
+
+  const acknowledgeMisconductNotice = (reportId, notes = '') => {
+    const now = new Date().toISOString();
+    setMisconductReports(prev => {
+      const next = prev.map(r => {
+        if (r.id === reportId) {
+          return {
+            ...r,
+            acknowledgedAt: now,
+            acknowledgementNotes: notes,
+            status: r.status === 'PENDING_EXPLANATION' ? 'ACKNOWLEDGED' : r.status
+          };
+        }
+        return r;
+      });
+      try {
+        localStorage.setItem('nkb_misconduct_reports', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    logSystemEvent({
+      category: 'DISCIPLINE',
+      action: 'ACKNOWLEDGE_CALLOUT',
+      details: `Staff acknowledged Notice to Explain for incident #${reportId}`,
+      targetId: reportId
+    });
+
+    showToast('Notice to Explain confirmed and receipt acknowledged.');
+  };
+
+  const submitStaffExplanation = (reportId, explanationText) => {
+    const now = new Date().toISOString();
+    setMisconductReports(prev => {
+      const next = prev.map(r => {
+        if (r.id === reportId) {
+          return {
+            ...r,
+            explanationText,
+            explanationSubmittedAt: now,
+            status: 'EXPLANATION_SUBMITTED'
+          };
+        }
+        return r;
+      });
+      try {
+        localStorage.setItem('nkb_misconduct_reports', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    logSystemEvent({
+      category: 'DISCIPLINE',
+      action: 'SUBMIT_STAFF_EXPLANATION',
+      details: `Staff submitted formal written explanation for incident #${reportId}`,
+      targetId: reportId
+    });
+
+    showToast('Written explanation submitted to HR successfully.');
+  };
+
+  const resolveMisconductReport = (reportId, { sanction, notes, status }) => {
+    const adminName = currentUser?.name || 'HR Management';
+    const now = new Date().toISOString();
+
+    setMisconductReports(prev => {
+      const next = prev.map(r => {
+        if (r.id === reportId) {
+          return {
+            ...r,
+            resolutionSanction: sanction,
+            resolutionNotes: notes,
+            status: status || 'RESOLVED_WARNED',
+            resolvedAt: now,
+            resolvedBy: adminName
+          };
+        }
+        return r;
+      });
+      try {
+        localStorage.setItem('nkb_misconduct_reports', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    logSystemEvent({
+      category: 'DISCIPLINE',
+      action: 'RESOLVE_MISCONDUCT_REPORT',
+      details: `HR resolved incident #${reportId}: ${sanction}. Status: ${status}`,
+      targetId: reportId
+    });
+
+    showToast(`Misconduct report #${reportId} updated to ${status}.`);
   };
 
   const getSectionPermission = (sectionId, targetUser = currentUser) => {
@@ -1277,9 +1460,11 @@ export function AppProvider({ children }) {
   const isITAdmin = currentUser?.role === 'it_admin';
   const isSuperAdmin = isCEO || isITAdmin;
   const isHR = currentUser?.role === 'admin' || currentUser?.role === 'hr' || isSuperAdmin;
+  const isCCTVAdmin = currentUser?.role === 'cctv_admin' || currentUser?.role === 'cctv' || currentUser?.role === 'security' || isSuperAdmin;
   const isAccounting = currentUser?.role === 'finance' || currentUser?.role === 'accounting' || isSuperAdmin;
   const isCanteen = currentUser?.role === 'canteen' || isSuperAdmin;
   const isEmployee = currentUser?.role === 'employee';
+  const canManageMisconduct = isHR || isCCTVAdmin;
 
   // Auth Methods
   const loginStaff = (emailOrId, password) => {
@@ -3874,6 +4059,14 @@ export function AppProvider({ children }) {
         isDigitalIdOpen,
         openDigitalId,
         closeDigitalId,
+        // CCTV & Misconduct Incident Reporting
+        isCCTVAdmin,
+        canManageMisconduct,
+        misconductReports,
+        fileMisconductReport,
+        acknowledgeMisconductNotice,
+        submitStaffExplanation,
+        resolveMisconductReport,
         // UI
         activeTab,
         setActiveTab,

@@ -1,16 +1,31 @@
 import React, { useState } from 'react';
-import { Search, UserPlus, Filter, Edit3, Trash2, DollarSign, Users, Building, ScanLine, QrCode, Eye, Calendar, Shield, Paperclip, Crown } from 'lucide-react';
+import { Search, UserPlus, Filter, Edit3, Trash2, DollarSign, Users, Building, ScanLine, QrCode, Eye, Calendar, Shield, Paperclip, Crown, AlertTriangle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import { formatStaffName, scanStaffMilestones } from '../../utils/staffUtils';
+import { canCreateMisconductReport } from '../../utils/rolePermissions';
 import StaffBadgeModal from './StaffBadgeModal';
 import StaffFormModal from './StaffFormModal';
 import StaffDetailModal from './StaffDetailModal';
+import MisconductReportModal from './MisconductReportModal';
+import MisconductReportsManagerModal from './MisconductReportsManagerModal';
 import BarcodeView from '../common/BarcodeView';
 import TableActionDropdown from '../common/TableActionDropdown';
 
 export default function StaffDirectory() {
-  const { staffList, departments, positions, deleteStaff, isHR, openDigitalId, toggleTeamLeader } = useApp();
+  const { 
+    staffList, 
+    departments, 
+    positions, 
+    deleteStaff, 
+    isHR, 
+    openDigitalId, 
+    toggleTeamLeader,
+    currentUser,
+    misconductReports = []
+  } = useApp();
+
+  const canReportMisconduct = canCreateMisconductReport(currentUser);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState('ALL');
@@ -18,6 +33,9 @@ export default function StaffDirectory() {
   const [formModalStaff, setFormModalStaff] = useState(null);
   const [detailModalStaff, setDetailModalStaff] = useState(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
+  const [isMisconductModalOpen, setIsMisconductModalOpen] = useState(false);
+  const [misconductTargetStaff, setMisconductTargetStaff] = useState(null);
+  const [isMisconductManagerOpen, setIsMisconductManagerOpen] = useState(false);
 
   const milestones = scanStaffMilestones ? scanStaffMilestones(staffList, 14) : { birthdays: [], anniversaries: [] };
 
@@ -225,17 +243,52 @@ export default function StaffDirectory() {
           </div>
         </div>
 
-        {/* Onboard Staff Button (HR Only) */}
-        {isHR && (
-          <button
-            type="button"
-            onClick={() => setIsAddingNew(true)}
-            className="w-full sm:w-auto h-10 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-sm transition shrink-0"
-          >
-            <UserPlus className="h-4 w-4 text-white" />
-            Onboard Staff (Auto-Generate ID)
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* Misconduct & CCTV Reporting (HR & CCTV Admin) */}
+          {canReportMisconduct && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setMisconductTargetStaff(null);
+                  setIsMisconductModalOpen(true);
+                }}
+                className="w-full sm:w-auto h-10 px-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-sm transition shrink-0"
+                title="File Employee Misconduct Report with CCTV Footage"
+              >
+                <AlertTriangle className="h-4 w-4 text-white" />
+                <span>Report Misconduct (CCTV)</span>
+              </button>
+
+              {misconductReports.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsMisconductManagerOpen(true)}
+                  className="h-10 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition shrink-0"
+                  title="Browse all misconduct reports & CCTV evidence"
+                >
+                  <Shield className="h-4 w-4 text-slate-600" />
+                  <span>Cases</span>
+                  <span className="min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] font-black rounded-full flex items-center justify-center">
+                    {misconductReports.filter(r => r.status === 'PENDING_EXPLANATION' || r.status === 'ACKNOWLEDGED').length || misconductReports.length}
+                  </span>
+                </button>
+              )}
+            </>
+          )}
+
+          {/* Onboard Staff Button (HR Only) */}
+          {isHR && (
+            <button
+              type="button"
+              onClick={() => setIsAddingNew(true)}
+              className="w-full sm:w-auto h-10 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-sm transition shrink-0"
+            >
+              <UserPlus className="h-4 w-4 text-white" />
+              Onboard Staff (Auto-Generate ID)
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Staff Table */}
@@ -439,6 +492,18 @@ export default function StaffDirectory() {
                                 icon: ScanLine,
                                 onClick: () => setBadgeModalStaff(staff)
                               },
+                              ...(canReportMisconduct
+                                ? [
+                                    {
+                                      label: 'Report Misconduct (CCTV)',
+                                      icon: AlertTriangle,
+                                      onClick: () => {
+                                        setMisconductTargetStaff(staff);
+                                        setIsMisconductModalOpen(true);
+                                      }
+                                    }
+                                  ]
+                                : []),
                               ...(isHR
                                 ? [
                                     {
@@ -503,6 +568,26 @@ export default function StaffDirectory() {
           }}
         />
       )}
+
+      {/* Misconduct Report Filing Modal */}
+      <MisconductReportModal
+        isOpen={isMisconductModalOpen}
+        preselectedStaff={misconductTargetStaff}
+        onClose={() => {
+          setIsMisconductModalOpen(false);
+          setMisconductTargetStaff(null);
+        }}
+      />
+
+      {/* Misconduct Reports Manager Modal */}
+      <MisconductReportsManagerModal
+        isOpen={isMisconductManagerOpen}
+        onClose={() => setIsMisconductManagerOpen(false)}
+        onOpenNewReport={() => {
+          setMisconductTargetStaff(null);
+          setIsMisconductModalOpen(true);
+        }}
+      />
 
     </div>
   );

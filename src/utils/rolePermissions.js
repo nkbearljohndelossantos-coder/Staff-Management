@@ -173,3 +173,17 @@ export const canPerformCardVoid = (role) => {
 export const canAccessITAdmin = (role) => {
   return role === 'ceo' || role === 'it_admin';
 };
+
+export const canCreateMisconductReport = (roleOrUser) => {
+  if (!roleOrUser) return false;
+  const role = typeof roleOrUser === 'object' ? (roleOrUser.role || '').toLowerCase() : String(roleOrUser).toLowerCase();
+  return (
+    role === 'ceo' ||
+    role === 'it_admin' ||
+    role === 'admin' ||
+    role === 'hr' ||
+    role === 'cctv_admin' ||
+    role === 'cctv' ||
+    role === 'security'
+  );
+};

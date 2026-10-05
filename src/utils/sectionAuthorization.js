@@ -80,6 +80,7 @@ export const SYSTEM_ROLES = [
   { id: 'ceo', name: 'CEO & Executive Leadership', badge: 'Super Admin' },
   { id: 'it_admin', name: 'IT Administrator', badge: 'IT Admin' },
   { id: 'hr', name: 'HR Management & Officers', badge: 'HR' },
+  { id: 'cctv_admin', name: 'CCTV & Security Administrator', badge: 'CCTV Admin' },
   { id: 'finance', name: 'Finance & Accounting Officers', badge: 'Accounting' },
   { id: 'canteen', name: 'Canteen Supervisor & Cashiers', badge: 'Canteen' },
   { id: 'employee', name: 'General Staff & Employees', badge: 'Staff' }
@@ -123,6 +124,18 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     canteenHub: 'view',
     gatePasses: 'manage',
     purchaseOrders: 'view',
+    itAdminHub: 'none'
+  },
+  cctv_admin: {
+    executiveDashboard: 'view',
+    staff: 'view',
+    positions: 'view',
+    attendance: 'view',
+    payroll: 'none',
+    coopLoans: 'none',
+    canteenHub: 'view',
+    gatePasses: 'manage',
+    purchaseOrders: 'none',
     itAdminHub: 'none'
   },
   finance: {
