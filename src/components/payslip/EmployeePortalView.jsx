@@ -29,7 +29,14 @@ import {
   Shield,
   AlertTriangle,
   X,
-  Send
+  Send,
+  Upload,
+  Paperclip,
+  Briefcase,
+  RefreshCw,
+  LogOut,
+  Stethoscope,
+  TimerOff
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
@@ -38,6 +45,8 @@ import BarcodeView from '../common/BarcodeView';
 import QRCodeView from '../common/QRCodeView';
 import PayslipDocument from './PayslipDocument';
 import GatePassModal from '../canteen/GatePassModal';
+import DocumentPreviewModal from '../staff/DocumentPreviewModal';
+import { compressDocument } from '../../utils/documentCompressor';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 import { formatStaffName } from '../../utils/staffUtils';
 import { LOAN_TERM_OPTIONS, calculateMaxLoanableAmount } from '../../utils/coopBusinessRules';
@@ -68,6 +77,12 @@ export default function EmployeePortalView() {
     fileLeaveRequest,
     overtimeRequests = [],
     fileOvertimeRequest,
+    offsetRequests = [],
+    fileOffsetRequest,
+    officialBusinessRequests = [],
+    fileOfficialBusinessRequest,
+    undertimeRequests = [],
+    fileUndertimeRequest,
     misconductReports = [],
     acknowledgeMisconductNotice,
     submitStaffExplanation
@@ -75,6 +90,8 @@ export default function EmployeePortalView() {
 
   const [copiedSnippet, setCopiedSnippet] = useState(null);
   const [selectedPayslipData, setSelectedPayslipData] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [uploadingMedCert, setUploadingMedCert] = useState(false);
 
   const handleCopySnippet = (text, type) => {
     if (!text) return;
@@ -92,6 +109,9 @@ export default function EmployeePortalView() {
   const [selectedGatePass, setSelectedGatePass] = useState(null);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showOTModal, setShowOTModal] = useState(false);
+  const [showOffsetModal, setShowOffsetModal] = useState(false);
+  const [showOBModal, setShowOBModal] = useState(false);
+  const [showUndertimeModal, setShowUndertimeModal] = useState(false);
 
   // Progressive Escape dismissal (Priority 40 - MODAL)
   useEscapeKey('ess-loan-modal', ESCAPE_PRIORITY.MODAL, showLoanModal, () => setShowLoanModal(false));
@@ -102,6 +122,9 @@ export default function EmployeePortalView() {
   useEscapeKey('ess-payslip-modal', ESCAPE_PRIORITY.MODAL, Boolean(selectedPayslipData), () => setSelectedPayslipData(null));
   useEscapeKey('ess-leave-modal', ESCAPE_PRIORITY.MODAL, showLeaveModal, () => setShowLeaveModal(false));
   useEscapeKey('ess-ot-modal', ESCAPE_PRIORITY.MODAL, showOTModal, () => setShowOTModal(false));
+  useEscapeKey('ess-offset-modal', ESCAPE_PRIORITY.MODAL, showOffsetModal, () => setShowOffsetModal(false));
+  useEscapeKey('ess-ob-modal', ESCAPE_PRIORITY.MODAL, showOBModal, () => setShowOBModal(false));
+  useEscapeKey('ess-undertime-modal', ESCAPE_PRIORITY.MODAL, showUndertimeModal, () => setShowUndertimeModal(false));
 
   // Misconduct & HR Call-Out Notice Modal State
   const [activeNoticeReport, setActiveNoticeReport] = useState(null);
@@ -120,13 +143,44 @@ export default function EmployeePortalView() {
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     days: 1,
-    reason: ''
+    reason: '',
+    medicalCertificate: null
   });
   const [otForm, setOtForm] = useState({
     staffId: '',
     date: new Date().toISOString().split('T')[0],
     hours: 2,
     reasonCategory: 'Urgent Client Delivery / Rush Order',
+    reason: ''
+  });
+  const [offsetForm, setOffsetForm] = useState({
+    requestType: 'Schedule Offset (Hours Earned vs Offset Date)',
+    earnedDate: new Date().toISOString().split('T')[0],
+    offsetDate: new Date().toISOString().split('T')[0],
+    hours: 8,
+    timeIn: '08:00 AM',
+    lunchOut: '12:00 PM',
+    lunchIn: '01:00 PM',
+    breakOut: '03:00 PM',
+    breakIn: '03:15 PM',
+    timeOut: '05:00 PM',
+    reason: ''
+  });
+  const [obForm, setObForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    startTime: '08:00 AM',
+    endTime: '05:00 PM',
+    transactionType: 'Bank & Financial Transaction',
+    destination: '',
+    contactPerson: '',
+    purpose: ''
+  });
+  const [undertimeForm, setUndertimeForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    scheduledOut: '05:00 PM',
+    departureTime: '03:00 PM',
+    undertimeHours: 2,
+    reasonCategory: 'Medical / Personal Health',
     reason: ''
   });
   
@@ -144,7 +198,7 @@ export default function EmployeePortalView() {
   const isTeamLeader = Boolean(currentStaff?.isTeamLeader);
   const isTeamLeaderOrAdmin = isTeamLeader || currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.role === 'hr' || currentUser?.role === 'it_admin';
 
-  // Financial calculations for this employee
+  // Financial & Timekeeping calculations for this employee
   const myCoopBalance = coopBalances[currentStaff?.id] || 0;
   const myLoans = cashLoans.filter(l => l.staffId === currentStaff?.id);
   const myAdvances = cashAdvances.filter(ca => ca.staffId === currentStaff?.id);
@@ -152,9 +206,35 @@ export default function EmployeePortalView() {
   const myGatePasses = (canteenGatePasses || []).filter(gp => gp.bearerStaffId === currentStaff?.id);
   const myLeaves = (leaveRequests || []).filter(l => l.staffId === currentStaff?.id);
   const myOvertime = (overtimeRequests || []).filter(o => o.staffId === currentStaff?.id);
+  const myOffsets = (offsetRequests || []).filter(r => r.staffId === currentStaff?.id);
+  const myOfficialBusiness = (officialBusinessRequests || []).filter(r => r.staffId === currentStaff?.id);
+  const myUndertimes = (undertimeRequests || []).filter(r => r.staffId === currentStaff?.id);
   const myPendingWithdrawals = coopWithdrawals.filter(
     w => w.staffId === currentStaff?.id && w.status === 'Pending Accounting Approval'
   );
+
+  const handleMedicalCertificateUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) {
+      alert('Medical certificate file exceeds 15MB limit.');
+      return;
+    }
+    try {
+      setUploadingMedCert(true);
+      const compressed = await compressDocument(file, {
+        category: 'medical',
+        categoryLabel: 'Medical Certificate (Sick Leave)',
+        uploadedBy: currentStaff ? formatStaffName(currentStaff) : 'Employee',
+        notes: `Sick Leave Medical Certificate (${leaveForm.startDate})`
+      });
+      setLeaveForm(prev => ({ ...prev, medicalCertificate: compressed }));
+    } catch (err) {
+      console.error('Medical cert upload error:', err);
+    } finally {
+      setUploadingMedCert(false);
+    }
+  };
 
   const handleEmployeePhotoUpload = (e) => {
     const file = e.target.files?.[0];
@@ -910,16 +990,16 @@ export default function EmployeePortalView() {
         </div>
       )}
 
-      {/* Leave & Overtime Self-Service Request Center */}
+      {/* Leave, Timekeeping & Official Business Self-Service Request Center */}
       <div className="rounded-2xl border border-slate-200/90 bg-white p-5 space-y-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div>
             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
               <CalendarCheck className="h-4 w-4 text-slate-600" />
-              Leave &amp; Overtime Request Center
+              Leave, Timekeeping &amp; Official Business Request Center
             </h4>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              File leaves, schedule daytime overtime extensions, and view payslip records
+              File leaves (with Medical Certificate attachment), offset timekeeper requests, official business (no clock-in), undertime forms, and team overtime
             </p>
           </div>
 
@@ -928,18 +1008,82 @@ export default function EmployeePortalView() {
               type="button"
               onClick={() => {
                 setLeaveForm({
-                  type: 'Vacation Leave',
+                  type: 'Sick Leave',
                   startDate: new Date().toISOString().split('T')[0],
                   endDate: new Date().toISOString().split('T')[0],
                   days: 1,
-                  reason: ''
+                  reason: '',
+                  medicalCertificate: null
                 });
                 setShowLeaveModal(true);
               }}
               className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
             >
               <Plus className="h-3.5 w-3.5 text-white" />
-              <span>File Leave</span>
+              <span>File Leave / Sick Leave</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setOffsetForm({
+                  requestType: 'Schedule Offset (Extra Hours to Offset Late/Undertime)',
+                  sourceDate: new Date().toISOString().split('T')[0],
+                  targetOffsetDate: new Date().toISOString().split('T')[0],
+                  hours: 2,
+                  timeIn: '08:00 AM',
+                  lunchOut: '12:00 PM',
+                  lunchIn: '01:00 PM',
+                  breakOut: '03:00 PM',
+                  breakIn: '03:15 PM',
+                  timeOut: '05:00 PM',
+                  reason: ''
+                });
+                setShowOffsetModal(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+            >
+              <RefreshCw className="h-3.5 w-3.5 text-white" />
+              <span>Offset Timekeeper</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setObForm({
+                  date: new Date().toISOString().split('T')[0],
+                  departureTime: '08:00 AM',
+                  returnTime: '05:00 PM',
+                  clientOrDestination: '',
+                  transactionType: 'Client Meeting / Delivery / Field Transaction',
+                  purpose: '',
+                  noClockInRequired: true
+                });
+                setShowOBModal(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+            >
+              <Briefcase className="h-3.5 w-3.5 text-white" />
+              <span>Official Business (No Clock-In)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setUndertimeForm({
+                  date: new Date().toISOString().split('T')[0],
+                  scheduledTimeOut: '05:00 PM',
+                  requestedTimeOut: '03:00 PM',
+                  undertimeHours: 2,
+                  reasonCategory: 'Medical / Clinic Appointment',
+                  reason: ''
+                });
+                setShowUndertimeModal(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+            >
+              <TimerOff className="h-3.5 w-3.5 text-white" />
+              <span>Undertime Form</span>
             </button>
 
             {isTeamLeaderOrAdmin ? (
@@ -973,7 +1117,7 @@ export default function EmployeePortalView() {
           </div>
         </div>
 
-        {/* Requests Grid: Leaves & Overtime */}
+        {/* Requests Grid Row 1: Leaves & Overtime */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           
           {/* Leaves Subcard */}
@@ -983,7 +1127,7 @@ export default function EmployeePortalView() {
                 <Calendar className="h-3.5 w-3.5 text-slate-600" />
                 My Leave Applications ({myLeaves.length})
               </span>
-              <span className="text-[10px] text-slate-500">Subject to HR approval</span>
+              <span className="text-[10px] text-slate-500">Medical Cert supported for SL</span>
             </div>
 
             {/* Leave Balance Counters */}
@@ -1008,8 +1152,21 @@ export default function EmployeePortalView() {
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {myLeaves.map(leave => (
                   <div key={leave.id} className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-900">{leave.type}</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                        {leave.type}
+                        {leave.medicalCertificate && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewDoc(leave.medicalCertificate)}
+                            className="px-1.5 py-0.5 rounded bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer transition"
+                            title="View attached Medical Certificate"
+                          >
+                            <Stethoscope className="h-2.5 w-2.5" />
+                            Med Cert
+                          </button>
+                        )}
+                      </span>
                       <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
                         leave.status === 'Approved'
                           ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
@@ -1098,6 +1255,136 @@ export default function EmployeePortalView() {
           </div>
 
         </div>
+
+        {/* Requests Grid Row 2: Offset Timekeeper, Official Business (No Clock-In), & Undertime */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+          
+          {/* Offset Timekeeper Subcard */}
+          <div className="p-4 rounded-xl bg-indigo-50/40 border border-indigo-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                <RefreshCw className="h-3.5 w-3.5 text-indigo-600" />
+                Offset Timekeeper ({myOffsetRequests.length})
+              </span>
+              <span className="text-[10px] text-indigo-600 font-semibold">Timekeeping</span>
+            </div>
+
+            {myOffsetRequests.length === 0 ? (
+              <p className="text-xs text-slate-400 py-3 text-center">No offset timekeeper requests filed.</p>
+            ) : (
+              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                {myOffsetRequests.map(req => (
+                  <div key={req.id} className="p-2.5 rounded-lg bg-white border border-indigo-100 text-xs space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-bold text-slate-900 truncate">{req.requestType}</span>
+                      <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                        req.status === 'Approved'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : req.status === 'Rejected'
+                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                          : 'bg-amber-100 text-amber-800 border border-amber-300'
+                      }`}>
+                        {req.status}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-600 font-mono">
+                      Date: {req.sourceDate} {req.targetOffsetDate && req.targetOffsetDate !== req.sourceDate ? `→ Offset: ${req.targetOffsetDate}` : ''} · {req.hours} hr(s)
+                    </div>
+                    {req.reason && (
+                      <p className="text-[10px] text-slate-500 italic truncate">&ldquo;{req.reason}&rdquo;</p>
+                    )}
+                    {req.remarks && (
+                      <div className="text-[9px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">HR: {req.remarks}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Official Business (OB) Subcard */}
+          <div className="p-4 rounded-xl bg-sky-50/40 border border-sky-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-sky-950 flex items-center gap-1.5">
+                <Briefcase className="h-3.5 w-3.5 text-sky-600" />
+                Official Business ({myOBRequests.length})
+              </span>
+              <span className="text-[10px] text-sky-700 font-semibold">No Clock-In Needed</span>
+            </div>
+
+            {myOBRequests.length === 0 ? (
+              <p className="text-xs text-slate-400 py-3 text-center">No official business (OB) filings yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                {myOBRequests.map(ob => (
+                  <div key={ob.id} className="p-2.5 rounded-lg bg-white border border-sky-100 text-xs space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-bold text-slate-900 truncate">{ob.clientOrDestination}</span>
+                      <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                        ob.status === 'Approved'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : ob.status === 'Rejected'
+                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                          : 'bg-amber-100 text-amber-800 border border-amber-300'
+                      }`}>
+                        {ob.status}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-600 font-mono">
+                      {ob.date} · {ob.departureTime} – {ob.returnTime}
+                    </div>
+                    <div className="text-[10px] text-sky-800 font-medium truncate">{ob.transactionType}</div>
+                    {ob.purpose && (
+                      <p className="text-[10px] text-slate-500 italic truncate">&ldquo;{ob.purpose}&rdquo;</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Undertime Requests Subcard */}
+          <div className="p-4 rounded-xl bg-rose-50/40 border border-rose-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-rose-950 flex items-center gap-1.5">
+                <TimerOff className="h-3.5 w-3.5 text-rose-600" />
+                Undertime Forms ({myUndertimeRequests.length})
+              </span>
+              <span className="text-[10px] text-rose-700 font-semibold">Early Out</span>
+            </div>
+
+            {myUndertimeRequests.length === 0 ? (
+              <p className="text-xs text-slate-400 py-3 text-center">No undertime requests filed yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                {myUndertimeRequests.map(ut => (
+                  <div key={ut.id} className="p-2.5 rounded-lg bg-white border border-rose-100 text-xs space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-bold text-slate-900">{ut.undertimeHours} hr(s) Undertime</span>
+                      <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                        ut.status === 'Approved'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : ut.status === 'Rejected'
+                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                          : 'bg-amber-100 text-amber-800 border border-amber-300'
+                      }`}>
+                        {ut.status}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-600 font-mono">
+                      {ut.date} · Out at {ut.requestedTimeOut} (Sched: {ut.scheduledTimeOut})
+                    </div>
+                    <div className="text-[10px] text-rose-800 font-medium truncate">{ut.reasonCategory}</div>
+                    {ut.reason && (
+                      <p className="text-[10px] text-slate-500 italic truncate">&ldquo;{ut.reason}&rdquo;</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
 
       {/* Main Grid: Payslips History + Attendance Records */}
@@ -1167,7 +1454,7 @@ export default function EmployeePortalView() {
               <Clock className="h-4 w-4 text-slate-600" />
               Recent Timeclock Activity
             </h3>
-            <span className="text-xs text-slate-500">Barcode Punches</span>
+            <span className="text-xs text-slate-500">Barcode Punches &amp; OB</span>
           </div>
 
           <div className="rounded-2xl border border-slate-200/90 bg-white p-4 space-y-3 shadow-sm">
@@ -1191,7 +1478,7 @@ export default function EmployeePortalView() {
             )}
 
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-[11px] leading-relaxed">
-              💡 <strong>Tip:</strong> Scan your physical badge or barcode at the entrance terminal kiosk to log your shift punches.
+              💡 <strong>Tip:</strong> Scan your physical badge at the entrance kiosk, or file an <strong>Official Business (OB)</strong> request if transacting outside during business hours.
             </div>
           </div>
         </div>
@@ -1199,131 +1486,6 @@ export default function EmployeePortalView() {
       </div>
 
       {/* Modals */}
-      {/* Modal: File Leave Application */}
-      {showLeaveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-slate-700" />
-                File Leave Application
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowLeaveModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs leading-relaxed">
-              💡 <strong>HR Leave Workflow:</strong> Leave filings require endorsement by HR Manager Genevieve Anne A. JURADO before inclusion in scheduled timesheets.
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!leaveForm.startDate || !leaveForm.endDate) return;
-                fileLeaveRequest({
-                  staffId: currentStaff?.id,
-                  staffName: `${currentStaff?.firstName} ${currentStaff?.lastName}`,
-                  employeeId: currentStaff?.employeeId,
-                  type: leaveForm.type,
-                  startDate: leaveForm.startDate,
-                  endDate: leaveForm.endDate,
-                  days: Number(leaveForm.days) || 1,
-                  reason: leaveForm.reason
-                });
-                setShowLeaveModal(false);
-              }}
-              className="space-y-3 text-xs"
-            >
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Leave Category</label>
-                <select
-                  value={leaveForm.type}
-                  onChange={(e) => setLeaveForm({ ...leaveForm, type: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
-                >
-                  <option value="Vacation Leave">Vacation Leave (VL)</option>
-                  <option value="Sick Leave">Sick Leave (SL)</option>
-                  <option value="Emergency Leave">Emergency Leave (EL)</option>
-                  <option value="Bereavement Leave">Bereavement Leave</option>
-                  <option value="Solo Parent Leave">Solo Parent Leave</option>
-                  <option value="Maternity / Paternity Leave">Maternity / Paternity Leave</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={leaveForm.startDate}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, startDate: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">End Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={leaveForm.endDate}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Total Days Duration</label>
-                <input
-                  type="number"
-                  min="0.5"
-                  step="0.5"
-                  max="30"
-                  required
-                  value={leaveForm.days}
-                  onChange={(e) => setLeaveForm({ ...leaveForm, days: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Reason / Coverage Plan</label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="Detail the purpose of leave and shift handover plan..."
-                  value={leaveForm.reason}
-                  onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setShowLeaveModal(false)}
-                  className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm flex items-center gap-1.5"
-                >
-                  <CalendarCheck className="h-3.5 w-3.5 text-white" />
-                  Submit Leave Request
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Modal: File Overtime Request */}
       {showOTModal && (
@@ -2098,10 +2260,10 @@ export default function EmployeePortalView() {
         />
       )}
 
-      {/* Modal: File Leave Application */}
+      {/* Modal: File Leave Application (with Medical Certificate Attachment) */}
       {showLeaveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 my-6">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-slate-600" />
@@ -2124,9 +2286,12 @@ export default function EmployeePortalView() {
                   onChange={(e) => setLeaveForm({ ...leaveForm, type: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
                 >
+                  <option value="Sick Leave">Sick Leave (SL) — Attach Medical Certificate</option>
                   <option value="Vacation Leave">Vacation Leave (Leave With Pay / SIL)</option>
-                  <option value="Sick Leave">Sick Leave (SL)</option>
-                  <option value="Emergency Leave">Emergency Leave</option>
+                  <option value="Emergency Leave">Emergency Leave (EL)</option>
+                  <option value="Bereavement Leave">Bereavement Leave</option>
+                  <option value="Solo Parent Leave">Solo Parent Leave</option>
+                  <option value="Maternity / Paternity Leave">Maternity / Paternity Leave</option>
                 </select>
               </div>
 
@@ -2208,12 +2373,75 @@ export default function EmployeePortalView() {
                 />
               </div>
 
+              {/* Sick Leave Medical Certificate Attachment */}
+              <div className={`p-3.5 rounded-2xl border space-y-2 ${
+                (leaveForm.type || '').toLowerCase().includes('sick')
+                  ? 'bg-teal-50/70 border-teal-300'
+                  : 'bg-slate-50 border-slate-200'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-800 font-bold flex items-center gap-1.5 text-xs">
+                    <Stethoscope className="h-4 w-4 text-teal-600" />
+                    Medical Certificate Attachment
+                    {(leaveForm.type || '').toLowerCase().includes('sick') && (
+                      <span className="px-2 py-0.5 rounded-full bg-teal-600 text-white text-[9px] font-black uppercase tracking-wider">
+                        Sick Leave Supporting Doc
+                      </span>
+                    )}
+                  </label>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-snug">
+                  Attach your attending physician&apos;s <strong>Medical Certificate</strong> or clinic clearance (Image/PDF). Automatically compressed and archived in your 201 Medical Folder.
+                </p>
+
+                {!leaveForm.medicalCertificate ? (
+                  <label className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-teal-400 bg-white hover:bg-teal-50/50 text-teal-800 font-bold text-xs cursor-pointer transition">
+                    <Upload className="h-4 w-4 text-teal-600" />
+                    <span>{uploadingMedCert ? 'Compressing Medical Certificate...' : 'Upload Medical Certificate (JPG, PNG, PDF)'}</span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={handleMedicalCertificateUpload}
+                      className="hidden"
+                    />
+                  </label>
+                ) : (
+                  <div className="p-2.5 rounded-xl bg-white border border-teal-300 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Paperclip className="h-4 w-4 text-teal-600 shrink-0" />
+                      <div className="truncate">
+                        <div className="font-bold text-slate-900 truncate">{leaveForm.medicalCertificate.name}</div>
+                        <div className="text-[10px] text-teal-700 font-mono">
+                          Compressed ({leaveForm.medicalCertificate.Savings || 'Optimized'}) · Ready for HR &amp; 201 File
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewDoc(leaveForm.medicalCertificate)}
+                        className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold cursor-pointer"
+                      >
+                        Preview
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLeaveForm(prev => ({ ...prev, medicalCertificate: null }))}
+                        className="px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 text-[10px] font-bold cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="text-slate-700 font-bold block mb-1">Reason / Medical Justification</label>
                 <textarea
                   rows={2}
                   required
-                  placeholder="e.g. Annual personal vacation, fever / medical clinic consultation, family emergency"
+                  placeholder="e.g. Fever / clinic consultation with attached medical certificate, annual vacation, family emergency"
                   value={leaveForm.reason}
                   onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
@@ -2244,7 +2472,8 @@ export default function EmployeePortalView() {
                     startDate: leaveForm.startDate,
                     endDate: leaveForm.endDate,
                     days: Number(leaveForm.days) || 1,
-                    reason: leaveForm.reason
+                    reason: leaveForm.reason,
+                    medicalCertificate: leaveForm.medicalCertificate || null
                   });
                   setShowLeaveModal(false);
                 }}
@@ -2255,6 +2484,481 @@ export default function EmployeePortalView() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal: Offset Timekeeper Request Form */}
+      {showOffsetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 my-6">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4 text-indigo-600" />
+                  Offset Timekeeper Request Form
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Request schedule hour offsetting or 6-punch timekeeper log adjustment
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOffsetModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs leading-relaxed">
+              💡 <strong>Offset Timekeeper Policy:</strong> Staff may file an offset request to apply extra rendered hours toward tardiness/undertime or correct missing biometric punches (Time-In, Lunch Out/In, Break Out/In, Time-Out) subject to HR verification.
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!offsetForm.reason.trim()) return;
+                fileOffsetRequest({
+                  staffId: currentStaff?.id,
+                  staffName: formatStaffName(currentStaff),
+                  employeeId: currentStaff?.employeeId,
+                  ...offsetForm,
+                  hours: Number(offsetForm.hours) || 1
+                });
+                setShowOffsetModal(false);
+              }}
+              className="space-y-3 text-xs"
+            >
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Offset / Timekeeper Request Type</label>
+                <select
+                  value={offsetForm.requestType}
+                  onChange={(e) => setOffsetForm({ ...offsetForm, requestType: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-indigo-600 outline-none"
+                >
+                  <option value="Schedule Offset (Extra Hours to Offset Late/Undertime)">Schedule Offset (Extra Hours to Offset Late/Undertime)</option>
+                  <option value="Timekeeper 6-Punch Log Adjustment / Missed Punch">Timekeeper 6-Punch Log Adjustment / Missed Punch</option>
+                  <option value="Rest Day / Weekend Duty Offset">Rest Day / Weekend Duty Offset</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Rendered / Log Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={offsetForm.sourceDate}
+                    onChange={(e) => setOffsetForm({ ...offsetForm, sourceDate: e.target.value })}
+                    className="w-full px-2.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Target Offset Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={offsetForm.targetOffsetDate}
+                    onChange={(e) => setOffsetForm({ ...offsetForm, targetOffsetDate: e.target.value })}
+                    className="w-full px-2.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Offset Hours</label>
+                  <input
+                    type="number"
+                    min="0.5"
+                    max="12"
+                    step="0.5"
+                    required
+                    value={offsetForm.hours}
+                    onChange={(e) => setOffsetForm({ ...offsetForm, hours: e.target.value })}
+                    className="w-full px-2.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono font-bold text-center text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* 6-Punch Timekeeper Verification Fields */}
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  Timekeeper 6-Point Punch Record (For Log Verification)
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block">1. Time-In</label>
+                    <input
+                      type="text"
+                      value={offsetForm.timeIn}
+                      onChange={(e) => setOffsetForm({ ...offsetForm, timeIn: e.target.value })}
+                      placeholder="08:00 AM"
+                      className="w-full px-2 py-1.5 rounded-lg bg-white border border-slate-300 font-mono text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block">2. Lunch Out</label>
+                    <input
+                      type="text"
+                      value={offsetForm.lunchOut}
+                      onChange={(e) => setOffsetForm({ ...offsetForm, lunchOut: e.target.value })}
+                      placeholder="12:00 PM"
+                      className="w-full px-2 py-1.5 rounded-lg bg-white border border-slate-300 font-mono text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block">3. Lunch In</label>
+                    <input
+                      type="text"
+                      value={offsetForm.lunchIn}
+                      onChange={(e) => setOffsetForm({ ...offsetForm, lunchIn: e.target.value })}
+                      placeholder="01:00 PM"
+                      className="w-full px-2 py-1.5 rounded-lg bg-white border border-slate-300 font-mono text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block">4. Break Out</label>
+                    <input
+                      type="text"
+                      value={offsetForm.breakOut}
+                      onChange={(e) => setOffsetForm({ ...offsetForm, breakOut: e.target.value })}
+                      placeholder="03:00 PM"
+                      className="w-full px-2 py-1.5 rounded-lg bg-white border border-slate-300 font-mono text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block">5. Break In</label>
+                    <input
+                      type="text"
+                      value={offsetForm.breakIn}
+                      onChange={(e) => setOffsetForm({ ...offsetForm, breakIn: e.target.value })}
+                      placeholder="03:15 PM"
+                      className="w-full px-2 py-1.5 rounded-lg bg-white border border-slate-300 font-mono text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block">6. Time-Out</label>
+                    <input
+                      type="text"
+                      value={offsetForm.timeOut}
+                      onChange={(e) => setOffsetForm({ ...offsetForm, timeOut: e.target.value })}
+                      placeholder="05:00 PM"
+                      className="w-full px-2 py-1.5 rounded-lg bg-white border border-slate-300 font-mono text-[11px]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Timekeeper Justification / Reason</label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Explain the extra hours rendered or reason for timekeeper offset..."
+                  value={offsetForm.reason}
+                  onChange={(e) => setOffsetForm({ ...offsetForm, reason: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowOffsetModal(false)}
+                  className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer shadow-sm"
+                >
+                  Submit Offset Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Official Business (OB) Request Form — Without Clocking In */}
+      {showOBModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 my-6">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Briefcase className="h-4 w-4 text-sky-600" />
+                  Official Business (OB) Request Form
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  For external business transactions within business hours without physical kiosk clock-in
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOBModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-sky-900 text-xs leading-relaxed">
+              ✓ <strong>No Physical Clock-In Required Upon Approval:</strong> Approved Official Business filings automatically credit your daily attendance log for field work, bank/government errands, supplier visits, or client meetings during business hours.
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!obForm.clientOrDestination.trim() || !obForm.purpose.trim()) return;
+                fileOfficialBusinessRequest({
+                  staffId: currentStaff?.id,
+                  staffName: formatStaffName(currentStaff),
+                  employeeId: currentStaff?.employeeId,
+                  ...obForm,
+                  noClockInRequired: true
+                });
+                setShowOBModal(false);
+              }}
+              className="space-y-3 text-xs"
+            >
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Transaction Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={obForm.date}
+                    onChange={(e) => setObForm({ ...obForm, date: e.target.value })}
+                    className="w-full px-2.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Start / Departure</label>
+                  <input
+                    type="text"
+                    required
+                    value={obForm.departureTime}
+                    onChange={(e) => setObForm({ ...obForm, departureTime: e.target.value })}
+                    placeholder="08:00 AM"
+                    className="w-full px-2.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">End / Return</label>
+                  <input
+                    type="text"
+                    required
+                    value={obForm.returnTime}
+                    onChange={(e) => setObForm({ ...obForm, returnTime: e.target.value })}
+                    placeholder="05:00 PM"
+                    className="w-full px-2.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Business Transaction Category</label>
+                <select
+                  value={obForm.transactionType}
+                  onChange={(e) => setObForm({ ...obForm, transactionType: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs"
+                >
+                  <option value="Client Meeting / Delivery / Field Transaction">Client Meeting / Delivery / Field Transaction</option>
+                  <option value="Supplier / Raw Material Procurement">Supplier / Raw Material Procurement</option>
+                  <option value="Banking / Government Agency Compliance (BIR, SSS, DOLE, LGU)">Banking / Government Agency Compliance (BIR, SSS, DOLE, LGU)</option>
+                  <option value="Direct-to-Site / Branch Inspection">Direct-to-Site / Branch Inspection</option>
+                  <option value="Company Seminar / External Training">Company Seminar / External Training</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Client / Agency / Destination Location</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. BDO Corporate Center / Client Warehouse in Quezon City"
+                  value={obForm.clientOrDestination}
+                  onChange={(e) => setObForm({ ...obForm, clientOrDestination: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Detailed Business Transaction Purpose</label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Specify the official business transaction to be completed during business hours..."
+                  value={obForm.purpose}
+                  onChange={(e) => setObForm({ ...obForm, purpose: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowOBModal(false)}
+                  className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold cursor-pointer shadow-sm"
+                >
+                  Submit Official Business (OB)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Undertime Request Form */}
+      {showUndertimeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 my-6">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <TimerOff className="h-4 w-4 text-rose-600" />
+                  Undertime Request Form
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Request authorization for early shift departure before scheduled Time-Out
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUndertimeModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs leading-relaxed">
+              ⚠️ <strong>Undertime Clearance:</strong> Leaving work prior to the end of your shift requires an approved Undertime Request Form. Unexcused early departure is subject to disciplinary action.
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!undertimeForm.reason.trim()) return;
+                fileUndertimeRequest({
+                  staffId: currentStaff?.id,
+                  staffName: formatStaffName(currentStaff),
+                  employeeId: currentStaff?.employeeId,
+                  ...undertimeForm,
+                  undertimeHours: Number(undertimeForm.undertimeHours) || 1
+                });
+                setShowUndertimeModal(false);
+              }}
+              className="space-y-3 text-xs"
+            >
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Shift Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={undertimeForm.date}
+                    onChange={(e) => setUndertimeForm({ ...undertimeForm, date: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Undertime Duration (Hours)</label>
+                  <input
+                    type="number"
+                    min="0.5"
+                    max="7.5"
+                    step="0.5"
+                    required
+                    value={undertimeForm.undertimeHours}
+                    onChange={(e) => setUndertimeForm({ ...undertimeForm, undertimeHours: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono font-bold text-center text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Scheduled Time-Out</label>
+                  <input
+                    type="text"
+                    required
+                    value={undertimeForm.scheduledTimeOut}
+                    onChange={(e) => setUndertimeForm({ ...undertimeForm, scheduledTimeOut: e.target.value })}
+                    placeholder="05:00 PM"
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Requested Departure Time</label>
+                  <input
+                    type="text"
+                    required
+                    value={undertimeForm.requestedTimeOut}
+                    onChange={(e) => setUndertimeForm({ ...undertimeForm, requestedTimeOut: e.target.value })}
+                    placeholder="03:00 PM"
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Undertime Reason Category</label>
+                <select
+                  value={undertimeForm.reasonCategory}
+                  onChange={(e) => setUndertimeForm({ ...undertimeForm, reasonCategory: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs"
+                >
+                  <option value="Medical / Clinic Appointment">Medical / Clinic Appointment</option>
+                  <option value="Family / Household Emergency">Family / Household Emergency</option>
+                  <option value="Personal / Government Errand">Personal / Government Errand</option>
+                  <option value="Feeling Unwell / Clinic Advice">Feeling Unwell / Clinic Advice</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Detailed Explanation &amp; Handover</label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Provide specific reason for early departure and who will cover your station..."
+                  value={undertimeForm.reason}
+                  onChange={(e) => setUndertimeForm({ ...undertimeForm, reason: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowUndertimeModal(false)}
+                  className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer shadow-sm"
+                >
+                  Submit Undertime Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Document Preview Modal for Medical Certificates */}
+      {previewDoc && (
+        <DocumentPreviewModal
+          doc={previewDoc}
+          onClose={() => setPreviewDoc(null)}
+        />
       )}
 
       {/* Formal Notice to Explain & HR Call-Out Modal */}

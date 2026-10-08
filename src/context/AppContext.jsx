@@ -479,6 +479,36 @@ export function AppProvider({ children }) {
     return saved ? JSON.parse(saved) : INITIAL_OVERTIME_REQUESTS;
   });
 
+  // Offset Timekeeper Requests State
+  const [offsetRequests, setOffsetRequests] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_hr_offset_requests');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Official Business (OB) Requests State (Business transactions within business hours without clocking in)
+  const [officialBusinessRequests, setOfficialBusinessRequests] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_hr_ob_requests');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Undertime Requests State
+  const [undertimeRequests, setUndertimeRequests] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_hr_undertime_requests');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
   // In-App Notification Center State
   const [inAppNotifications, setInAppNotifications] = useState(() => {
     const saved = localStorage.getItem('nkb_notifications');
@@ -1390,6 +1420,26 @@ export function AppProvider({ children }) {
     const isExhausted = currentRemaining <= 0;
     const hasExcess = requestedDays > currentRemaining;
 
+    // If a Medical Certificate attachment is included, also file it into the employee's 201 documents
+    if (data.medicalCertificate && data.staffId) {
+      const medDoc = {
+        ...data.medicalCertificate,
+        id: data.medicalCertificate.id || `doc-med-${Date.now()}`,
+        category: 'medical',
+        categoryLabel: 'Medical Certificate (Sick Leave)',
+        notes: `Medical Certificate for ${data.type} (${data.startDate}${data.endDate && data.endDate !== data.startDate ? ` ~ ${data.endDate}` : ''})`,
+        uploadedAt: data.medicalCertificate.uploadedAt || new Date().toISOString(),
+        uploadedBy: data.staffName || 'Employee ESS'
+      };
+      setStaffList(prev => prev.map(s => {
+        if (s.id === data.staffId) {
+          const existingDocs = s.documents || [];
+          return { ...s, documents: [medDoc, ...existingDocs] };
+        }
+        return s;
+      }));
+    }
+
     const newReq = {
       id: `leave-${Date.now()}`,
       status: 'Pending',
@@ -1407,14 +1457,15 @@ export function AppProvider({ children }) {
     setLeaveRequests(prev => [newReq, ...prev]);
     addInAppNotification({
       title: 'Leave Request Submitted',
-      message: `Your ${data.type} request for ${data.days} day(s) was sent to HR for approval.${isExhausted ? ' (Notice: 0 balance, filed as LWOP)' : ''}`,
+      message: `Your ${data.type} request for ${data.days} day(s)${data.medicalCertificate ? ' (with Medical Certificate attached)' : ''} was sent to HR for approval.${isExhausted ? ' (Notice: 0 balance, filed as LWOP)' : ''}`,
       type: isExhausted ? 'warning' : 'info'
     });
     logSystemEvent({
       category: 'STAFF',
       action: 'FILE_LEAVE',
-      details: `Leave filed by ${data.staffName} (${data.type}, ${data.days} days, remaining balance: ${currentRemaining})`
+      details: `Leave filed by ${data.staffName} (${data.type}, ${data.days} days${data.medicalCertificate ? ', Medical Cert attached' : ''}, remaining balance: ${currentRemaining})`
     });
+    showToast(`Leave application submitted to HR${data.medicalCertificate ? ' with Medical Certificate attached' : ''}.`);
     return newReq;
   };
 
@@ -1607,6 +1658,426 @@ export function AppProvider({ children }) {
     showToast(`Batch approved ${requestIds.length} overtime request(s).`, 'success');
   };
 
+  // ==========================================
+  // 1. OFFSET TIMEKEEPER REQUEST WORKFLOW
+  // ==========================================
+  const fileOffsetRequest = (data) => {
+    const newReq = {
+      id: `offset-${Date.now()}`,
+      status: data.status || 'Pending',
+      submittedAt: new Date().toISOString(),
+      requestType: data.requestType || 'Schedule Offset (Hours Earned vs Offset Date)', // or 'Timekeeper Log / Punch Correction'
+      earnedDate: data.earnedDate || new Date().toISOString().split('T')[0],
+      offsetDate: data.offsetDate || new Date().toISOString().split('T')[0],
+      hours: Number(data.hours) || 8,
+      timeIn: data.timeIn || '08:00 AM',
+      lunchOut: data.lunchOut || '12:00 PM',
+      lunchIn: data.lunchIn || '01:00 PM',
+      breakOut: data.breakOut || '03:00 PM',
+      breakIn: data.breakIn || '03:15 PM',
+      timeOut: data.timeOut || '05:00 PM',
+      reason: (data.reason || '').trim(),
+      ...data
+    };
+    setOffsetRequests(prev => [newReq, ...prev]);
+    addInAppNotification({
+      title: 'Offset Timekeeper Request Submitted',
+      message: `Your offset/timekeeper request for ${newReq.offsetDate} (${newReq.hours}h) was sent to HR Timekeeping.`,
+      type: 'info'
+    });
+    logSystemEvent({
+      category: 'ATTENDANCE',
+      action: 'FILE_OFFSET_TIMEKEEPER',
+      details: `Offset Timekeeper Request filed by ${newReq.staffName} (${newReq.requestType}, ${newReq.hours}h on ${newReq.offsetDate})`
+    });
+    showToast(`Offset Timekeeper request submitted to HR for approval.`);
+    return newReq;
+  };
+
+  const approveOffsetRequest = (id, remarks = '') => {
+    let targetReq = null;
+    const hrName = currentUser?.name ? `${currentUser.name} (HR Timekeeper)` : 'Genevieve Anne A. JURADO (HR)';
+    setOffsetRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        targetReq = req;
+        return {
+          ...req,
+          status: 'Approved',
+          reviewedBy: hrName,
+          reviewedAt: new Date().toISOString(),
+          remarks: remarks || 'Offset / Timekeeper adjustment verified & approved by HR'
+        };
+      }
+      return req;
+    }));
+
+    if (targetReq) {
+      const targetDate = targetReq.offsetDate || targetReq.earnedDate;
+      setAttendanceLogs(prev => {
+        const exists = prev.find(l => l.staffId === targetReq.staffId && l.date === targetDate);
+        if (exists) {
+          return prev.map(l => (l.id === exists.id ? {
+            ...l,
+            timeIn: targetReq.timeIn || l.timeIn || '08:00 AM',
+            lunchOut: targetReq.lunchOut || l.lunchOut || '12:00 PM',
+            lunchIn: targetReq.lunchIn || l.lunchIn || '01:00 PM',
+            breakOut: targetReq.breakOut || l.breakOut || '03:00 PM',
+            breakIn: targetReq.breakIn || l.breakIn || '03:15 PM',
+            timeOut: targetReq.timeOut || l.timeOut || '05:00 PM',
+            status: `Offset Approved (${targetReq.hours}h)`,
+            offsetId: targetReq.id
+          } : l));
+        }
+        return [
+          {
+            id: `att-offset-${Date.now()}`,
+            staffId: targetReq.staffId,
+            date: targetDate,
+            timeIn: targetReq.timeIn || '08:00 AM',
+            lunchOut: targetReq.lunchOut || '12:00 PM',
+            lunchIn: targetReq.lunchIn || '01:00 PM',
+            breakOut: targetReq.breakOut || '03:00 PM',
+            breakIn: targetReq.breakIn || '03:15 PM',
+            timeOut: targetReq.timeOut || '05:00 PM',
+            status: `Offset Approved (${targetReq.hours}h)`,
+            otHours: 0,
+            lateMinutes: 0,
+            offsetId: targetReq.id
+          },
+          ...prev
+        ];
+      });
+      addInAppNotification({
+        title: 'Offset Timekeeper Request Approved',
+        message: `Your offset/timekeeper request for ${targetDate} (${targetReq.hours}h) was approved and synced to your attendance log.`,
+        type: 'success'
+      });
+      logSystemEvent({
+        category: 'ATTENDANCE',
+        action: 'APPROVE_OFFSET_TIMEKEEPER',
+        details: `Offset Timekeeper Request #${id} for ${targetReq.staffName} approved by ${hrName}`
+      });
+      showToast(`Offset Timekeeper request approved and applied to attendance logs.`);
+    }
+  };
+
+  const rejectOffsetRequest = (id, remarks = '') => {
+    const hrName = currentUser?.name ? `${currentUser.name} (HR)` : 'HR Management';
+    setOffsetRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        addInAppNotification({
+          title: 'Offset Timekeeper Request Disapproved',
+          message: `Your offset request on ${req.offsetDate} was disapproved: ${remarks || 'Not approved'}`,
+          type: 'warning'
+        });
+        return {
+          ...req,
+          status: 'Rejected',
+          reviewedBy: hrName,
+          reviewedAt: new Date().toISOString(),
+          remarks: remarks || 'Disapproved by HR Timekeeper'
+        };
+      }
+      return req;
+    }));
+    showToast('Offset Timekeeper request disapproved.', 'info');
+  };
+
+  // ==========================================
+  // 2. OFFICIAL BUSINESS (OB) REQUEST WORKFLOW
+  // (Business transactions within business hours without clocking in)
+  // ==========================================
+  const fileOfficialBusinessRequest = (data) => {
+    const newReq = {
+      id: `ob-${Date.now()}`,
+      status: data.status || 'Pending',
+      submittedAt: new Date().toISOString(),
+      date: data.date || new Date().toISOString().split('T')[0],
+      endDate: data.endDate || data.date || new Date().toISOString().split('T')[0],
+      startTime: data.startTime || '08:00 AM',
+      endTime: data.endTime || '05:00 PM',
+      destination: (data.destination || '').trim(),
+      transactionType: data.transactionType || 'Client Meeting / Field Transaction',
+      contactPerson: (data.contactPerson || '').trim(),
+      purpose: (data.purpose || '').trim(),
+      exemptFromClockIn: true,
+      ...data
+    };
+    setOfficialBusinessRequests(prev => [newReq, ...prev]);
+    addInAppNotification({
+      title: 'Official Business (OB) Request Submitted',
+      message: `Your OB request for ${newReq.date} (${newReq.destination}) was sent to HR. Once approved, physical kiosk clock-in is waived for those business hours.`,
+      type: 'info'
+    });
+    logSystemEvent({
+      category: 'ATTENDANCE',
+      action: 'FILE_OFFICIAL_BUSINESS',
+      details: `Official Business (OB) filed by ${newReq.staffName} on ${newReq.date} (${newReq.startTime} - ${newReq.endTime}) at ${newReq.destination}`
+    });
+    showToast(`Official Business (OB) request submitted to HR.`);
+    return newReq;
+  };
+
+  const approveOfficialBusinessRequest = (id, remarks = '') => {
+    let targetReq = null;
+    const hrName = currentUser?.name ? `${currentUser.name} (HR)` : 'Genevieve Anne A. JURADO (HR)';
+    setOfficialBusinessRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        targetReq = req;
+        return {
+          ...req,
+          status: 'Approved',
+          reviewedBy: hrName,
+          reviewedAt: new Date().toISOString(),
+          remarks: remarks || 'Official Business verified & approved (Exempt from physical clock-in)'
+        };
+      }
+      return req;
+    }));
+
+    if (targetReq) {
+      // Automatically credit attendance log on OB date without requiring physical clock-in
+      setAttendanceLogs(prev => {
+        const exists = prev.find(l => l.staffId === targetReq.staffId && l.date === targetReq.date);
+        if (exists) {
+          return prev.map(l => (l.id === exists.id ? {
+            ...l,
+            timeIn: `${targetReq.startTime || '08:00 AM'} (OB)`,
+            lunchOut: '12:00 PM',
+            lunchIn: '01:00 PM',
+            timeOut: `${targetReq.endTime || '05:00 PM'} (OB)`,
+            status: 'Official Business (OB)',
+            isOfficialBusiness: true,
+            obDestination: targetReq.destination,
+            obId: targetReq.id
+          } : l));
+        }
+        return [
+          {
+            id: `att-ob-${Date.now()}`,
+            staffId: targetReq.staffId,
+            date: targetReq.date,
+            timeIn: `${targetReq.startTime || '08:00 AM'} (OB)`,
+            lunchOut: '12:00 PM',
+            lunchIn: '01:00 PM',
+            breakOut: '03:00 PM',
+            breakIn: '03:15 PM',
+            timeOut: `${targetReq.endTime || '05:00 PM'} (OB)`,
+            status: 'Official Business (OB)',
+            otHours: 0,
+            lateMinutes: 0,
+            isOfficialBusiness: true,
+            obDestination: targetReq.destination,
+            obId: targetReq.id
+          },
+          ...prev
+        ];
+      });
+      addInAppNotification({
+        title: 'Official Business (OB) Approved',
+        message: `Your OB request for ${targetReq.date} (${targetReq.destination}) has been approved. Attendance is credited without physical clock-in.`,
+        type: 'success'
+      });
+      logSystemEvent({
+        category: 'ATTENDANCE',
+        action: 'APPROVE_OFFICIAL_BUSINESS',
+        details: `Official Business #${id} for ${targetReq.staffName} approved by ${hrName}. Credited in attendance log.`
+      });
+      showToast(`Official Business approved! Attendance automatically credited without physical clock-in.`);
+    }
+  };
+
+  const rejectOfficialBusinessRequest = (id, remarks = '') => {
+    const hrName = currentUser?.name ? `${currentUser.name} (HR)` : 'HR Management';
+    setOfficialBusinessRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        addInAppNotification({
+          title: 'Official Business (OB) Disapproved',
+          message: `Your OB request on ${req.date} was disapproved: ${remarks || 'Not approved'}`,
+          type: 'warning'
+        });
+        return {
+          ...req,
+          status: 'Rejected',
+          reviewedBy: hrName,
+          reviewedAt: new Date().toISOString(),
+          remarks: remarks || 'Disapproved by HR'
+        };
+      }
+      return req;
+    }));
+    showToast('Official Business request disapproved.', 'info');
+  };
+
+  // ==========================================
+  // 3. UNDERTIME REQUEST FORM WORKFLOW
+  // ==========================================
+  const fileUndertimeRequest = (data) => {
+    const newReq = {
+      id: `ut-${Date.now()}`,
+      status: data.status || 'Pending',
+      submittedAt: new Date().toISOString(),
+      date: data.date || new Date().toISOString().split('T')[0],
+      scheduledOut: data.scheduledOut || '05:00 PM',
+      departureTime: data.departureTime || '03:00 PM',
+      undertimeHours: Number(data.undertimeHours) || 2,
+      reasonCategory: data.reasonCategory || 'Personal / Family Emergency',
+      reason: (data.reason || '').trim(),
+      ...data
+    };
+    setUndertimeRequests(prev => [newReq, ...prev]);
+    addInAppNotification({
+      title: 'Undertime Request Submitted',
+      message: `Your undertime request on ${newReq.date} (Departure: ${newReq.departureTime}, ${newReq.undertimeHours}h undertime) was submitted to HR.`,
+      type: 'info'
+    });
+    logSystemEvent({
+      category: 'ATTENDANCE',
+      action: 'FILE_UNDERTIME',
+      details: `Undertime filed by ${newReq.staffName} on ${newReq.date} (Leave at ${newReq.departureTime}, ${newReq.undertimeHours}h undertime)`
+    });
+    showToast(`Undertime request (${newReq.undertimeHours}h) submitted to HR.`);
+    return newReq;
+  };
+
+  const approveUndertimeRequest = (id, remarks = '') => {
+    let targetReq = null;
+    const hrName = currentUser?.name ? `${currentUser.name} (HR)` : 'Genevieve Anne A. JURADO (HR)';
+    setUndertimeRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        targetReq = req;
+        return {
+          ...req,
+          status: 'Approved',
+          reviewedBy: hrName,
+          reviewedAt: new Date().toISOString(),
+          remarks: remarks || 'Undertime early departure approved by HR'
+        };
+      }
+      return req;
+    }));
+
+    if (targetReq) {
+      setAttendanceLogs(prev => {
+        const exists = prev.find(l => l.staffId === targetReq.staffId && l.date === targetReq.date);
+        if (exists) {
+          return prev.map(l => (l.id === exists.id ? {
+            ...l,
+            timeOut: targetReq.departureTime,
+            undertimeHours: Number(targetReq.undertimeHours) || 0,
+            status: `Undertime (${targetReq.undertimeHours}h)`,
+            undertimeId: targetReq.id
+          } : l));
+        }
+        return [
+          {
+            id: `att-ut-${Date.now()}`,
+            staffId: targetReq.staffId,
+            date: targetReq.date,
+            timeIn: '08:00 AM',
+            lunchOut: '12:00 PM',
+            lunchIn: '01:00 PM',
+            timeOut: targetReq.departureTime,
+            undertimeHours: Number(targetReq.undertimeHours) || 0,
+            status: `Undertime (${targetReq.undertimeHours}h)`,
+            otHours: 0,
+            lateMinutes: 0,
+            undertimeId: targetReq.id
+          },
+          ...prev
+        ];
+      });
+      addInAppNotification({
+        title: 'Undertime Request Approved',
+        message: `Your undertime request on ${targetReq.date} (Departure: ${targetReq.departureTime}) has been approved by HR.`,
+        type: 'success'
+      });
+      logSystemEvent({
+        category: 'ATTENDANCE',
+        action: 'APPROVE_UNDERTIME',
+        details: `Undertime #${id} for ${targetReq.staffName} approved by ${hrName}`
+      });
+      showToast(`Undertime request approved and recorded in attendance logs.`);
+    }
+  };
+
+  const rejectUndertimeRequest = (id, remarks = '') => {
+    const hrName = currentUser?.name ? `${currentUser.name} (HR)` : 'HR Management';
+    setUndertimeRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        addInAppNotification({
+          title: 'Undertime Request Disapproved',
+          message: `Your undertime request on ${req.date} was disapproved: ${remarks || 'Not approved'}`,
+          type: 'warning'
+        });
+        return {
+          ...req,
+          status: 'Rejected',
+          reviewedBy: hrName,
+          reviewedAt: new Date().toISOString(),
+          remarks: remarks || 'Disapproved by HR'
+        };
+      }
+      return req;
+    }));
+    showToast('Undertime request disapproved.', 'info');
+  };
+
+  // ==========================================
+  // 4. IMPORT ANALYZED EXCEL CLOCK-IN ROWS
+  // ==========================================
+  const importAnalyzedAttendanceRows = (analyzedRows = []) => {
+    if (!Array.isArray(analyzedRows) || analyzedRows.length === 0) return { count: 0 };
+
+    setAttendanceLogs(prev => {
+      const updated = [...prev];
+      analyzedRows.forEach((row, idx) => {
+        const staffId = row.staffId || staffList.find(s => s.employeeId === row.employeeId)?.id || null;
+        const matchIdx = updated.findIndex(
+          l => (staffId && l.staffId === staffId && l.date === row.date) ||
+               (l.employeeId && l.employeeId === row.employeeId && l.date === row.date)
+        );
+        const recordPayload = {
+          id: matchIdx >= 0 ? updated[matchIdx].id : `att-xl-${Date.now()}-${idx}`,
+          staffId,
+          employeeId: row.employeeId,
+          employeeName: row.employeeName,
+          department: row.department,
+          date: row.date,
+          timeIn: row.timeIn || '—',
+          lunchOut: row.lunchOut || '—',
+          lunchIn: row.lunchIn || '—',
+          breakOut: row.breakOut || '—',
+          breakIn: row.breakIn || '—',
+          timeOut: row.timeOut || '—',
+          totalHours: row.totalHours ?? 0,
+          lateMinutes: row.lateMinutes ?? 0,
+          lunchMinutes: row.lunchMinutes ?? 0,
+          breakMinutes: row.breakMinutes ?? 0,
+          undertimeHours: row.undertimeHours ?? 0,
+          otHours: row.otHours ?? 0,
+          status: row.status || 'On-time',
+          agentRemarks: row.agentRemarks || 'Analyzed via Biometric Excel Agent'
+        };
+
+        if (matchIdx >= 0) {
+          updated[matchIdx] = { ...updated[matchIdx], ...recordPayload };
+        } else {
+          updated.unshift(recordPayload);
+        }
+      });
+      return updated;
+    });
+
+    logSystemEvent({
+      category: 'ATTENDANCE',
+      action: 'IMPORT_ANALYZED_EXCEL_ATTENDANCE',
+      details: `Imported ${analyzedRows.length} alphabetically sorted 6-punch attendance records via Timekeeping Excel Analyzer Agent`
+    });
+    showToast(`Successfully synced ${analyzedRows.length} analyzed 6-punch records to Attendance Logs!`, 'success');
+    return { count: analyzedRows.length };
+  };
+
   // Staff Digital Document Management
   const uploadStaffDocument = (staffId, doc) => {
     const newDoc = {
@@ -1646,6 +2117,18 @@ export function AppProvider({ children }) {
   useEffect(() => {
     localStorage.setItem('nkb_hr_overtime_requests', JSON.stringify(overtimeRequests));
   }, [overtimeRequests]);
+
+  useEffect(() => {
+    localStorage.setItem('nkb_hr_offset_requests', JSON.stringify(offsetRequests));
+  }, [offsetRequests]);
+
+  useEffect(() => {
+    localStorage.setItem('nkb_hr_ob_requests', JSON.stringify(officialBusinessRequests));
+  }, [officialBusinessRequests]);
+
+  useEffect(() => {
+    localStorage.setItem('nkb_hr_undertime_requests', JSON.stringify(undertimeRequests));
+  }, [undertimeRequests]);
 
   useEffect(() => {
     localStorage.setItem('nkb_notifications', JSON.stringify(inAppNotifications));
@@ -4793,7 +5276,7 @@ export function AppProvider({ children }) {
         exportFullSystemBackup,
         importFullSystemBackup,
         resetTestTransactions,
-        // Leave & Overtime Workflows
+        // Leave, Overtime, Offset, Official Business & Undertime Workflows
         leaveRequests,
         fileLeaveRequest,
         approveLeaveRequest,
@@ -4803,6 +5286,19 @@ export function AppProvider({ children }) {
         approveOvertimeRequest,
         rejectOvertimeRequest,
         batchApproveOvertimeRequests,
+        offsetRequests,
+        fileOffsetRequest,
+        approveOffsetRequest,
+        rejectOffsetRequest,
+        officialBusinessRequests,
+        fileOfficialBusinessRequest,
+        approveOfficialBusinessRequest,
+        rejectOfficialBusinessRequest,
+        undertimeRequests,
+        fileUndertimeRequest,
+        approveUndertimeRequest,
+        rejectUndertimeRequest,
+        importAnalyzedAttendanceRows,
         uploadStaffDocument,
         deleteStaffDocument,
         // Team Leader & HR Staff Policy

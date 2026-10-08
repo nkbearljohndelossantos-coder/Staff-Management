@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ScanLine,
   CheckCircle2,
@@ -16,19 +16,37 @@ import {
   Plus,
   Wifi,
   WifiOff,
-  RefreshCw
+  RefreshCw,
+  FileSpreadsheet,
+  Upload,
+  Download,
+  Bot,
+  ArrowDownAZ,
+  Stethoscope,
+  Briefcase,
+  TimerOff,
+  Search
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getOfflineQueue, queueOfflineAction, clearOfflineQueue } from '../../utils/offlineSync';
 import { playPunchChime, playErrorBuzz } from '../../utils/audioFeedback';
 import { resolveStaffFromScan } from '../../utils/scanResolver';
 import { formatStaffName } from '../../utils/staffUtils';
+import DocumentPreviewModal from '../staff/DocumentPreviewModal';
+import {
+  analyzeClockInExcelBuffer,
+  evaluateAttendanceRowMetrics,
+  exportAnalyzedClockInToExcel,
+  generateSampleBiometricExcelBuffer
+} from '../../utils/attendanceExcelAgent';
 
 export default function BarcodeClockInKiosk() {
   const {
     staffList,
+    departments,
     attendanceLogs,
     clockInOrOut,
+    importAnalyzedAttendanceRows,
     leaveRequests = [],
     approveLeaveRequest,
     rejectLeaveRequest,
@@ -36,16 +54,35 @@ export default function BarcodeClockInKiosk() {
     fileOvertimeRequest,
     approveOvertimeRequest,
     rejectOvertimeRequest,
-    batchApproveOvertimeRequests
+    batchApproveOvertimeRequests,
+    offsetRequests = [],
+    approveOffsetRequest,
+    rejectOffsetRequest,
+    officialBusinessRequests = [],
+    approveOfficialBusinessRequest,
+    rejectOfficialBusinessRequest,
+    undertimeRequests = [],
+    approveUndertimeRequest,
+    rejectUndertimeRequest
   } = useApp();
 
-  const [activeSubTab, setActiveSubTab] = useState('kiosk'); // 'kiosk' | 'approvals'
-  const [approvalCategory, setApprovalCategory] = useState('all'); // 'all' | 'leaves' | 'overtime'
+  const [activeSubTab, setActiveSubTab] = useState('kiosk'); // 'kiosk' | 'excel-agent' | 'approvals'
+  const [approvalCategory, setApprovalCategory] = useState('all'); // 'all' | 'leaves' | 'overtime' | 'offset' | 'ob' | 'undertime'
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'Pending' | 'Approved' | 'Rejected'
   const [selectedOtIds, setSelectedOtIds] = useState([]);
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [offlinePunchesCount, setOfflinePunchesCount] = useState(() => getOfflineQueue().length);
-  
+  const [previewDoc, setPreviewDoc] = useState(null);
+
+  // Excel Clock-In Upload & Timekeeping Analyzer Agent State
+  const excelInputRef = useRef(null);
+  const [analyzingExcel, setAnalyzingExcel] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState('');
+  const [analyzedRows, setAnalyzedRows] = useState([]);
+  const [agentSummary, setAgentSummary] = useState(null);
+  const [excelSearchQuery, setExcelSearchQuery] = useState('');
+  const [syncSuccessBanner, setSyncSuccessBanner] = useState('');
+
   // HR Manual OT Declaration Modal State
   const [showHRFileOTModal, setShowHRFileOTModal] = useState(false);
   const [hrOTForm, setHrOTForm] = useState({
@@ -58,7 +95,7 @@ export default function BarcodeClockInKiosk() {
   });
   
   // Reject remark modal state
-  const [rejectItem, setRejectItem] = useState(null); // { type: 'leave' | 'ot', id: string, staffName: string }
+  const [rejectItem, setRejectItem] = useState(null); // { type: 'leave' | 'ot' | 'offset' | 'ob' | 'undertime', id: string, staffName: string }
   const [rejectRemarks, setRejectRemarks] = useState('');
 
   // Kiosk Input States
@@ -76,11 +113,9 @@ export default function BarcodeClockInKiosk() {
   const syncOfflinePunches = () => {
     const queue = getOfflineQueue();
     if (!queue || queue.length === 0) return;
-    let synced = 0;
     queue.forEach(item => {
       if (item.barcode) {
         clockInOrOut(item.barcode, item.pin);
-        synced++;
       }
     });
     clearOfflineQueue();
@@ -104,6 +139,76 @@ export default function BarcodeClockInKiosk() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Handle Excel File Upload for Clock-In Analyzer Agent
+  const handleExcelClockInUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAnalyzingExcel(true);
+    setUploadedFileName(file.name);
+    setSyncSuccessBanner('');
+    setActiveSubTab('excel-agent');
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const result = analyzeClockInExcelBuffer(buffer, staffList, departments);
+      setAnalyzedRows(result.rows || []);
+      setAgentSummary(result.summary || null);
+    } catch (err) {
+      console.error('Excel Clock-In Analyzer Agent error:', err);
+      alert('Could not parse Excel file. Please upload a valid .xlsx, .xls, or .csv file.');
+    } finally {
+      setAnalyzingExcel(false);
+      e.target.value = '';
+    }
+  };
+
+  // Load Sample Biometric Clock-In Data into the Agent
+  const handleRunSampleBiometricAnalysis = () => {
+    setAnalyzingExcel(true);
+    setUploadedFileName('NKB_Biometric_ClockIn_Raw_Export.xlsx');
+    setSyncSuccessBanner('');
+    setActiveSubTab('excel-agent');
+
+    setTimeout(() => {
+      const sampleBuf = generateSampleBiometricExcelBuffer(staffList, departments);
+      const result = analyzeClockInExcelBuffer(sampleBuf, staffList, departments);
+      setAnalyzedRows(result.rows || []);
+      setAgentSummary(result.summary || null);
+      setAnalyzingExcel(false);
+    }, 250);
+  };
+
+  // Update a cell in the Analyzed Excel Layout & re-evaluate agent metrics + keep alphabetical A-Z
+  const handleUpdateAnalyzedCell = (rowId, field, value) => {
+    setAnalyzedRows(prev => {
+      const updated = prev.map(row => {
+        if (row.id !== rowId) return row;
+        const nextRow = { ...row, [field]: value };
+        if (['timeIn', 'lunchOut', 'lunchIn', 'breakOut', 'breakIn', 'timeOut'].includes(field)) {
+          const metrics = evaluateAttendanceRowMetrics(nextRow);
+          return { ...nextRow, ...metrics };
+        }
+        return nextRow;
+      });
+      // Re-sort alphabetically A-Z if staffName changed
+      updated.sort((a, b) =>
+        (a.staffName || '').localeCompare(b.staffName || '', undefined, { sensitivity: 'base' })
+      );
+      return updated.map((r, idx) => ({ ...r, rowNumber: idx + 1 }));
+    });
+  };
+
+  const handleSyncAnalyzedToAttendance = () => {
+    if (!analyzedRows.length) return;
+    const res = importAnalyzedAttendanceRows(analyzedRows);
+    if (res?.success) {
+      playPunchChime();
+      setSyncSuccessBanner(
+        `Synced ${res.importedCount} alphabetical 6-punch clock-in records (Time-In, Lunch Out, Lunch In, Break Out, Break In, Time-Out) into Attendance Logs.`
+      );
+    }
+  };
 
   const handleScanSubmit = (e) => {
     e.preventDefault();
@@ -156,17 +261,32 @@ export default function BarcodeClockInKiosk() {
   // Approvals counts
   const pendingLeavesCount = leaveRequests.filter(l => l.status === 'Pending').length;
   const pendingOTCount = overtimeRequests.filter(o => o.status === 'Pending').length;
-  const totalPending = pendingLeavesCount + pendingOTCount;
+  const pendingOffsetCount = offsetRequests.filter(r => r.status === 'Pending').length;
+  const pendingOBCount = officialBusinessRequests.filter(r => r.status === 'Pending').length;
+  const pendingUndertimeCount = undertimeRequests.filter(r => r.status === 'Pending').length;
+  const totalPending =
+    pendingLeavesCount +
+    pendingOTCount +
+    pendingOffsetCount +
+    pendingOBCount +
+    pendingUndertimeCount;
 
   // Filtered lists
-  const filteredLeaves = leaveRequests.filter(l => {
-    if (statusFilter !== 'all' && l.status !== statusFilter) return false;
-    return true;
-  });
+  const filteredLeaves = leaveRequests.filter(l => statusFilter === 'all' || l.status === statusFilter);
+  const filteredOT = overtimeRequests.filter(o => statusFilter === 'all' || o.status === statusFilter);
+  const filteredOffsets = offsetRequests.filter(r => statusFilter === 'all' || r.status === statusFilter);
+  const filteredOB = officialBusinessRequests.filter(r => statusFilter === 'all' || r.status === statusFilter);
+  const filteredUndertime = undertimeRequests.filter(r => statusFilter === 'all' || r.status === statusFilter);
 
-  const filteredOT = overtimeRequests.filter(o => {
-    if (statusFilter !== 'all' && o.status !== statusFilter) return false;
-    return true;
+  const filteredAnalyzedRows = analyzedRows.filter(row => {
+    if (!excelSearchQuery.trim()) return true;
+    const q = excelSearchQuery.toLowerCase();
+    return (
+      (row.staffName || '').toLowerCase().includes(q) ||
+      (row.employeeId || '').toLowerCase().includes(q) ||
+      (row.department || '').toLowerCase().includes(q) ||
+      (row.status || '').toLowerCase().includes(q)
+    );
   });
 
   const handleHRSubmitOT = (e) => {
@@ -198,10 +318,17 @@ export default function BarcodeClockInKiosk() {
 
   const handleConfirmReject = () => {
     if (!rejectItem) return;
+    const reasonText = rejectRemarks || 'Disapproved by HR Management';
     if (rejectItem.type === 'leave') {
-      rejectLeaveRequest(rejectItem.id, rejectRemarks || 'Disapproved by HR');
-    } else {
-      rejectOvertimeRequest(rejectItem.id, rejectRemarks || 'Disapproved by HR Management');
+      rejectLeaveRequest(rejectItem.id, reasonText);
+    } else if (rejectItem.type === 'ot') {
+      rejectOvertimeRequest(rejectItem.id, reasonText);
+    } else if (rejectItem.type === 'offset') {
+      rejectOffsetRequest(rejectItem.id, reasonText);
+    } else if (rejectItem.type === 'ob') {
+      rejectOfficialBusinessRequest(rejectItem.id, reasonText);
+    } else if (rejectItem.type === 'undertime') {
+      rejectUndertimeRequest(rejectItem.id, reasonText);
     }
     setRejectItem(null);
     setRejectRemarks('');
@@ -209,10 +336,18 @@ export default function BarcodeClockInKiosk() {
 
   return (
     <div className="space-y-6">
+      {/* Hidden File Input for Clock-In Excel Upload */}
+      <input
+        ref={excelInputRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        onChange={handleExcelClockInUpload}
+        className="hidden"
+      />
       
       {/* Subtab Navigation Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-2 border-b border-slate-200">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={() => setActiveSubTab('kiosk')}
@@ -228,6 +363,34 @@ export default function BarcodeClockInKiosk() {
 
           <button
             type="button"
+            onClick={() => setActiveSubTab('excel-agent')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-sm ${
+              activeSubTab === 'excel-agent'
+                ? 'bg-emerald-700 text-white'
+                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200'
+            }`}
+          >
+            <Bot className="h-4 w-4" />
+            <span>Clock-In Excel Analyzer Agent (A–Z)</span>
+            {analyzedRows.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-white text-emerald-800 text-[10px] font-black">
+                {analyzedRows.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => excelInputRef.current?.click()}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white flex items-center gap-1.5 cursor-pointer shadow-sm transition"
+            title="Upload Excel/CSV Clock-In file for the AI Timekeeping Agent to analyze (Time-In, Lunch Out, Lunch In, Break Out, Break In, Time-Out) and sort alphabetically"
+          >
+            <Upload className="h-3.5 w-3.5 text-emerald-400" />
+            <span>Upload Clock-In Excel</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveSubTab('approvals')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-sm relative ${
               activeSubTab === 'approvals'
@@ -236,7 +399,7 @@ export default function BarcodeClockInKiosk() {
             }`}
           >
             <CalendarCheck className="h-4 w-4" />
-            <span>Leave &amp; OT Approvals (HR)</span>
+            <span>HR Request Approvals (Leave / Offset / OB / UT / OT)</span>
             {totalPending > 0 && (
               <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse">
                 {totalPending}
@@ -280,7 +443,7 @@ export default function BarcodeClockInKiosk() {
 
       {activeSubTab === 'kiosk' ? (
         <>
-          {/* Kiosk Hero Card (Light Theme, Monochrome Icons) */}
+          {/* Kiosk Hero Card */}
           <div className="rounded-2xl border border-slate-200/90 bg-white p-6 sm:p-8 shadow-sm relative overflow-hidden">
             <div className="flex flex-col sm:flex-row items-center justify-between pb-6 border-b border-slate-200 gap-4">
               <div>
@@ -289,15 +452,31 @@ export default function BarcodeClockInKiosk() {
                   Live Biometric &amp; Barcode Terminal
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-black text-slate-900">Staff Attendance Clock-In Kiosk</h2>
-                <p className="text-xs text-slate-500 mt-1">Scan badge barcode or enter Employee ID to register daily shifts and overtime</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Scan badge barcode, enter Employee ID, or upload a Biometric Clock-In Excel file for 6-punch AI analysis
+                </p>
               </div>
 
-              {/* Big Digital Clock */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center sm:text-right shrink-0">
-                <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">System Standard Time</span>
-                <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-wider">
-                  {currentTime}
-                </span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => excelInputRef.current?.click()}
+                  className="px-4 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-2 cursor-pointer shadow-sm transition"
+                >
+                  <FileSpreadsheet className="h-4 w-4 text-white" />
+                  <div className="text-left">
+                    <div className="leading-none">Upload Clock-In Excel</div>
+                    <div className="text-[10px] font-normal text-emerald-100 mt-0.5">6-Punch Agent + Alphabetical</div>
+                  </div>
+                </button>
+
+                {/* Big Digital Clock */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center sm:text-right shrink-0">
+                  <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">System Standard Time</span>
+                  <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-wider">
+                    {currentTime}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -359,12 +538,12 @@ export default function BarcodeClockInKiosk() {
             </div>
           </div>
 
-          {/* Attendance Log Table */}
+          {/* Attendance Log Table (with 6-Punch Columns) */}
           <div className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                 <Clock className="h-4 w-4 text-slate-600" />
-                Recent Clock-In Records
+                Recent Clock-In Records (6-Punch Timekeeping &amp; Official Business)
               </h3>
               <span className="text-xs text-slate-500">{attendanceLogs.length} total recorded entries</span>
             </div>
@@ -374,11 +553,15 @@ export default function BarcodeClockInKiosk() {
                 <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
                   <tr>
                     <th className="py-3 px-4">Staff Member</th>
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Clock-In</th>
-                    <th className="py-3 px-4">Clock-Out</th>
-                    <th className="py-3 px-4">Shift Status</th>
-                    <th className="py-3 px-4">Overtime (OT)</th>
+                    <th className="py-3 px-3">Date</th>
+                    <th className="py-3 px-3">Time-In</th>
+                    <th className="py-3 px-3">Lunch Out</th>
+                    <th className="py-3 px-3">Lunch In</th>
+                    <th className="py-3 px-3">Break Out</th>
+                    <th className="py-3 px-3">Break In</th>
+                    <th className="py-3 px-3">Time-Out</th>
+                    <th className="py-3 px-3">Shift Status</th>
+                    <th className="py-3 px-3">OT</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -388,19 +571,31 @@ export default function BarcodeClockInKiosk() {
                       <tr key={log.id} className="hover:bg-slate-50/80 transition">
                         <td className="py-3 px-4">
                           <div className="font-bold text-slate-900">
-                            {staff ? formatStaffName(staff) : 'Employee'}
+                            {staff ? formatStaffName(staff) : (log.staffName || 'Employee')}
                           </div>
-                          <div className="text-[10px] font-mono text-slate-500">{staff?.employeeId}</div>
+                          <div className="text-[10px] font-mono text-slate-500">{staff?.employeeId || log.employeeId}</div>
                         </td>
-                        <td className="py-3 px-4 font-mono">{log.date}</td>
-                        <td className="py-3 px-4 font-mono text-slate-900 font-bold">{log.timeIn || '—'}</td>
-                        <td className="py-3 px-4 font-mono text-slate-700 font-bold">{log.timeOut || 'In Progress'}</td>
-                        <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                        <td className="py-3 px-3 font-mono">{log.date}</td>
+                        <td className="py-3 px-3 font-mono text-slate-900 font-bold">{log.timeIn || '—'}</td>
+                        <td className="py-3 px-3 font-mono text-slate-600">{log.lunchOut || '12:00 PM'}</td>
+                        <td className="py-3 px-3 font-mono text-slate-600">{log.lunchIn || '01:00 PM'}</td>
+                        <td className="py-3 px-3 font-mono text-slate-600">{log.breakOut || '03:00 PM'}</td>
+                        <td className="py-3 px-3 font-mono text-slate-600">{log.breakIn || '03:15 PM'}</td>
+                        <td className="py-3 px-3 font-mono text-slate-800 font-bold">{log.timeOut || 'In Progress'}</td>
+                        <td className="py-3 px-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            (log.status || '').includes('Official Business')
+                              ? 'bg-sky-50 text-sky-800 border-sky-200'
+                              : (log.status || '').includes('Offset')
+                              ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                              : (log.status || '').includes('Undertime')
+                              ? 'bg-rose-50 text-rose-800 border-rose-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}>
                             {log.status}
                           </span>
                         </td>
-                        <td className="py-3 px-4 font-mono">
+                        <td className="py-3 px-3 font-mono">
                           {log.otHours > 0 ? `${log.otHours} hrs` : '0 hrs'}
                         </td>
                       </tr>
@@ -411,104 +606,406 @@ export default function BarcodeClockInKiosk() {
             </div>
           </div>
         </>
-      ) : (
-        /* Leave & Overtime Approvals Tab (HR / Supervisor Command) */
+      ) : activeSubTab === 'excel-agent' ? (
+        /* Clock-In Excel Upload & AI Timekeeping Analyzer Agent Tab */
         <div className="space-y-5">
-          
-          {/* Stats & Shift Policy Banner */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
-              <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">Pending Leaves</span>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-2xl font-black text-amber-600">{pendingLeavesCount}</span>
-                <Calendar className="h-6 w-6 text-amber-400" />
+          {/* Top Agent Control Header */}
+          <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 text-white p-6 shadow-md">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[11px] font-black uppercase tracking-wider">
+                  <Bot className="h-3.5 w-3.5" />
+                  <span>AI Timekeeping Analyzer Agent · 6-Punch Classifier &amp; A–Z Excel Formatter</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white">
+                  Clock-In Excel Upload &amp; Alphabetical Spreadsheet Converter
+                </h2>
+                <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
+                  Upload any raw biometric or attendance Excel/CSV file. The Timekeeping Agent automatically extracts and analyzes{' '}
+                  <strong className="text-emerald-300">Time-In, Lunch Out, Lunch In, Break Out, Break In, and Time-Out</strong>, computes net hours/tardiness/undertime, and converts the sheet into an <strong className="text-emerald-300">Alphabetical (A–Z) Excel Layout</strong>.
+                </p>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">Awaiting HR manager endorsement</p>
-            </div>
 
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
-              <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">Pending Overtime</span>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-2xl font-black text-amber-600">{pendingOTCount}</span>
-                <Clock className="h-6 w-6 text-amber-400" />
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1">Day shift extensions (+30% rate)</p>
-            </div>
+              <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => excelInputRef.current?.click()}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-2 cursor-pointer shadow-lg transition"
+                >
+                  <Upload className="h-4 w-4" />
+                  <span>Upload Clock-In Excel (.xlsx / .csv)</span>
+                </button>
 
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
-              <span className="text-xs text-slate-500 uppercase font-bold tracking-wider">Approved Requests</span>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-2xl font-black text-emerald-600">
-                  {leaveRequests.filter(l => l.status === 'Approved').length + overtimeRequests.filter(o => o.status === 'Approved').length}
-                </span>
-                <CheckCircle2 className="h-6 w-6 text-emerald-400" />
+                <button
+                  type="button"
+                  onClick={handleRunSampleBiometricAnalysis}
+                  className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
+                >
+                  <Sparkles className="h-4 w-4 text-amber-300" />
+                  <span>Analyze Sample Biometric Sheet</span>
+                </button>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">Factored into semi-monthly payroll</p>
             </div>
           </div>
 
-          {/* Policy Compliance Notice */}
-          <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-amber-900 text-xs flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <div>
-                <strong className="font-bold">Mandatory HR Overtime Policy:</strong> Before declaring or rendering overtime, an official request must be submitted to HR stating an operational reason. Only HR-authorized overtime hours are creditable for payroll compensation (+30% per hour).
+          {syncSuccessBanner && (
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                <span>{syncSuccessBanner}</span>
               </div>
-              <div className="text-[11px] text-amber-800">
-                Plant Operational Constraint: NKB operates strictly on daytime plant shifts (8:00 AM – 5:00 PM). Authorized overtime extends daytime shift hours; night shift differentials (NSD) are not applicable.
+              <button
+                type="button"
+                onClick={() => setSyncSuccessBanner('')}
+                className="text-emerald-700 hover:text-emerald-950 font-black cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {analyzingExcel ? (
+            <div className="p-12 rounded-2xl border border-slate-200 bg-white text-center space-y-3 shadow-sm">
+              <Bot className="h-10 w-10 text-emerald-600 mx-auto animate-bounce" />
+              <div className="text-sm font-black text-slate-900">
+                Timekeeping Agent Analyzing 6-Punch Clock-In File...
               </div>
+              <p className="text-xs text-slate-500">
+                Classifying Time-In, Lunch Out, Lunch In, Break Out, Break In, Time-Out and sorting records alphabetically (A–Z)...
+              </p>
+            </div>
+          ) : analyzedRows.length === 0 ? (
+            <div className="p-10 rounded-2xl border-2 border-dashed border-slate-300 bg-white text-center space-y-4">
+              <div className="h-14 w-14 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mx-auto">
+                <FileSpreadsheet className="h-7 w-7" />
+              </div>
+              <div className="space-y-1 max-w-md mx-auto">
+                <h3 className="text-base font-black text-slate-900">
+                  Upload a Clock-In Excel File to Start Agent Analysis
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Supports both structured 6-column spreadsheets and raw biometric punch logs. After analysis, records are automatically converted into an alphabetical Excel layout (`LASTNAME, FIRSTNAME`).
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => excelInputRef.current?.click()}
+                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center gap-2 cursor-pointer shadow-sm transition"
+                >
+                  <Upload className="h-4 w-4 text-emerald-400" />
+                  <span>Select Excel / CSV File</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRunSampleBiometricAnalysis}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
+                >
+                  <Bot className="h-4 w-4 text-emerald-700" />
+                  <span>Demo Agent with Active Staff Roster</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Agent Analysis Diagnostics Summary */}
+              {agentSummary && (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                      Analyzed Records
+                    </span>
+                    <div className="text-2xl font-black text-slate-900 font-mono mt-0.5">
+                      {analyzedRows.length}
+                    </div>
+                    <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1 mt-1">
+                      <ArrowDownAZ className="h-3 w-3" /> Sorted A–Z Alphabetical
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white border border-emerald-200 shadow-2xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+                      Complete 6-Punch / On-Time
+                    </span>
+                    <div className="text-2xl font-black text-emerald-600 font-mono mt-0.5">
+                      {analyzedRows.filter(r => r.status === 'Present (Complete)').length}
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1 block">Verified full shift</span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white border border-amber-200 shadow-2xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 block">
+                      Late / Extended Lunch-Break
+                    </span>
+                    <div className="text-2xl font-black text-amber-600 font-mono mt-0.5">
+                      {analyzedRows.filter(r => r.lateMinutes > 0 || r.lunchMinutes > 65 || r.breakMinutes > 20).length}
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1 block">Flagged by Timekeeper Agent</span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white border border-rose-200 shadow-2xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 block">
+                      Undertime / Missing Punch
+                    </span>
+                    <div className="text-2xl font-black text-rose-600 font-mono mt-0.5">
+                      {analyzedRows.filter(r => r.undertimeHours > 0 || (r.status || '').includes('Missing')).length}
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1 block">Requires UT / Offset check</span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-white border border-indigo-200 shadow-2xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 block">
+                      Overtime Candidates
+                    </span>
+                    <div className="text-2xl font-black text-indigo-600 font-mono mt-0.5">
+                      {analyzedRows.filter(r => r.otHours > 0).length}
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1 block">Post-5:00 PM punches</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Excel Layout Toolbar */}
+              <div className="rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm">
+                {/* Excel Ribbon Header */}
+                <div className="p-4 bg-emerald-900 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-emerald-800">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+                      <FileSpreadsheet className="h-5 w-5 text-emerald-300" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-black tracking-wide">
+                          EXCEL SPREADSHEET LAYOUT — ALPHABETICAL (A–Z)
+                        </h3>
+                        <span className="px-2 py-0.5 rounded bg-emerald-700 text-emerald-100 text-[10px] font-mono font-bold">
+                          {uploadedFileName || 'Analyzed_Sheet.xlsx'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-emerald-200">
+                        Columns: Time-In · Lunch Out · Lunch In · Break Out · Break In · Time-Out (Click any time cell to edit)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative">
+                      <Search className="h-3.5 w-3.5 text-emerald-300 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={excelSearchQuery}
+                        onChange={(e) => setExcelSearchQuery(e.target.value)}
+                        placeholder="Filter alphabetical sheet..."
+                        className="pl-8 pr-3 py-1.5 rounded-xl bg-emerald-950/80 border border-emerald-700 text-xs text-white placeholder-emerald-400 outline-none focus:border-emerald-300"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => exportAnalyzedClockInToExcel(analyzedRows)}
+                      className="px-3.5 py-2 rounded-xl bg-white hover:bg-emerald-50 text-emerald-950 text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-sm transition"
+                    >
+                      <Download className="h-3.5 w-3.5 text-emerald-700" />
+                      <span>Download Alphabetical Excel (.xlsx)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSyncAnalyzedToAttendance}
+                      className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-sm transition"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 text-slate-950" />
+                      <span>Sync to Attendance Logs</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Authentic Excel Grid Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead>
+                      {/* Excel Column Letters Row (A - M) */}
+                      <tr className="bg-slate-200 text-slate-600 font-mono text-[10px] font-bold text-center select-none border-b border-slate-300">
+                        <th className="py-1 px-2 border-r border-slate-300 w-10 bg-slate-300/80">#</th>
+                        <th className="py-1 px-3 border-r border-slate-300">A</th>
+                        <th className="py-1 px-3 border-r border-slate-300">B</th>
+                        <th className="py-1 px-3 border-r border-slate-300">C</th>
+                        <th className="py-1 px-3 border-r border-slate-300">D</th>
+                        <th className="py-1 px-3 border-r border-slate-300">E</th>
+                        <th className="py-1 px-3 border-r border-slate-300">F</th>
+                        <th className="py-1 px-3 border-r border-slate-300">G</th>
+                        <th className="py-1 px-3 border-r border-slate-300">H</th>
+                        <th className="py-1 px-3 border-r border-slate-300">I</th>
+                        <th className="py-1 px-3 border-r border-slate-300">J</th>
+                        <th className="py-1 px-3 border-r border-slate-300">K</th>
+                        <th className="py-1 px-3">L</th>
+                      </tr>
+                      {/* Field Header Row */}
+                      <tr className="bg-emerald-50/90 text-emerald-950 font-black text-[10px] uppercase tracking-wider border-b-2 border-emerald-600">
+                        <th className="py-2.5 px-2 border-r border-slate-300 text-center bg-slate-100 text-slate-500">Row</th>
+                        <th className="py-2.5 px-3 border-r border-slate-300 min-w-[180px]">
+                          <div className="flex items-center gap-1">
+                            <span>Employee Name (A–Z)</span>
+                            <ArrowDownAZ className="h-3.5 w-3.5 text-emerald-700" />
+                          </div>
+                        </th>
+                        <th className="py-2.5 px-2.5 border-r border-slate-300">Employee ID</th>
+                        <th className="py-2.5 px-2.5 border-r border-slate-300">Department</th>
+                        <th className="py-2.5 px-2.5 border-r border-slate-300">Date</th>
+                        <th className="py-2.5 px-2 border-r border-slate-300 bg-emerald-100/70">1. Time-In</th>
+                        <th className="py-2.5 px-2 border-r border-slate-300 bg-amber-50/80">2. Lunch Out</th>
+                        <th className="py-2.5 px-2 border-r border-slate-300 bg-amber-50/80">3. Lunch In</th>
+                        <th className="py-2.5 px-2 border-r border-slate-300 bg-sky-50/80">4. Break Out</th>
+                        <th className="py-2.5 px-2 border-r border-slate-300 bg-sky-50/80">5. Break In</th>
+                        <th className="py-2.5 px-2 border-r border-slate-300 bg-emerald-100/70">6. Time-Out</th>
+                        <th className="py-2.5 px-2.5 border-r border-slate-300 text-center">Net Hrs</th>
+                        <th className="py-2.5 px-3 min-w-[210px]">Agent Analysis &amp; Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 font-mono text-[11px]">
+                      {filteredAnalyzedRows.map((row, index) => (
+                        <tr key={row.id} className="hover:bg-emerald-50/30 transition">
+                          <td className="py-1.5 px-2 border-r border-slate-300 bg-slate-100 text-slate-500 font-bold text-center select-none">
+                            {index + 1}
+                          </td>
+                          <td className="py-1.5 px-3 border-r border-slate-200 font-sans font-bold text-slate-900">
+                            {row.staffName}
+                          </td>
+                          <td className="py-1.5 px-2.5 border-r border-slate-200 text-slate-600">
+                            {row.employeeId}
+                          </td>
+                          <td className="py-1.5 px-2.5 border-r border-slate-200 font-sans text-slate-600">
+                            {row.department}
+                          </td>
+                          <td className="py-1.5 px-2.5 border-r border-slate-200 text-slate-700">
+                            {row.date}
+                          </td>
+                          {/* 6 Editable Punch Cells */}
+                          {['timeIn', 'lunchOut', 'lunchIn', 'breakOut', 'breakIn', 'timeOut'].map((slot) => (
+                            <td key={slot} className="p-0 border-r border-slate-200">
+                              <input
+                                type="text"
+                                value={row[slot] || ''}
+                                onChange={(e) => handleUpdateAnalyzedCell(row.id, slot, e.target.value)}
+                                placeholder="—"
+                                className={`w-24 px-2 py-1.5 bg-transparent focus:bg-yellow-50 focus:ring-2 focus:ring-emerald-600 outline-none font-mono text-[11px] font-bold ${
+                                  !row[slot] ? 'text-rose-500 bg-rose-50/40' : 'text-slate-900'
+                                }`}
+                              />
+                            </td>
+                          ))}
+                          <td className="py-1.5 px-2.5 border-r border-slate-200 text-center font-bold text-slate-900">
+                            {row.totalHours}h
+                          </td>
+                          <td className="py-1.5 px-3 font-sans">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`px-2 py-0.2 rounded text-[10px] font-bold ${
+                                row.status === 'Present (Complete)'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : (row.status || '').includes('Late') || (row.status || '').includes('Extended')
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}>
+                                {row.status}
+                              </span>
+                              <span className="text-[10px] text-slate-500 truncate max-w-[180px]" title={row.agentRemarks}>
+                                {row.agentRemarks}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        /* HR Approvals Center: Leave (with Med Cert), Offset Timekeeper, Official Business (OB), Undertime, & Overtime */
+        <div className="space-y-5">
+          
+          {/* Stats Summary Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Pending Leaves</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-xl font-black text-amber-600">{pendingLeavesCount}</span>
+                <Calendar className="h-5 w-5 text-amber-400" />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">Incl. Sick Leave Med Certs</p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white border border-indigo-200 shadow-2xs">
+              <span className="text-[10px] text-indigo-700 uppercase font-bold tracking-wider">Pending Offset</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-xl font-black text-indigo-600">{pendingOffsetCount}</span>
+                <RefreshCw className="h-5 w-5 text-indigo-400" />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">Timekeeper adjustments</p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white border border-sky-200 shadow-2xs">
+              <span className="text-[10px] text-sky-700 uppercase font-bold tracking-wider">Official Business</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-xl font-black text-sky-600">{pendingOBCount}</span>
+                <Briefcase className="h-5 w-5 text-sky-400" />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">No physical clock-in</p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white border border-rose-200 shadow-2xs">
+              <span className="text-[10px] text-rose-700 uppercase font-bold tracking-wider">Undertime Forms</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-xl font-black text-rose-600">{pendingUndertimeCount}</span>
+                <TimerOff className="h-5 w-5 text-rose-400" />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">Early departure filings</p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white border border-amber-200 shadow-2xs">
+              <span className="text-[10px] text-amber-700 uppercase font-bold tracking-wider">Pending Overtime</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-xl font-black text-amber-600">{pendingOTCount}</span>
+                <Clock className="h-5 w-5 text-amber-400" />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">Day shift extensions (+30%)</p>
             </div>
           </div>
 
           {/* Sub-Filters and View Toggle */}
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1">
-                <Filter className="h-3.5 w-3.5" /> View:
+                <Filter className="h-3.5 w-3.5" /> Category:
               </span>
-              <button
-                type="button"
-                onClick={() => setApprovalCategory('all')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                  approvalCategory === 'all'
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                All Applications
-              </button>
-              <button
-                type="button"
-                onClick={() => setApprovalCategory('leaves')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                  approvalCategory === 'leaves'
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                <span>Leaves</span>
-                {pendingLeavesCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-bold">
-                    {pendingLeavesCount}
-                  </span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setApprovalCategory('overtime')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                  approvalCategory === 'overtime'
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                <span>Overtime</span>
-                {pendingOTCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-bold">
-                    {pendingOTCount}
-                  </span>
-                )}
-              </button>
+              {[
+                { id: 'all', label: 'All Requests', count: totalPending },
+                { id: 'leaves', label: 'Leaves & Med Certs', count: pendingLeavesCount },
+                { id: 'offset', label: 'Offset Timekeeper', count: pendingOffsetCount },
+                { id: 'ob', label: 'Official Business (OB)', count: pendingOBCount },
+                { id: 'undertime', label: 'Undertime Forms', count: pendingUndertimeCount },
+                { id: 'overtime', label: 'Overtime', count: pendingOTCount }
+              ].map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setApprovalCategory(cat.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                    approvalCategory === cat.id
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  <span>{cat.label}</span>
+                  {cat.count > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-bold">
+                      {cat.count}
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -551,13 +1048,13 @@ export default function BarcodeClockInKiosk() {
             </div>
           </div>
 
-          {/* Leave Applications Table */}
+          {/* 1. Leave Applications Table (with Medical Certificate Preview) */}
           {(approvalCategory === 'all' || approvalCategory === 'leaves') && (
             <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm space-y-3">
               <div className="p-4 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-slate-600" />
-                  Employee Leave Requests
+                  Employee Leave Requests &amp; Medical Certificates
                 </h3>
                 <span className="text-xs text-slate-500">{filteredLeaves.length} records</span>
               </div>
@@ -570,7 +1067,7 @@ export default function BarcodeClockInKiosk() {
                     <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
                       <tr>
                         <th className="py-3 px-4">Employee</th>
-                        <th className="py-3 px-4">Leave Type</th>
+                        <th className="py-3 px-4">Leave Type &amp; Attachment</th>
                         <th className="py-3 px-4">Dates &amp; Duration</th>
                         <th className="py-3 px-4">Reason / Notes</th>
                         <th className="py-3 px-4">Status</th>
@@ -584,10 +1081,22 @@ export default function BarcodeClockInKiosk() {
                             <div className="font-bold text-slate-900">{req.staffName}</div>
                             <div className="text-[10px] font-mono text-slate-500">{req.employeeId}</div>
                           </td>
-                          <td className="py-3 px-4">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
+                          <td className="py-3 px-4 space-y-1">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200 inline-block">
                               {req.type}
                             </span>
+                            {req.medicalCertificate && (
+                              <div>
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewDoc(req.medicalCertificate)}
+                                  className="px-2 py-0.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-300 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition"
+                                >
+                                  <Stethoscope className="h-3 w-3 text-teal-600" />
+                                  <span>View Medical Cert</span>
+                                </button>
+                              </div>
+                            )}
                           </td>
                           <td className="py-3 px-4">
                             <div className="font-mono text-slate-900 font-bold">
@@ -621,7 +1130,6 @@ export default function BarcodeClockInKiosk() {
                                   type="button"
                                   onClick={() => approveLeaveRequest(req.id, 'Approved for payroll entry')}
                                   className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition cursor-pointer"
-                                  title="Approve Leave"
                                 >
                                   <Check className="h-3.5 w-3.5" />
                                   <span>Approve</span>
@@ -630,7 +1138,6 @@ export default function BarcodeClockInKiosk() {
                                   type="button"
                                   onClick={() => setRejectItem({ type: 'leave', id: req.id, staffName: req.staffName })}
                                   className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
-                                  title="Disapprove Leave"
                                 >
                                   <X className="h-3.5 w-3.5" />
                                   <span>Reject</span>
@@ -649,7 +1156,295 @@ export default function BarcodeClockInKiosk() {
             </div>
           )}
 
-          {/* Overtime Applications Table */}
+          {/* 2. Offset Timekeeper Requests Table */}
+          {(approvalCategory === 'all' || approvalCategory === 'offset') && (
+            <div className="rounded-2xl border border-indigo-200 bg-white overflow-hidden shadow-sm space-y-3">
+              <div className="p-4 border-b border-indigo-100 bg-indigo-50/40 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-indigo-950 flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 text-indigo-600" />
+                    Offset Timekeeper Requests (Schedule Offset &amp; 6-Punch Adjustments)
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Approving automatically updates the staff member&apos;s 6-punch attendance record
+                  </p>
+                </div>
+                <span className="text-xs text-indigo-700 font-bold">{filteredOffsets.length} records</span>
+              </div>
+
+              {filteredOffsets.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-6">No offset timekeeper requests found.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                      <tr>
+                        <th className="py-3 px-4">Employee</th>
+                        <th className="py-3 px-3">Request Type</th>
+                        <th className="py-3 px-3">Dates &amp; Offset Hrs</th>
+                        <th className="py-3 px-3">6-Punch Verification</th>
+                        <th className="py-3 px-3">Justification</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-4 text-right">HR Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {filteredOffsets.map((req) => (
+                        <tr key={req.id} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-4">
+                            <div className="font-bold text-slate-900">{req.staffName}</div>
+                            <div className="text-[10px] font-mono text-slate-500">{req.employeeId}</div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                              {req.requestType}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-mono">
+                            <div className="font-bold text-slate-900">
+                              {req.sourceDate} → {req.targetOffsetDate}
+                            </div>
+                            <span className="text-[11px] text-indigo-700 font-bold">{req.hours} Hour(s) Offset</span>
+                          </td>
+                          <td className="py-3 px-3 font-mono text-[10px] text-slate-600">
+                            <div>In: {req.timeIn} | Out: {req.timeOut}</div>
+                            <div>Lunch: {req.lunchOut}–{req.lunchIn} | Brk: {req.breakOut}–{req.breakIn}</div>
+                          </td>
+                          <td className="py-3 px-3 max-w-xs truncate text-slate-600" title={req.reason}>
+                            {req.reason}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              req.status === 'Approved'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : req.status === 'Rejected'
+                                ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-300'
+                            }`}>
+                              {req.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            {req.status === 'Pending' ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => approveOffsetRequest(req.id, 'Approved & synced to timekeeper logs')}
+                                  className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                  <span>Approve</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setRejectItem({ type: 'offset', id: req.id, staffName: req.staffName })}
+                                  className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  <span>Reject</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-medium">Evaluation Final</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 3. Official Business (OB) Requests Table — Without Clocking In */}
+          {(approvalCategory === 'all' || approvalCategory === 'ob') && (
+            <div className="rounded-2xl border border-sky-200 bg-white overflow-hidden shadow-sm space-y-3">
+              <div className="p-4 border-b border-sky-100 bg-sky-50/40 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-sky-950 flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-sky-600" />
+                    Official Business (OB) Requests — Business Transactions Without Kiosk Clock-In
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Approving credits the employee&apos;s daily shift attendance for external business transactions during business hours
+                  </p>
+                </div>
+                <span className="text-xs text-sky-700 font-bold">{filteredOB.length} records</span>
+              </div>
+
+              {filteredOB.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-6">No Official Business (OB) requests found.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                      <tr>
+                        <th className="py-3 px-4">Employee</th>
+                        <th className="py-3 px-3">Date &amp; Business Hours</th>
+                        <th className="py-3 px-3">Client / Destination</th>
+                        <th className="py-3 px-3">Transaction Type &amp; Purpose</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-4 text-right">HR Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {filteredOB.map((ob) => (
+                        <tr key={ob.id} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-4">
+                            <div className="font-bold text-slate-900">{ob.staffName}</div>
+                            <div className="text-[10px] font-mono text-slate-500">{ob.employeeId}</div>
+                          </td>
+                          <td className="py-3 px-3 font-mono">
+                            <div className="font-bold text-slate-900">{ob.date}</div>
+                            <span className="text-[11px] text-sky-700">{ob.departureTime} – {ob.returnTime}</span>
+                          </td>
+                          <td className="py-3 px-3 font-bold text-slate-800">
+                            {ob.clientOrDestination}
+                            <span className="block text-[10px] text-emerald-700 font-normal">✓ Exempt from Physical Clock-In</span>
+                          </td>
+                          <td className="py-3 px-3 max-w-xs">
+                            <div className="text-[10px] font-bold text-sky-800 uppercase">{ob.transactionType}</div>
+                            <p className="text-slate-600 truncate" title={ob.purpose}>{ob.purpose}</p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              ob.status === 'Approved'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : ob.status === 'Rejected'
+                                ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-300'
+                            }`}>
+                              {ob.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            {ob.status === 'Pending' ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => approveOfficialBusinessRequest(ob.id, 'Approved Official Business — Attendance Credited')}
+                                  className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                  <span>Approve OB</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setRejectItem({ type: 'ob', id: ob.id, staffName: ob.staffName })}
+                                  className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  <span>Reject</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-medium">Evaluation Final</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 4. Undertime Request Forms Table */}
+          {(approvalCategory === 'all' || approvalCategory === 'undertime') && (
+            <div className="rounded-2xl border border-rose-200 bg-white overflow-hidden shadow-sm space-y-3">
+              <div className="p-4 border-b border-rose-100 bg-rose-50/40 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-rose-950 flex items-center gap-2">
+                    <TimerOff className="h-4 w-4 text-rose-600" />
+                    Employee Undertime Request Forms
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Early shift departure authorizations and undertime hour logs
+                  </p>
+                </div>
+                <span className="text-xs text-rose-700 font-bold">{filteredUndertime.length} records</span>
+              </div>
+
+              {filteredUndertime.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-6">No undertime requests found.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                      <tr>
+                        <th className="py-3 px-4">Employee</th>
+                        <th className="py-3 px-3">Shift Date</th>
+                        <th className="py-3 px-3">Departure &amp; Undertime Hrs</th>
+                        <th className="py-3 px-3">Reason &amp; Category</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-4 text-right">HR Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {filteredUndertime.map((ut) => (
+                        <tr key={ut.id} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-4">
+                            <div className="font-bold text-slate-900">{ut.staffName}</div>
+                            <div className="text-[10px] font-mono text-slate-500">{ut.employeeId}</div>
+                          </td>
+                          <td className="py-3 px-3 font-mono font-bold text-slate-900">
+                            {ut.date}
+                          </td>
+                          <td className="py-3 px-3 font-mono">
+                            <div className="font-bold text-rose-700">{ut.undertimeHours} hr(s) Undertime</div>
+                            <span className="text-[10px] text-slate-500">Out: {ut.requestedTimeOut} (Sched: {ut.scheduledTimeOut})</span>
+                          </td>
+                          <td className="py-3 px-3 max-w-xs">
+                            <div className="text-[10px] font-bold text-rose-800 uppercase">{ut.reasonCategory}</div>
+                            <p className="text-slate-600 truncate" title={ut.reason}>{ut.reason}</p>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              ut.status === 'Approved'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : ut.status === 'Rejected'
+                                ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-300'
+                            }`}>
+                              {ut.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            {ut.status === 'Pending' ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => approveUndertimeRequest(ut.id, 'Approved Undertime Departure')}
+                                  className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                  <span>Approve UT</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setRejectItem({ type: 'undertime', id: ut.id, staffName: ut.staffName })}
+                                  className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  <span>Reject</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-medium">Evaluation Final</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 5. Overtime Applications Table */}
           {(approvalCategory === 'all' || approvalCategory === 'overtime') && (() => {
             const pendingOT = filteredOT.filter(o => o.status === 'Pending');
             const todayStr = new Date().toISOString().split('T')[0];
@@ -801,7 +1596,6 @@ export default function BarcodeClockInKiosk() {
                                       type="button"
                                       onClick={() => approveOvertimeRequest(req.id, 'HR Approved with verified operational reason')}
                                       className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition cursor-pointer"
-                                      title="Authorize Overtime as HR"
                                     >
                                       <Check className="h-3.5 w-3.5" />
                                       <span>Approve (HR)</span>
@@ -810,7 +1604,6 @@ export default function BarcodeClockInKiosk() {
                                       type="button"
                                       onClick={() => setRejectItem({ type: 'ot', id: req.id, staffName: req.staffName })}
                                       className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
-                                      title="Disapprove Overtime"
                                     >
                                       <X className="h-3.5 w-3.5" />
                                       <span>Reject</span>
@@ -841,7 +1634,7 @@ export default function BarcodeClockInKiosk() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-rose-600" />
-                Reject {rejectItem.type === 'leave' ? 'Leave' : 'Overtime'} Application
+                Disapprove Request ({rejectItem.staffName})
               </h3>
               <button
                 type="button"
@@ -862,7 +1655,7 @@ export default function BarcodeClockInKiosk() {
                 rows={3}
                 value={rejectRemarks}
                 onChange={(e) => setRejectRemarks(e.target.value)}
-                placeholder="e.g. Inadequate plant staffing on this date, prior leave schedule clash, task postponed"
+                placeholder="e.g. Inadequate plant staffing on this date, unverified timekeeper punch, schedule conflict"
                 className="w-full p-3 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
               />
             </div>
@@ -910,16 +1703,6 @@ export default function BarcodeClockInKiosk() {
               </button>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 text-xs leading-relaxed space-y-1">
-              <div className="flex items-center gap-1.5 font-bold text-amber-900">
-                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                <span>Mandatory HR Policy Enforcement</span>
-              </div>
-              <p className="text-[11px] text-amber-900">
-                Before declaring an overtime shift, it <strong>must be formally requested to HR with a justifiable reason</strong>. Unapproved overtime is strictly not creditable in attendance or payroll.
-              </p>
-            </div>
-
             <form onSubmit={handleHRSubmitOT} className="space-y-3 text-xs">
               <div>
                 <label className="text-slate-700 font-bold block mb-1">Select Employee</label>
@@ -960,9 +1743,6 @@ export default function BarcodeClockInKiosk() {
                     onChange={(e) => setHrOTForm({ ...hrOTForm, hours: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-slate-900 outline-none"
                   />
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">
-                    e.g. 2 hrs (5:00 PM – 7:00 PM)
-                  </span>
                 </div>
               </div>
 
@@ -984,10 +1764,7 @@ export default function BarcodeClockInKiosk() {
               </div>
 
               <div>
-                <label className="text-slate-700 font-bold block mb-1 flex items-center justify-between">
-                  <span>Detailed Reason / Operational Justification (Required)</span>
-                  <span className="text-[10px] text-slate-500 font-normal">Min 5 characters</span>
-                </label>
+                <label className="text-slate-700 font-bold block mb-1">Detailed Reason / Operational Justification</label>
                 <textarea
                   rows={3}
                   required
@@ -1031,6 +1808,14 @@ export default function BarcodeClockInKiosk() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Document Preview Modal for Medical Certificates */}
+      {previewDoc && (
+        <DocumentPreviewModal
+          doc={previewDoc}
+          onClose={() => setPreviewDoc(null)}
+        />
       )}
 
     </div>
