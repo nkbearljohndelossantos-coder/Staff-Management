@@ -154,10 +154,10 @@ export default function EmployeePortalView() {
     reason: ''
   });
   const [offsetForm, setOffsetForm] = useState({
-    requestType: 'Schedule Offset (Hours Earned vs Offset Date)',
-    earnedDate: new Date().toISOString().split('T')[0],
-    offsetDate: new Date().toISOString().split('T')[0],
-    hours: 8,
+    requestType: 'Schedule Offset (Extra Hours to Offset Late/Undertime)',
+    sourceDate: new Date().toISOString().split('T')[0],
+    targetOffsetDate: new Date().toISOString().split('T')[0],
+    hours: 2,
     timeIn: '08:00 AM',
     lunchOut: '12:00 PM',
     lunchIn: '01:00 PM',
@@ -168,21 +168,23 @@ export default function EmployeePortalView() {
   });
   const [obForm, setObForm] = useState({
     date: new Date().toISOString().split('T')[0],
-    startTime: '08:00 AM',
-    endTime: '05:00 PM',
-    transactionType: 'Bank & Financial Transaction',
-    destination: '',
-    contactPerson: '',
-    purpose: ''
+    departureTime: '08:00 AM',
+    returnTime: '05:00 PM',
+    transactionType: 'Client Meeting / Delivery / Field Transaction',
+    clientOrDestination: '',
+    purpose: '',
+    noClockInRequired: true
   });
   const [undertimeForm, setUndertimeForm] = useState({
     date: new Date().toISOString().split('T')[0],
-    scheduledOut: '05:00 PM',
-    departureTime: '03:00 PM',
+    scheduledTimeOut: '05:00 PM',
+    requestedTimeOut: '03:00 PM',
     undertimeHours: 2,
-    reasonCategory: 'Medical / Personal Health',
+    reasonCategory: 'Medical / Clinic Appointment',
     reason: ''
   });
+  const [activeRequestTab, setActiveRequestTab] = useState('all'); // 'all' | 'leaves' | 'offset' | 'ob' | 'undertime' | 'ot'
+  const [showIdPassCodes, setShowIdPassCodes] = useState(false);
   
   // Personal PO Form State
   const [poCart, setPoCart] = useState([]);
@@ -206,9 +208,9 @@ export default function EmployeePortalView() {
   const myGatePasses = (canteenGatePasses || []).filter(gp => gp.bearerStaffId === currentStaff?.id);
   const myLeaves = (leaveRequests || []).filter(l => l.staffId === currentStaff?.id);
   const myOvertime = (overtimeRequests || []).filter(o => o.staffId === currentStaff?.id);
-  const myOffsets = (offsetRequests || []).filter(r => r.staffId === currentStaff?.id);
-  const myOfficialBusiness = (officialBusinessRequests || []).filter(r => r.staffId === currentStaff?.id);
-  const myUndertimes = (undertimeRequests || []).filter(r => r.staffId === currentStaff?.id);
+  const myOffsetRequests = (offsetRequests || []).filter(r => r.staffId === currentStaff?.id);
+  const myOBRequests = (officialBusinessRequests || []).filter(r => r.staffId === currentStaff?.id);
+  const myUndertimeRequests = (undertimeRequests || []).filter(r => r.staffId === currentStaff?.id);
   const myPendingWithdrawals = coopWithdrawals.filter(
     w => w.staffId === currentStaff?.id && w.status === 'Pending Accounting Approval'
   );
@@ -336,254 +338,160 @@ export default function EmployeePortalView() {
         </div>
       )}
 
-      {/* Top Banner (White Card, High Contrast) */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
-        <div className="flex items-center gap-4 text-center md:text-left flex-col md:flex-row">
-          <div className="relative group shrink-0">
-            <img
-              src={currentStaff?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentStaff?.firstName}`}
-              alt="Avatar"
-              className="w-20 h-20 rounded-2xl object-cover border-2 border-slate-200 shadow-sm bg-slate-100"
-            />
-            <label
-              htmlFor="employee-portal-photo-input"
-              title="Upload / Change Profile Picture"
-              className="absolute inset-0 bg-slate-900/80 rounded-2xl opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[10px] font-bold cursor-pointer transition"
-            >
-              <Camera className="h-5 w-5 mb-0.5 text-slate-300" />
-              Upload
-            </label>
-            <input
-              id="employee-portal-photo-input"
-              type="file"
-              accept="image/*"
-              onChange={handleEmployeePhotoUpload}
-              className="hidden"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-              <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold uppercase tracking-wider">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
-                Employee Self-Service (ESS)
-              </div>
-              {currentStaff?.isTeamLeader && (
-                <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-[10px] font-bold uppercase tracking-wider">
-                  <Crown className="h-3 w-3 text-amber-600" />
-                  Team Leader
-                </div>
-              )}
+      {/* Minimal Responsive Employee Profile & Digital Identity Bar */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-2xs space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Left: Avatar & Core Identity */}
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="relative group shrink-0">
+              <img
+                src={currentStaff?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentStaff?.firstName}`}
+                alt="Avatar"
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border border-slate-200 bg-slate-100"
+              />
               <label
                 htmlFor="employee-portal-photo-input"
-                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-[10px] font-bold cursor-pointer transition"
+                title="Upload / Change Profile Picture"
+                className="absolute inset-0 bg-slate-900/80 rounded-2xl opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[9px] font-bold cursor-pointer transition"
               >
-                <Camera className="h-3 w-3 text-slate-600" />
-                Change Picture
+                <Camera className="h-4 w-4 mb-0.5 text-slate-300" />
+                Photo
               </label>
-              {currentStaff?.avatar && (
-                <button
-                  type="button"
-                  onClick={() => updateStaff(currentStaff.id, { avatar: '' })}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 text-[10px] font-medium cursor-pointer transition"
-                >
-                  <Trash2 className="h-2.5 w-2.5 text-slate-600" />
-                  Reset
-                </button>
-              )}
+              <input
+                id="employee-portal-photo-input"
+                type="file"
+                accept="image/*"
+                onChange={handleEmployeePhotoUpload}
+                className="hidden"
+              />
             </div>
-            <h2 className="text-2xl font-black text-slate-900">
-              {currentStaff ? formatStaffName(currentStaff) : 'EMPLOYEE'}
-            </h2>
-            <p className="text-xs text-slate-600">
-              {pos?.title || 'Staff'} · <span className="text-slate-800 font-semibold">{dept?.name || 'Department'}</span>
-            </p>
-            <p className="font-mono text-xs text-slate-900 font-bold">
-              Employee ID: {currentStaff?.employeeId}
-            </p>
-          </div>
-        </div>
 
-        {/* Digital Badge Snippet */}
-        <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex flex-col items-center gap-2 shrink-0">
-          <div className="bg-white rounded-lg p-2 shadow-inner border border-slate-200">
-            <BarcodeView
-              value={currentStaff?.barcodeValue || currentStaff?.employeeId}
-              width={1.2}
-              height={28}
-              displayValue={false}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => openDigitalId(currentStaff)}
-            className="w-full py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition"
-          >
-            <QrCode className="h-3.5 w-3.5 text-cyan-400" />
-            Digital ID (Barcode &amp; QR)
-          </button>
-        </div>
-      </div>
-
-      {/* Emergency Contact Card */}
-      <div className="rounded-2xl border border-rose-200/90 bg-rose-50/50 p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-rose-100 border border-rose-200 text-rose-700 flex items-center justify-center shrink-0">
-            <PhoneCall className="h-4 w-4" />
-          </div>
-          <div>
-            <span className="text-[10px] text-rose-800 font-bold uppercase tracking-wider block">In Case of Emergency (Emergency Contact)</span>
-            <span className="font-extrabold text-slate-900 text-sm">
-              {currentStaff?.emergencyContactName || 'No emergency contact person registered'}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 font-mono font-bold text-rose-800 text-sm pl-12 sm:pl-0">
-          {currentStaff?.emergencyContactPhone ? (
-            <a href={`tel:${currentStaff.emergencyContactPhone}`} className="hover:underline flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-rose-200 text-rose-700 shadow-2xs">
-              <Phone className="h-3.5 w-3.5" />
-              <span>{currentStaff.emergencyContactPhone}</span>
-            </a>
-          ) : (
-            <span className="text-slate-400 font-sans italic text-xs font-normal">Contact number not registered</span>
-          )}
-        </div>
-      </div>
-
-      {/* Official Digital Identity (Barcode & QR Pass) Copy Section */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-cyan-500/10 text-cyan-600 border border-cyan-500/20 shrink-0">
-              <QrCode className="h-5 w-5" />
-            </span>
-            <div>
-              <h3 className="text-sm font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-2">
-                Digital Employee Identity Pass (Barcode &amp; QR)
-                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                  Active Verified Pass
+            <div className="min-w-0 space-y-0.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider">
+                  ESS Portal
                 </span>
-              </h3>
-              <p className="text-xs text-slate-500">
-                Official high-contrast digital pass for factory security turnstiles, canteen register, and kiosk timekeeping.
+                <span className="font-mono text-[11px] font-bold text-slate-600 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
+                  {currentStaff?.employeeId}
+                </span>
+                {currentStaff?.isTeamLeader && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold uppercase">
+                    <Crown className="h-3 w-3 text-amber-600" />
+                    Team Leader
+                  </span>
+                )}
+              </div>
+
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 truncate">
+                {currentStaff ? formatStaffName(currentStaff) : 'EMPLOYEE'}
+              </h2>
+
+              <p className="text-xs text-slate-500 truncate">
+                {pos?.title || 'Staff'} · <strong className="text-slate-700 font-semibold">{dept?.name || 'Department'}</strong>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Right: Compact Emergency Contact + Digital ID Actions */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 lg:justify-end">
+            {/* Compact ICE Pill */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-50/70 border border-rose-200/80 text-xs">
+              <PhoneCall className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+              <div className="leading-tight">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-rose-700 block">Emergency (ICE)</span>
+                <span className="font-bold text-slate-900 text-[11px]">
+                  {currentStaff?.emergencyContactName || 'Unregistered'}
+                </span>
+                {currentStaff?.emergencyContactPhone && (
+                  <a href={`tel:${currentStaff.emergencyContactPhone}`} className="ml-1.5 font-mono text-[11px] font-bold text-rose-700 hover:underline">
+                    ({currentStaff.emergencyContactPhone})
+                  </a>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowIdPassCodes(prev => !prev)}
+              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
+            >
+              <ScanLine className="h-3.5 w-3.5 text-slate-600" />
+              <span>{showIdPassCodes ? 'Hide Pass Codes' : 'Barcode & QR'}</span>
+            </button>
+
             <button
               type="button"
               onClick={() => openDigitalId(currentStaff)}
-              className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition"
             >
-              <Maximize2 className="h-3.5 w-3.5 text-cyan-400" />
-              <span>Open Full Pass / Scan Mode</span>
+              <QrCode className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Digital ID</span>
             </button>
           </div>
         </div>
 
-        {/* Dual Codes Display Grid with Copy Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          
-          {/* Card 1: Linear Barcode (Code 128) */}
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
-                <ScanLine className="h-4 w-4 text-slate-600" /> 1D Barcode (Code 128)
-              </span>
-              <button
-                type="button"
-                onClick={() => handleCopySnippet(currentStaff?.barcodeValue || currentStaff?.employeeId, 'barcode')}
-                className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition shadow-xs"
-              >
-                {copiedSnippet === 'barcode' ? (
-                  <>
-                    <Check className="h-3.5 w-3.5 text-emerald-600" />
-                    <span className="text-emerald-700">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3.5 w-3.5 text-slate-500" />
-                    <span>Copy Barcode</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            <div className="bg-white p-3 rounded-xl border border-slate-200 flex flex-col items-center justify-center">
-              <BarcodeView
-                value={currentStaff?.barcodeValue || currentStaff?.employeeId}
-                width={1.6}
-                height={48}
-                displayValue={false}
-              />
-              <span className="font-mono text-xs font-black tracking-widest text-slate-900 mt-1">
-                {currentStaff?.barcodeValue || currentStaff?.employeeId}
-              </span>
-            </div>
-
-            <div className="text-[11px] text-slate-500 flex items-center justify-between">
-              <span>Type: Code 128 Standard</span>
-              <span className="text-slate-700 font-semibold font-mono">ID: {currentStaff?.employeeId}</span>
-            </div>
-          </div>
-
-          {/* Card 2: 2D QR Code */}
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
-                <QrCode className="h-4 w-4 text-slate-600" /> 2D Turnstile QR Pass
-              </span>
-              <button
-                type="button"
-                onClick={() => handleCopySnippet(`NKB-STAFF:${currentStaff?.employeeId}:${currentStaff?.firstName}_${currentStaff?.lastName}:AUTH-2026`, 'qr')}
-                className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition shadow-xs"
-              >
-                {copiedSnippet === 'qr' ? (
-                  <>
-                    <Check className="h-3.5 w-3.5 text-emerald-600" />
-                    <span className="text-emerald-700">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3.5 w-3.5 text-slate-500" />
-                    <span>Copy QR Data</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-center gap-4">
-              <QRCodeView
-                value={`NKB-STAFF:${currentStaff?.employeeId}:${currentStaff?.firstName}_${currentStaff?.lastName}:AUTH-2026`}
-                size={95}
-              />
-              <div className="space-y-1 text-xs">
-                <div className="font-bold text-slate-900">{currentStaff?.firstName} {currentStaff?.lastName}</div>
-                <div className="text-[11px] text-slate-500">{pos?.title || 'Staff'}</div>
-                <div className="font-mono text-[11px] font-bold text-slate-700">{currentStaff?.employeeId}</div>
-                <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
-                  <ShieldCheck className="h-3 w-3" /> Turnstile Authorized
-                </div>
+        {/* Collapsible Barcode & QR Code Drawer */}
+        {showIdPassCodes && (
+          <div className="pt-3 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-3 animate-in fade-in duration-150">
+            {/* 1D Barcode */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
+                  <ScanLine className="h-3.5 w-3.5 text-slate-500" /> 1D Barcode (Code 128)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopySnippet(currentStaff?.barcodeValue || currentStaff?.employeeId, 'barcode')}
+                  className="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition"
+                >
+                  {copiedSnippet === 'barcode' ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3 text-slate-500" />}
+                  <span>{copiedSnippet === 'barcode' ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex flex-col items-center justify-center overflow-x-auto">
+                <BarcodeView
+                  value={currentStaff?.barcodeValue || currentStaff?.employeeId}
+                  width={1.4}
+                  height={40}
+                  displayValue={false}
+                />
+                <span className="font-mono text-[11px] font-bold tracking-widest text-slate-800 mt-1">
+                  {currentStaff?.barcodeValue || currentStaff?.employeeId}
+                </span>
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 flex items-center justify-between">
-              <span>Format: High Error Correction 2D</span>
-              <button
-                type="button"
-                onClick={() => handleCopySnippet(
-                  `NKB EMPLOYEE ID: ${currentStaff?.employeeId}\nName: ${currentStaff?.firstName} ${currentStaff?.lastName}\nBarcode: ${currentStaff?.barcodeValue || currentStaff?.employeeId}\nDept: ${dept?.name}`,
-                  'all'
-                )}
-                className="text-cyan-700 hover:text-cyan-900 font-bold underline cursor-pointer"
-              >
-                {copiedSnippet === 'all' ? 'Copied All!' : 'Copy Full Details'}
-              </button>
+            {/* 2D QR Code */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
+                  <QrCode className="h-3.5 w-3.5 text-slate-500" /> 2D Turnstile QR Pass
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopySnippet(`NKB-STAFF:${currentStaff?.employeeId}:${currentStaff?.firstName}_${currentStaff?.lastName}:AUTH-2026`, 'qr')}
+                  className="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition"
+                >
+                  {copiedSnippet === 'qr' ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3 text-slate-500" />}
+                  <span>{copiedSnippet === 'qr' ? 'Copied' : 'Copy QR'}</span>
+                </button>
+              </div>
+              <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-center gap-3.5">
+                <QRCodeView
+                  value={`NKB-STAFF:${currentStaff?.employeeId}:${currentStaff?.firstName}_${currentStaff?.lastName}:AUTH-2026`}
+                  size={72}
+                />
+                <div className="space-y-0.5 text-xs min-w-0">
+                  <div className="font-bold text-slate-900 truncate">{currentStaff?.firstName} {currentStaff?.lastName}</div>
+                  <div className="font-mono text-[11px] font-bold text-slate-600">{currentStaff?.employeeId}</div>
+                  <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
+                    <ShieldCheck className="h-3 w-3" /> Turnstile Active
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-
-        </div>
+        )}
       </div>
 
       {/* Employee Financial Services: Coop Share, Loans, Canteen Advance & Personal PO */}
@@ -990,20 +898,29 @@ export default function EmployeePortalView() {
         </div>
       )}
 
-      {/* Leave, Timekeeping & Official Business Self-Service Request Center */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 space-y-4 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div>
-            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-              <CalendarCheck className="h-4 w-4 text-slate-600" />
-              Leave, Timekeeping &amp; Official Business Request Center
-            </h4>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              File leaves (with Medical Certificate attachment), offset timekeeper requests, official business (no clock-in), undertime forms, and team overtime
+      {/* Leave, Timekeeping & Official Business Self-Service Request Center (Minimal & Responsive) */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 space-y-4 shadow-2xs">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="space-y-0.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <CalendarCheck className="h-4 w-4 text-slate-600" />
+                Timekeeping, Leave &amp; Official Business Center
+              </h4>
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-mono font-bold text-slate-700">
+                SL: {currentStaff?.sickLeaveRemaining ?? 5}/{currentStaff?.sickLeaveTotal ?? 5}d
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-mono font-bold text-slate-700">
+                VL: {currentStaff?.vacationLeaveRemaining ?? 5}/{currentStaff?.vacationLeaveTotal ?? 5}d
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              File leaves (with Medical Certificate), offset timekeeper requests, official business (no clock-in), undertime, and overtime
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Action Buttons — fluid wrap for any display */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={() => {
@@ -1017,10 +934,10 @@ export default function EmployeePortalView() {
                 });
                 setShowLeaveModal(true);
               }}
-              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
             >
-              <Plus className="h-3.5 w-3.5 text-white" />
-              <span>File Leave / Sick Leave</span>
+              <Plus className="h-3.5 w-3.5" />
+              <span>Leave / Med Cert</span>
             </button>
 
             <button
@@ -1041,9 +958,9 @@ export default function EmployeePortalView() {
                 });
                 setShowOffsetModal(true);
               }}
-              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
             >
-              <RefreshCw className="h-3.5 w-3.5 text-white" />
+              <RefreshCw className="h-3.5 w-3.5 text-indigo-600" />
               <span>Offset Timekeeper</span>
             </button>
 
@@ -1061,10 +978,10 @@ export default function EmployeePortalView() {
                 });
                 setShowOBModal(true);
               }}
-              className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
             >
-              <Briefcase className="h-3.5 w-3.5 text-white" />
-              <span>Official Business (No Clock-In)</span>
+              <Briefcase className="h-3.5 w-3.5 text-sky-600" />
+              <span>Official Business</span>
             </button>
 
             <button
@@ -1080,13 +997,13 @@ export default function EmployeePortalView() {
                 });
                 setShowUndertimeModal(true);
               }}
-              className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
             >
-              <TimerOff className="h-3.5 w-3.5 text-white" />
-              <span>Undertime Form</span>
+              <TimerOff className="h-3.5 w-3.5 text-rose-600" />
+              <span>Undertime</span>
             </button>
 
-            {isTeamLeaderOrAdmin ? (
+            {isTeamLeaderOrAdmin && (
               <button
                 type="button"
                 onClick={() => {
@@ -1099,290 +1016,264 @@ export default function EmployeePortalView() {
                   });
                   setShowOTModal(true);
                 }}
-                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
-                title="Team Leader Authority: File Overtime clearance to HR for team members"
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
               >
-                <Crown className="h-3.5 w-3.5 text-white" />
-                <span>Request Team OT (TL)</span>
+                <Crown className="h-3.5 w-3.5" />
+                <span>Team OT</span>
               </button>
-            ) : (
-              <div
-                className="px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 text-[11px] font-medium flex items-center gap-1.5"
-                title="Overtime requests must be submitted by your designated Team Leader"
-              >
-                <Shield className="h-3 w-3 text-slate-400" />
-                <span>OT Filed by Team Leader</span>
-              </div>
             )}
           </div>
         </div>
 
-        {/* Requests Grid Row 1: Leaves & Overtime */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Minimal Segmented Filter Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {[
+            { id: 'all', label: 'All Overview' },
+            { id: 'leaves', label: `Leaves (${myLeaves.length})` },
+            { id: 'offset', label: `Offset (${myOffsetRequests.length})` },
+            { id: 'ob', label: `Official Business (${myOBRequests.length})` },
+            { id: 'undertime', label: `Undertime (${myUndertimeRequests.length})` },
+            { id: 'ot', label: `Overtime (${myOvertime.length})` }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveRequestTab(tab.id)}
+              className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition ${
+                activeRequestTab === tab.id
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Responsive Cards Grid */}
+        <div className={`grid grid-cols-1 ${
+          activeRequestTab === 'all' ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-1'
+        } gap-3.5`}>
           
-          {/* Leaves Subcard */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5 text-slate-600" />
-                My Leave Applications ({myLeaves.length})
-              </span>
-              <span className="text-[10px] text-slate-500">Medical Cert supported for SL</span>
-            </div>
-
-            {/* Leave Balance Counters */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="p-2.5 rounded-xl bg-white border border-slate-200">
-                <div className="text-[10px] text-slate-500 font-bold uppercase">Sick Leave (SL)</div>
-                <div className="text-sm font-black text-slate-900 font-mono mt-0.5">
-                  {currentStaff?.sickLeaveRemaining ?? 5} / {currentStaff?.sickLeaveTotal ?? 5} <span className="text-[10px] font-normal text-slate-500">Days</span>
-                </div>
+          {/* 1. Leaves Card */}
+          {(activeRequestTab === 'all' || activeRequestTab === 'leaves') && (
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                  Leave Applications ({myLeaves.length})
+                </span>
+                <span className="text-[10px] text-slate-400">Med Cert supported</span>
               </div>
-              <div className="p-2.5 rounded-xl bg-white border border-slate-200">
-                <div className="text-[10px] text-slate-500 font-bold uppercase">Leave With Pay (VL)</div>
-                <div className="text-sm font-black text-slate-900 font-mono mt-0.5">
-                  {currentStaff?.vacationLeaveRemaining ?? 5} / {currentStaff?.vacationLeaveTotal ?? 5} <span className="text-[10px] font-normal text-slate-500">Days</span>
-                </div>
-              </div>
-            </div>
 
-            {myLeaves.length === 0 ? (
-              <p className="text-xs text-slate-400 py-3 text-center">No leave applications filed yet.</p>
-            ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {myLeaves.map(leave => (
-                  <div key={leave.id} className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                        {leave.type}
-                        {leave.medicalCertificate && (
-                          <button
-                            type="button"
-                            onClick={() => setPreviewDoc(leave.medicalCertificate)}
-                            className="px-1.5 py-0.5 rounded bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer transition"
-                            title="View attached Medical Certificate"
-                          >
-                            <Stethoscope className="h-2.5 w-2.5" />
-                            Med Cert
-                          </button>
-                        )}
-                      </span>
-                      <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                        leave.status === 'Approved'
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                          : leave.status === 'Rejected'
-                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                          : 'bg-amber-100 text-amber-800 border border-amber-300'
-                      }`}>
-                        {leave.status}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-600 font-mono">
-                      {leave.startDate} {leave.endDate && leave.endDate !== leave.startDate ? `~ ${leave.endDate}` : ''} ({leave.days} day{leave.days > 1 ? 's' : ''})
-                    </div>
-                    {leave.reason && (
-                      <p className="text-[10px] text-slate-500 italic truncate">&ldquo;{leave.reason}&rdquo;</p>
-                    )}
-                    {leave.remarks && (
-                      <div className="text-[9px] text-slate-400">HR: {leave.remarks}</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Overtime Subcard */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5 text-slate-600" />
-                My Overtime Requests ({myOvertime.length})
-              </span>
-              <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1">
-                <Sun className="h-3 w-3" /> HR Authorization Required
-              </span>
-            </div>
-
-            {!isTeamLeaderOrAdmin && (
-              <div className="p-2.5 rounded-lg bg-amber-50/80 border border-amber-200 text-[11px] text-amber-900 flex items-start gap-2">
-                <Crown className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="block font-bold">Team Leader Requested Policy</strong>
-                  <span>Per company policy, overtime requests are submitted by your designated Team Leader for HR clearance.</span>
-                </div>
-              </div>
-            )}
-
-            {myOvertime.length === 0 ? (
-              <p className="text-xs text-slate-400 py-3 text-center">No overtime requests submitted to HR yet.</p>
-            ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {myOvertime.map(ot => (
-                  <div key={ot.id} className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-900">{ot.hours} Hours OT (@ +30%)</span>
-                      <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                        ot.status === 'Approved'
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                          : ot.status === 'Rejected'
-                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                          : 'bg-amber-100 text-amber-800 border border-amber-300'
-                      }`}>
-                        {ot.status === 'Approved' ? 'HR Approved' : ot.status === 'Rejected' ? 'HR Disapproved' : 'Pending HR'}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-600 font-mono flex items-center justify-between">
-                      <span>Shift Date: {ot.date}</span>
-                      {ot.reasonCategory && (
-                        <span className="text-[10px] text-slate-500 font-sans font-medium">{ot.reasonCategory}</span>
+              {myLeaves.length === 0 ? (
+                <p className="text-xs text-slate-400 py-4 text-center">No leave applications filed.</p>
+              ) : (
+                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                  {myLeaves.map(leave => (
+                    <div key={leave.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900 flex items-center gap-1.5 truncate">
+                          {leave.type}
+                          {leave.medicalCertificate && (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewDoc(leave.medicalCertificate)}
+                              className="px-1.5 py-0.5 rounded bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer transition shrink-0"
+                            >
+                              <Stethoscope className="h-2.5 w-2.5" />
+                              Med Cert
+                            </button>
+                          )}
+                        </span>
+                        <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                          leave.status === 'Approved'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : leave.status === 'Rejected'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {leave.status}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-600 font-mono">
+                        {leave.startDate} {leave.endDate && leave.endDate !== leave.startDate ? `~ ${leave.endDate}` : ''} · {leave.days}d
+                      </div>
+                      {leave.reason && (
+                        <p className="text-[10px] text-slate-500 truncate">{leave.reason}</p>
                       )}
                     </div>
-                    {(ot.reason || ot.task) && (
-                      <p className="text-[10px] text-slate-600 italic">
-                        <strong>Reason:</strong> &ldquo;{ot.reason || ot.task}&rdquo;
-                      </p>
-                    )}
-                    {ot.remarks && (
-                      <div className="text-[9px] text-slate-500 font-medium bg-slate-50 p-1 rounded border border-slate-200">
-                        {ot.reviewedBy || 'HR'}: {ot.remarks}
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 2. Offset Timekeeper Card */}
+          {(activeRequestTab === 'all' || activeRequestTab === 'offset') && (
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <RefreshCw className="h-3.5 w-3.5 text-indigo-600" />
+                  Offset Timekeeper ({myOffsetRequests.length})
+                </span>
+                <span className="text-[10px] text-slate-400">6-Punch / Schedule</span>
+              </div>
+
+              {myOffsetRequests.length === 0 ? (
+                <p className="text-xs text-slate-400 py-4 text-center">No offset timekeeper requests.</p>
+              ) : (
+                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                  {myOffsetRequests.map(req => (
+                    <div key={req.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-slate-900 truncate">{req.requestType}</span>
+                        <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                          req.status === 'Approved'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : req.status === 'Rejected'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {req.status}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-        </div>
-
-        {/* Requests Grid Row 2: Offset Timekeeper, Official Business (No Clock-In), & Undertime */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-          
-          {/* Offset Timekeeper Subcard */}
-          <div className="p-4 rounded-xl bg-indigo-50/40 border border-indigo-200/80 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
-                <RefreshCw className="h-3.5 w-3.5 text-indigo-600" />
-                Offset Timekeeper ({myOffsetRequests.length})
-              </span>
-              <span className="text-[10px] text-indigo-600 font-semibold">Timekeeping</span>
+                      <div className="text-[10px] text-slate-600 font-mono">
+                        {req.sourceDate} {req.targetOffsetDate && req.targetOffsetDate !== req.sourceDate ? `→ ${req.targetOffsetDate}` : ''} · {req.hours}h
+                      </div>
+                      {req.reason && (
+                        <p className="text-[10px] text-slate-500 truncate">{req.reason}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+          )}
 
-            {myOffsetRequests.length === 0 ? (
-              <p className="text-xs text-slate-400 py-3 text-center">No offset timekeeper requests filed.</p>
-            ) : (
-              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-                {myOffsetRequests.map(req => (
-                  <div key={req.id} className="p-2.5 rounded-lg bg-white border border-indigo-100 text-xs space-y-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="font-bold text-slate-900 truncate">{req.requestType}</span>
-                      <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
-                        req.status === 'Approved'
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                          : req.status === 'Rejected'
-                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                          : 'bg-amber-100 text-amber-800 border border-amber-300'
-                      }`}>
-                        {req.status}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-600 font-mono">
-                      Date: {req.sourceDate} {req.targetOffsetDate && req.targetOffsetDate !== req.sourceDate ? `→ Offset: ${req.targetOffsetDate}` : ''} · {req.hours} hr(s)
-                    </div>
-                    {req.reason && (
-                      <p className="text-[10px] text-slate-500 italic truncate">&ldquo;{req.reason}&rdquo;</p>
-                    )}
-                    {req.remarks && (
-                      <div className="text-[9px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">HR: {req.remarks}</div>
-                    )}
-                  </div>
-                ))}
+          {/* 3. Official Business (OB) Card */}
+          {(activeRequestTab === 'all' || activeRequestTab === 'ob') && (
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Briefcase className="h-3.5 w-3.5 text-sky-600" />
+                  Official Business ({myOBRequests.length})
+                </span>
+                <span className="text-[10px] text-sky-700 font-semibold">No Clock-In</span>
               </div>
-            )}
-          </div>
 
-          {/* Official Business (OB) Subcard */}
-          <div className="p-4 rounded-xl bg-sky-50/40 border border-sky-200/80 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-sky-950 flex items-center gap-1.5">
-                <Briefcase className="h-3.5 w-3.5 text-sky-600" />
-                Official Business ({myOBRequests.length})
-              </span>
-              <span className="text-[10px] text-sky-700 font-semibold">No Clock-In Needed</span>
+              {myOBRequests.length === 0 ? (
+                <p className="text-xs text-slate-400 py-4 text-center">No official business filings.</p>
+              ) : (
+                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                  {myOBRequests.map(ob => (
+                    <div key={ob.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-slate-900 truncate">{ob.clientOrDestination}</span>
+                        <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                          ob.status === 'Approved'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : ob.status === 'Rejected'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {ob.status}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-600 font-mono">
+                        {ob.date} · {ob.departureTime} – {ob.returnTime}
+                      </div>
+                      {ob.purpose && (
+                        <p className="text-[10px] text-slate-500 truncate">{ob.purpose}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+          )}
 
-            {myOBRequests.length === 0 ? (
-              <p className="text-xs text-slate-400 py-3 text-center">No official business (OB) filings yet.</p>
-            ) : (
-              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-                {myOBRequests.map(ob => (
-                  <div key={ob.id} className="p-2.5 rounded-lg bg-white border border-sky-100 text-xs space-y-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="font-bold text-slate-900 truncate">{ob.clientOrDestination}</span>
-                      <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
-                        ob.status === 'Approved'
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                          : ob.status === 'Rejected'
-                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                          : 'bg-amber-100 text-amber-800 border border-amber-300'
-                      }`}>
-                        {ob.status}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-600 font-mono">
-                      {ob.date} · {ob.departureTime} – {ob.returnTime}
-                    </div>
-                    <div className="text-[10px] text-sky-800 font-medium truncate">{ob.transactionType}</div>
-                    {ob.purpose && (
-                      <p className="text-[10px] text-slate-500 italic truncate">&ldquo;{ob.purpose}&rdquo;</p>
-                    )}
-                  </div>
-                ))}
+          {/* 4. Undertime Forms Card */}
+          {(activeRequestTab === 'all' || activeRequestTab === 'undertime') && (
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <TimerOff className="h-3.5 w-3.5 text-rose-600" />
+                  Undertime Forms ({myUndertimeRequests.length})
+                </span>
+                <span className="text-[10px] text-slate-400">Early Out</span>
               </div>
-            )}
-          </div>
 
-          {/* Undertime Requests Subcard */}
-          <div className="p-4 rounded-xl bg-rose-50/40 border border-rose-200/80 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-rose-950 flex items-center gap-1.5">
-                <TimerOff className="h-3.5 w-3.5 text-rose-600" />
-                Undertime Forms ({myUndertimeRequests.length})
-              </span>
-              <span className="text-[10px] text-rose-700 font-semibold">Early Out</span>
+              {myUndertimeRequests.length === 0 ? (
+                <p className="text-xs text-slate-400 py-4 text-center">No undertime requests filed.</p>
+              ) : (
+                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                  {myUndertimeRequests.map(ut => (
+                    <div key={ut.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-slate-900">{ut.undertimeHours}h Undertime</span>
+                        <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                          ut.status === 'Approved'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : ut.status === 'Rejected'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {ut.status}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-600 font-mono">
+                        {ut.date} · Out {ut.requestedTimeOut}
+                      </div>
+                      {ut.reason && (
+                        <p className="text-[10px] text-slate-500 truncate">{ut.reason}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+          )}
 
-            {myUndertimeRequests.length === 0 ? (
-              <p className="text-xs text-slate-400 py-3 text-center">No undertime requests filed yet.</p>
-            ) : (
-              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-                {myUndertimeRequests.map(ut => (
-                  <div key={ut.id} className="p-2.5 rounded-lg bg-white border border-rose-100 text-xs space-y-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="font-bold text-slate-900">{ut.undertimeHours} hr(s) Undertime</span>
-                      <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
-                        ut.status === 'Approved'
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                          : ut.status === 'Rejected'
-                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                          : 'bg-amber-100 text-amber-800 border border-amber-300'
-                      }`}>
-                        {ut.status}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-600 font-mono">
-                      {ut.date} · Out at {ut.requestedTimeOut} (Sched: {ut.scheduledTimeOut})
-                    </div>
-                    <div className="text-[10px] text-rose-800 font-medium truncate">{ut.reasonCategory}</div>
-                    {ut.reason && (
-                      <p className="text-[10px] text-slate-500 italic truncate">&ldquo;{ut.reason}&rdquo;</p>
-                    )}
-                  </div>
-                ))}
+          {/* 5. Overtime Requests Card */}
+          {(activeRequestTab === 'all' || activeRequestTab === 'ot') && (
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-amber-600" />
+                  Overtime Requests ({myOvertime.length})
+                </span>
+                <span className="text-[10px] text-slate-400">TL Endorsed</span>
               </div>
-            )}
-          </div>
+
+              {myOvertime.length === 0 ? (
+                <p className="text-xs text-slate-400 py-4 text-center">No overtime requests filed.</p>
+              ) : (
+                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                  {myOvertime.map(ot => (
+                    <div key={ot.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900">{ot.hours}h OT (@ +30%)</span>
+                        <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                          ot.status === 'Approved'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : ot.status === 'Rejected'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {ot.status}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-600 font-mono">{ot.date}</div>
+                      {(ot.reason || ot.task) && (
+                        <p className="text-[10px] text-slate-500 truncate">{ot.reason || ot.task}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
         </div>
       </div>

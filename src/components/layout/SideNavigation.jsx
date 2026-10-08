@@ -128,8 +128,8 @@ export default function SideNavigation({ isOpen, onClose }) {
   return (
     <>
       {/* Desktop Persistent Sidebar */}
-      <aside className="hidden lg:block w-64 shrink-0 border-r border-slate-800 bg-slate-950 z-20">
-        <div className="sticky top-[57px] h-[calc(100vh-57px)]">
+      <aside className="hidden lg:block w-56 xl:w-60 shrink-0 border-r border-slate-800/90 bg-slate-950 z-20">
+        <div className="sticky top-[52px] h-[calc(100vh-52px)]">
           {navContent}
         </div>
       </aside>

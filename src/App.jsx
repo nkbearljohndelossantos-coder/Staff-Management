@@ -101,16 +101,16 @@ export default function App() {
         onOpenCommandPalette={() => setCommandPaletteOpen(true)}
       />
 
-      <div className="flex-1 flex min-h-[calc(100vh-57px)]">
+      <div className="flex-1 flex min-h-[calc(100vh-52px)]">
         {/* Left Side Navigation Tabs (Dark) */}
         <SideNavigation
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
         />
 
-        {/* Right Main Content Area (High-Contrast Light Body, Mobile-optimized with bottom padding) */}
-        <main className="flex-1 bg-slate-100 text-slate-800 min-w-0 p-3 sm:p-6 lg:p-8 pb-24 lg:pb-8 overflow-y-auto">
-          <div className="max-w-7xl mx-auto">
+        {/* Right Main Content Area (Minimal, High-Contrast Light Body adjusted to any display) */}
+        <main className="flex-1 bg-slate-50/90 text-slate-800 min-w-0 p-3 sm:p-5 lg:p-6 pb-24 lg:pb-8 overflow-x-hidden overflow-y-auto">
+          <div className="w-full max-w-[1600px] mx-auto">
             {!authorized ? (
               <div className="p-8 rounded-3xl bg-white border border-slate-200 shadow-sm text-center max-w-xl mx-auto my-12 space-y-4">
                 <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center mx-auto">

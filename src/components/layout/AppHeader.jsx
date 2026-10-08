@@ -58,49 +58,38 @@ export default function AppHeader({ sidebarOpen, setSidebarOpen, onOpenCommandPa
   const isEmployee = currentUser?.role === 'employee';
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-950 border-b border-slate-800 px-4 sm:px-6 py-2.5">
-      <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3">
+    <header className="sticky top-0 z-40 bg-slate-950 border-b border-slate-800/90 px-3 sm:px-5 h-13 flex items-center">
+      <div className="w-full flex items-center justify-between gap-2">
         
         {/* Brand & Left Actions */}
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-          <div className="flex items-center gap-2.5">
-            {/* Mobile Hamburger Toggle for Side Navigation */}
-            <button
-              type="button"
-              onClick={() => setSidebarOpen && setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
-              title="Toggle Sidebar Navigation"
-            >
-              <Menu className="h-5 w-5 text-slate-400" />
-            </button>
+        <div className="flex items-center gap-2.5 min-w-0">
+          {/* Mobile Hamburger Toggle for Side Navigation */}
+          <button
+            type="button"
+            onClick={() => setSidebarOpen && setSidebarOpen(!sidebarOpen)}
+            className="lg:hidden p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition cursor-pointer shrink-0"
+            title="Toggle Sidebar Navigation"
+          >
+            <Menu className="h-4 w-4 text-slate-300" />
+          </button>
 
-            <img
-              src="/LogoC.png"
-              alt="NKB Logo"
-              className="h-9 w-9 object-contain drop-shadow"
-            />
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-black tracking-tight text-white">NKB MANUFACTURING</span>
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-900 text-slate-300 border border-slate-700">
-                  {isEmployee ? 'Employee Portal' : 'Enterprise Portal'}
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400 font-medium">
-                {isEmployee ? 'Personal Self-Service & Payslips' : 'Multi-Role Staff, Coop, Loans & Payroll Management'}
-              </p>
+          <img
+            src="/LogoC.png"
+            alt="NKB Logo"
+            className="h-7 w-7 sm:h-8 sm:w-8 object-contain drop-shadow shrink-0"
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs sm:text-sm font-black tracking-tight text-white truncate">NKB MANUFACTURING</span>
+              <span className="hidden md:inline-block text-[9px] font-bold uppercase px-2 py-0.5 rounded-md bg-slate-900 text-slate-300 border border-slate-800 shrink-0">
+                {isEmployee ? 'Employee Portal' : 'Enterprise HR'}
+              </span>
             </div>
-          </div>
-
-          <div className="sm:hidden flex items-center gap-2">
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badge.color}`}>
-              {badge.label}
-            </span>
           </div>
         </div>
 
         {/* User Profile & Right Actions */}
-        <div className="flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto justify-end shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
 
           {/* Command Palette Trigger Button (Ctrl+K) */}
           <button
