@@ -43,6 +43,23 @@ import {
   SYSTEM_ROLES
 } from '../utils/sectionAuthorization';
 import { generateDefaultMisconductMemo } from '../utils/misconductUtils.js';
+import {
+  getCoopLoanMultiplier,
+  setCoopLoanMultiplier,
+  validateLoanApplication,
+  computeLoanFinancials,
+  buildRetirementSettlement,
+  processCanteenSalaryDeduction,
+  getPettyCashApiConfig,
+  savePettyCashApiConfig,
+  createReplenishmentRequestModel,
+  sendPettyCashReplenishmentApi,
+  createFinancialAuditEntry,
+  REPLENISHMENT_STATUSES,
+  VALID_LOAN_TERMS,
+  MAX_LOAN_TERM_MONTHS
+} from '../utils/coopBusinessRules';
+
 
 const AppContext = createContext(null);
 
@@ -174,6 +191,55 @@ export function AppProvider({ children }) {
     const saved = localStorage.getItem('nkb_hr_cash_advances');
     return saved ? JSON.parse(saved) : INITIAL_CASH_ADVANCES;
   });
+
+  // COOP Loan Configurable Multiplier (Default 3x)
+  const [coopLoanMultiplier, setCoopLoanMultiplierState] = useState(() => {
+    return getCoopLoanMultiplier();
+  });
+
+  // Dedicated Canteen Deductions Ledger & Member Balances
+  const [canteenDeductionsLedger, setCanteenDeductionsLedger] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_canteen_deductions_ledger');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const [canteenLedgerBalances, setCanteenLedgerBalances] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_canteen_ledger_balances');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  // Petty Cash -> Drawer Replenishment State Machine Requests
+  const [replenishmentRequests, setReplenishmentRequests] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_replenishment_requests');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const [pettyCashConfig, setPettyCashConfigState] = useState(() => {
+    return getPettyCashApiConfig();
+  });
+
+  // Unified Financial Transaction Audit Trail
+  const [coopAuditTrail, setCoopAuditTrail] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_coop_audit_trail');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
 
   // Canteen Inventory Supplies (Official 355 products from Canteen_Inventory.xlsx with zero initial quantity)
   const [canteenInventory, setCanteenInventory] = useState(() => {
@@ -1393,6 +1459,23 @@ export function AppProvider({ children }) {
   }, [cashAdvances]);
 
   useEffect(() => {
+    localStorage.setItem('nkb_canteen_deductions_ledger', JSON.stringify(canteenDeductionsLedger));
+  }, [canteenDeductionsLedger]);
+
+  useEffect(() => {
+    localStorage.setItem('nkb_canteen_ledger_balances', JSON.stringify(canteenLedgerBalances));
+  }, [canteenLedgerBalances]);
+
+  useEffect(() => {
+    localStorage.setItem('nkb_replenishment_requests', JSON.stringify(replenishmentRequests));
+  }, [replenishmentRequests]);
+
+  useEffect(() => {
+    localStorage.setItem('nkb_coop_audit_trail', JSON.stringify(coopAuditTrail));
+  }, [coopAuditTrail]);
+
+
+  useEffect(() => {
     localStorage.setItem('nkb_hr_payruns', JSON.stringify(payRuns));
   }, [payRuns]);
 
@@ -1882,45 +1965,125 @@ export function AppProvider({ children }) {
     showToast('Withdrawal request rejected by Accounting.', 'info');
   };
 
-  // Cash Loan Operations (2% cash/med/motor, 3% gadget/educ, 5% appliance)
+  // Configurable COOP Multiplier (Defaults to 3x)
+  const updateCoopLoanMultiplier = (multiplier) => {
+    const success = setCoopLoanMultiplier(multiplier);
+    if (success) {
+      setCoopLoanMultiplierState(Number(multiplier));
+      showToast(`COOP Loan multiplier updated to ${multiplier}x.`, 'success');
+    }
+    return success;
+  };
+
+  // Retirement Rule & COOP Savings Settlement Workflow
+  const retireCoopMember = ({ staffId, remarks = '' }) => {
+    if (currentUser && !isHR && !isSuperAdmin) {
+      showToast('Access Denied: Only HR or Super Admin can process member retirement.', 'error');
+      return { success: false, message: 'Unauthorized' };
+    }
+    const staff = staffList.find(s => s.id === staffId);
+    if (!staff) {
+      showToast('Staff member not found.', 'error');
+      return { success: false, message: 'Staff not found' };
+    }
+    if (staff.isRetired || staff.status === 'retired') {
+      showToast('This member is already marked as retired.', 'info');
+      return { success: false, message: 'Already retired' };
+    }
+
+    const currentSavings = coopBalances[staffId] || 0;
+    const retiredBy = currentUser ? `${currentUser.name} (${currentUser.role?.toUpperCase() || 'HR'})` : 'HR Management';
+
+    const settlement = buildRetirementSettlement({
+      member: staff,
+      coopSavings: currentSavings,
+      retiredBy,
+      remarks
+    });
+
+    // 1. Mark staff member as retired (prevents new loans)
+    setStaffList(prev => prev.map(s => s.id === staffId ? {
+      ...s,
+      status: 'retired',
+      isRetired: true,
+      retiredAt: new Date().toISOString(),
+      retiredRemarks: remarks || 'Member retired from the company'
+    } : s));
+
+    // 2. Settle and withdraw accumulated COOP Savings
+    setCoopBalances(prev => ({
+      ...prev,
+      [staffId]: 0
+    }));
+
+    // 3. Record official retirement withdrawal and ledger entry (preserves historical auditing)
+    setCoopWithdrawals(prev => [settlement.withdrawalRecord, ...prev]);
+    setCoopLedger(prev => [settlement.coopLedgerEntry, ...prev]);
+
+    // 4. Record financial audit entry
+    setCoopAuditTrail(prev => [settlement.auditLog, ...prev]);
+
+    showToast(`Member ${staff.firstName} ${staff.lastName} marked as retired. COOP Savings of ₱${currentSavings.toLocaleString()} processed for retirement settlement.`, 'success');
+    return { success: true, settlement };
+  };
+
+  // Cash Loan Operations (Max 36 Months, Maximum Loan = Savings * Multiplier)
   const requestCashLoan = ({ staffId, category, principal, termMonths, purpose }) => {
     const p = Number(principal);
     const t = Number(termMonths);
+    const staff = staffList.find(s => s.id === staffId);
+    const savings = coopBalances[staffId] || 0;
 
-    if (!p || p <= 0 || !t || t <= 0) {
-      showToast('Please enter a valid loan amount and repayment term.', 'error');
-      return { success: false };
+    // Strict Backend Business Rules Validation
+    const validation = validateLoanApplication({
+      member: staff,
+      principal: p,
+      termMonths: t,
+      coopSavings: savings,
+      multiplier: coopLoanMultiplier
+    });
+
+    if (!validation.valid) {
+      showToast(validation.error, 'error');
+      return { success: false, error: validation.error };
     }
 
-    // Interest rate determination
-    // Policy: cash loan 2%, education 2.5%, medical 3%, application 3%, motor 2.5%
     const catObj = LOAN_CATEGORIES.find(c => c.id === category) || { label: category, monthlyRate: 2 };
-    let rate = catObj.monthlyRate || 2;
-    if (category === 'cash') rate = 2;
-    else if (category === 'education') rate = 2.5;
-    else if (category === 'medical') rate = 3;
-    else if (category === 'application' || category === 'appliance') rate = 3;
-    else if (category === 'motor') rate = 2.5;
-
-    const totalInterest = Math.round(p * (rate / 100) * t);
-    const totalRepayable = p + totalInterest;
-    const monthlyDeduction = Math.round(totalRepayable / t);
-    const cutoffDeduction = Math.round(totalRepayable / (t * 2)); // Semi-monthly cutoff
+    const loanCalcs = computeLoanFinancials({
+      principal: p,
+      termMonths: t,
+      category,
+      interestRate: catObj.monthlyRate
+    });
 
     const newLoan = {
       id: `loan-${Date.now()}`,
+      loanId: `loan-${Date.now()}`,
       staffId,
+      memberId: staffId,
       category,
       categoryLabel: catObj.label,
       principal: p,
-      interestRate: rate,
+      principalAmount: p,
+      interestRate: loanCalcs.interestRate,
+      interestAmount: loanCalcs.totalInterest,
+      totalInterest: loanCalcs.totalInterest,
+      totalPayable: loanCalcs.totalPayable,
+      totalRepayable: loanCalcs.totalPayable,
+      repaymentTerm: t,
       termMonths: t,
-      totalInterest,
-      totalRepayable,
-      monthlyDeduction,
-      cutoffDeduction,
-      balanceRemaining: totalRepayable,
+      monthlyAmortization: loanCalcs.monthlyAmortization,
+      monthlyDeduction: loanCalcs.monthlyAmortization,
+      cutoffAmortization: loanCalcs.cutoffAmortization,
+      cutoffDeduction: loanCalcs.cutoffAmortization,
+      loanDate: new Date().toISOString().split('T')[0],
+      firstPaymentDate: loanCalcs.firstPaymentDate,
+      maturityDate: loanCalcs.maturityDate,
+      repaymentSchedule: loanCalcs.schedule,
+      loanStatus: 'Pending HR',
       status: 'Pending HR',
+      balanceRemaining: loanCalcs.totalPayable,
+      outstandingBalance: loanCalcs.totalPayable,
       requestedAt: new Date().toISOString(),
       approvedAt: null,
       approvedBy: null,
@@ -1928,8 +2091,24 @@ export function AppProvider({ children }) {
     };
 
     setCashLoans(prev => [newLoan, ...prev]);
+
+    // Financial audit trail log (Savings is NOT changed or deducted!)
+    const auditLog = createFinancialAuditEntry({
+      transactionId: `tx-${newLoan.id}`,
+      memberId: staffId,
+      transactionType: 'LOAN_APPLICATION_CREATED',
+      amount: p,
+      previousBalance: savings,
+      newBalance: savings,
+      referenceId: newLoan.id,
+      createdBy: currentUser ? currentUser.name : (staff ? `${staff.firstName} ${staff.lastName}` : 'Member'),
+      status: 'PENDING_APPROVAL',
+      remarks: `Loan application encoded for ₱${p.toLocaleString()} (${t} mos term, max eligibility: ₱${validation.maxLoanable.toLocaleString()}).`
+    });
+    setCoopAuditTrail(prev => [auditLog, ...prev]);
+
     showToast(`Loan application for ₱${p.toLocaleString()} submitted for HR approval.`);
-    return { success: true };
+    return { success: true, loan: newLoan };
   };
 
   const approveCashLoan = (loanId) => {
@@ -1940,27 +2119,27 @@ export function AppProvider({ children }) {
     const loan = cashLoans.find(l => l.id === loanId);
     if (!loan) return;
 
-    // Step 1: HR approves and forwards to Accounting for withdrawal & disbursement
+    // Step 1: HR approves and forwards to Accounting for disbursement
     setCashLoans(prev => prev.map(l => l.id === loanId ? {
       ...l,
       status: 'Pending Accounting Approval',
+      loanStatus: 'Pending Accounting Approval',
       hrApprovedAt: new Date().toISOString(),
       hrApprovedBy: currentUser ? `${currentUser.name} (HR)` : 'HR Management'
     } : l));
 
-    showToast(`HR endorsed ₱${loan.principal.toLocaleString()} loan. Forwarded to Accounting for fund withdrawal & disbursement.`);
+    showToast(`HR endorsed ₱${loan.principal.toLocaleString()} loan. Forwarded to Accounting for fund disbursement.`);
   };
 
-  // Step 2: Accounting approves and withdraws from Coop Shares
+  // Step 2: Accounting approves and disburses loan without decreasing member COOP Savings
   const accountingApproveLoan = (loanId) => {
     if (currentUser && !isAccounting) {
-      showToast('Only Accounting & Finance can authorize fund disbursements from Coop Share Capital.', 'error');
+      showToast('Only Accounting & Finance can authorize fund disbursements.', 'error');
       return;
     }
     const loan = cashLoans.find(l => l.id === loanId);
     if (!loan) return;
 
-    // Withdrawn and funded from Coop Shares upon Accounting approval
     const todayStr = new Date().toISOString().split('T')[0];
     setCoopLedger(prev => [
       {
@@ -1969,7 +2148,7 @@ export function AppProvider({ children }) {
         type: 'loan_funding',
         amount: loan.principal,
         date: todayStr,
-        note: `Loan Principal Withdrawn & Disbursed (${loan.categoryLabel}) - Approved by Accounting, Funded from Coop Share Capital`
+        note: `Loan Principal Disbursed (${loan.categoryLabel || loan.category}) - Approved by Accounting. Total Payable: ₱${loan.totalPayable?.toLocaleString()}. Member COOP Savings remains intact.`
       },
       ...prev
     ]);
@@ -1977,11 +2156,28 @@ export function AppProvider({ children }) {
     setCashLoans(prev => prev.map(l => l.id === loanId ? {
       ...l,
       status: 'Approved',
+      loanStatus: 'Approved',
       approvedAt: new Date().toISOString(),
       approvedBy: currentUser ? `${currentUser.name} (Accounting)` : 'Finance & Accounting'
     } : l));
 
-    showToast(`Accounting approved & disbursed ₱${loan.principal.toLocaleString()} loan. Funded via Coop Shares.`);
+    // Notice: Member's COOP Savings (coopBalances) is NOT decreased!
+    const staffSavings = coopBalances[loan.staffId] || 0;
+    const auditLog = createFinancialAuditEntry({
+      transactionId: `tx-approve-${loan.id}`,
+      memberId: loan.staffId,
+      transactionType: 'LOAN_DISBURSED',
+      amount: loan.principal,
+      previousBalance: staffSavings,
+      newBalance: staffSavings,
+      referenceId: loan.id,
+      createdBy: currentUser ? `${currentUser.name} (Accounting)` : 'Finance & Accounting',
+      status: 'DISBURSED',
+      remarks: `Loan #${loan.id} approved and disbursed. Outstanding balance: ₱${loan.balanceRemaining?.toLocaleString()}. Member COOP Savings remains ₱${staffSavings.toLocaleString()}.`
+    });
+    setCoopAuditTrail(prev => [auditLog, ...prev]);
+
+    showToast(`Accounting approved & disbursed ₱${loan.principal.toLocaleString()} loan. Member COOP savings remains intact.`);
   };
 
   const accountingRejectLoan = (loanId, reason = '') => {
@@ -2140,34 +2336,232 @@ export function AppProvider({ children }) {
     return { success: true };
   };
 
-  const replenishCanteenCash = (amount, note = '') => {
-    if (currentUser && !isHR) {
-      showToast('Access Denied: Canteen Cash Drawer is managed strictly under HR authority.', 'error');
-      return;
+  // Petty Cash -> Drawer Replenishment API State Machine
+  const updatePettyCashConfig = (newConfig) => {
+    savePettyCashApiConfig(newConfig);
+    setPettyCashConfigState(newConfig);
+    showToast('Petty Cash API configuration saved.', 'success');
+  };
+
+  const requestDrawerReplenishment = async ({ drawerId = 'DRAWER-001', amount, reason = '' }) => {
+    if (currentUser && !isHR && !isCanteen && !isSuperAdmin) {
+      showToast('Access Denied: Only HR, Canteen, or Super Admin can submit replenishment requests.', 'error');
+      return { success: false, message: 'Unauthorized' };
     }
     const numAmount = Number(amount);
     if (!numAmount || numAmount <= 0) {
       showToast('Please enter a valid replenishment amount.', 'error');
-      return;
+      return { success: false, message: 'Invalid amount' };
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const requestedBy = currentUser ? `${currentUser.name} (${currentUser.role?.toUpperCase() || 'STAFF'})` : 'Canteen Cashier';
+    const reqModel = createReplenishmentRequestModel({
+      drawerId,
+      amount: numAmount,
+      requestedBy,
+      reason: reason || 'Canteen Cash Advance Drawer replenishment'
+    });
+
+    // Save request as PENDING. Drawer balance MUST NOT increase yet!
+    setReplenishmentRequests(prev => [reqModel, ...prev]);
+
+    // Dispatch to external Petty Cash API
+    const apiResult = await sendPettyCashReplenishmentApi(reqModel);
+
+    // Record financial audit trail
+    const auditLog = createFinancialAuditEntry({
+      transactionId: `tx-${reqModel.request_id}`,
+      memberId: null,
+      transactionType: 'DRAWER_REPLENISHMENT_REQUESTED',
+      amount: numAmount,
+      previousBalance: canteenDrawer.balance,
+      newBalance: canteenDrawer.balance, // Balance remains unchanged until RELEASED!
+      referenceId: reqModel.request_id,
+      createdBy: requestedBy,
+      status: 'PENDING',
+      remarks: `Replenishment request #${reqModel.request_id} for ₱${numAmount.toLocaleString()} sent to Petty Cash API. Status: PENDING.`
+    });
+    setCoopAuditTrail(prev => [auditLog, ...prev]);
+
+    showToast(`Replenishment Request #${reqModel.request_id} (₱${numAmount.toLocaleString()}) sent to Petty Cash API. Status: PENDING.`, 'info');
+    return { success: true, request: reqModel, apiResult };
+  };
+
+  const approveDrawerReplenishment = (requestId, reviewerName = '') => {
+    const actor = reviewerName || (currentUser ? `${currentUser.name} (Petty Cash)` : 'Petty Cash Officer');
+    const nowIso = new Date().toISOString();
+
+    setReplenishmentRequests(prev => prev.map(req => {
+      if (req.request_id === requestId || req.id === requestId) {
+        return {
+          ...req,
+          status: REPLENISHMENT_STATUSES.APPROVED,
+          approvedAt: nowIso,
+          approvedBy: actor,
+          logs: [
+            ...(req.logs || []),
+            {
+              status: REPLENISHMENT_STATUSES.APPROVED,
+              timestamp: nowIso,
+              actor,
+              remarks: 'Replenishment request reviewed and approved in Petty Cash system. Ready for fund release.'
+            }
+          ]
+        };
+      }
+      return req;
+    }));
+
+    showToast(`Replenishment Request #${requestId} approved in Petty Cash. Awaiting fund release confirmation.`);
+    return { success: true };
+  };
+
+  const releaseDrawerReplenishment = (requestId, remarks = '') => {
+    const target = replenishmentRequests.find(r => r.request_id === requestId || r.id === requestId);
+    if (!target) {
+      showToast('Replenishment request not found.', 'error');
+      return { success: false, message: 'Request not found' };
+    }
+
+    // Idempotency protection: prevent duplicate replenishment
+    if (target.status === REPLENISHMENT_STATUSES.RELEASED) {
+      showToast('Idempotency Guard: Funds for this request have already been released and credited to the drawer.', 'info');
+      return { success: false, message: 'Already released' };
+    }
+
+    const releasedBy = currentUser ? `${currentUser.name} (Petty Cash)` : 'Petty Cash Custodian';
+    const nowIso = new Date().toISOString();
+    const todayStr = nowIso.split('T')[0];
+    const amount = Number(target.amount) || 0;
+
+    // 1. Update status to RELEASED
+    setReplenishmentRequests(prev => prev.map(req => {
+      if (req.request_id === requestId || req.id === requestId) {
+        return {
+          ...req,
+          status: REPLENISHMENT_STATUSES.RELEASED,
+          releasedAt: nowIso,
+          releasedBy,
+          logs: [
+            ...(req.logs || []),
+            {
+              status: REPLENISHMENT_STATUSES.RELEASED,
+              timestamp: nowIso,
+              actor: releasedBy,
+              remarks: remarks || 'Petty Cash confirmed fund release. COOP Canteen Drawer balance increased.'
+            }
+          ]
+        };
+      }
+      return req;
+    }));
+
+    // 2. Increase COOP Drawer Balance ONLY upon Petty Cash release confirmation
+    const prevDrawerBal = canteenDrawer.balance;
+    const newDrawerBal = prevDrawerBal + amount;
     setCanteenDrawer(prev => ({
-      balance: prev.balance + numAmount,
+      balance: prev.balance + amount,
       transactions: [
         {
           id: `cd-${Date.now()}`,
-          type: 'replenish',
-          amount: numAmount,
+          type: 'petty_cash_replenish',
+          amount,
           date: todayStr,
-          note: note || 'Canteen Cash Drawer Replenishment'
+          requestId: target.request_id,
+          note: `Petty Cash Confirmed Release: ₱${amount.toLocaleString()} (Req #${target.request_id}) — ${remarks || 'Authorized Drawer Replenishment'}`
         },
         ...prev.transactions
       ]
     }));
 
-    showToast(`Canteen Cash Drawer replenished with ₱${numAmount.toLocaleString()}.`);
+    // 3. Record financial audit log
+    const auditLog = createFinancialAuditEntry({
+      transactionId: `tx-rel-${target.request_id}`,
+      memberId: null,
+      transactionType: 'DRAWER_REPLENISHED_FROM_PETTY_CASH',
+      amount,
+      previousBalance: prevDrawerBal,
+      newBalance: newDrawerBal,
+      referenceId: target.request_id,
+      createdBy: releasedBy,
+      status: 'RELEASED',
+      remarks: `Petty Cash confirmed release for Req #${target.request_id}. Drawer balance updated from ₱${prevDrawerBal.toLocaleString()} to ₱${newDrawerBal.toLocaleString()}.`
+    });
+    setCoopAuditTrail(prev => [auditLog, ...prev]);
+
+    showToast(`Petty Cash funds released! Canteen Cash Drawer increased by ₱${amount.toLocaleString()}.`, 'success');
+    return { success: true, newBalance: newDrawerBal };
   };
+
+  const rejectDrawerReplenishment = (requestId, reason = '') => {
+    const actor = currentUser ? currentUser.name : 'Petty Cash Officer';
+    const nowIso = new Date().toISOString();
+
+    setReplenishmentRequests(prev => prev.map(req => {
+      if (req.request_id === requestId || req.id === requestId) {
+        return {
+          ...req,
+          status: REPLENISHMENT_STATUSES.REJECTED,
+          rejectedAt: nowIso,
+          rejectedBy: actor,
+          rejectReason: reason || 'Declined by Petty Cash',
+          logs: [
+            ...(req.logs || []),
+            {
+              status: REPLENISHMENT_STATUSES.REJECTED,
+              timestamp: nowIso,
+              actor,
+              remarks: reason || 'Replenishment request rejected.'
+            }
+          ]
+        };
+      }
+      return req;
+    }));
+
+    showToast(`Replenishment Request #${requestId} rejected.`);
+    return { success: true };
+  };
+
+  const cancelDrawerReplenishment = (requestId, reason = '') => {
+    const actor = currentUser ? currentUser.name : 'Requester';
+    const nowIso = new Date().toISOString();
+
+    setReplenishmentRequests(prev => prev.map(req => {
+      if (req.request_id === requestId || req.id === requestId) {
+        return {
+          ...req,
+          status: REPLENISHMENT_STATUSES.CANCELLED,
+          cancelledAt: nowIso,
+          cancelledBy: actor,
+          cancelReason: reason || 'Cancelled by user',
+          logs: [
+            ...(req.logs || []),
+            {
+              status: REPLENISHMENT_STATUSES.CANCELLED,
+              timestamp: nowIso,
+              actor,
+              remarks: reason || 'Replenishment request cancelled.'
+            }
+          ]
+        };
+      }
+      return req;
+    }));
+
+    showToast(`Replenishment Request #${requestId} cancelled.`);
+    return { success: true };
+  };
+
+  // Legacy wrapper routed through Petty Cash API Request workflow (never directly creates money)
+  const replenishCanteenCash = (amount, note = '') => {
+    return requestDrawerReplenishment({
+      drawerId: 'DRAWER-001',
+      amount,
+      reason: note || 'Canteen Cash Drawer Replenishment'
+    });
+  };
+
 
   // Payroll Calculation & Pay Runs with Loan & Cash Advance integration
   const createPayRun = (payRunData) => {
@@ -2966,6 +3360,20 @@ export function AppProvider({ children }) {
       }));
     }
 
+    // If Salary Deduction, automatically connect and record in Canteen Deduction Ledger
+    if (paymentMethod === 'Salary Deduction' && staffId) {
+      recordCanteenSalaryDeduction({
+        salaryDeductionRef: receiptNo,
+        staffId,
+        employeeName: staffObj ? `${staffObj.firstName} ${staffObj.lastName}` : (customerName || 'Staff Member'),
+        amount: total,
+        orderType,
+        date: effectiveDate,
+        createdBy: currentUser ? currentUser.name : 'POS System',
+        remarks: `Auto-connected from Canteen Salary Deduction Receipt #${receiptNo} (${orderType})`
+      });
+    }
+
     showToast(
       gatePassRecord
         ? `Receipt #${receiptNo} & Gate Pass #${gatePassRecord.gatePassNo} generated! ₱${total.toLocaleString()} recorded.`
@@ -3034,6 +3442,14 @@ export function AppProvider({ children }) {
       }));
     }
 
+    // If Salary Deduction, automatically reverse the Canteen Deduction Ledger record
+    if (receipt.paymentMethod === 'Salary Deduction') {
+      reverseCanteenSalaryDeduction(receiptNo, {
+        reason: `POS Void Reversal: Receipt #${receiptNo} voided (${reason})`,
+        reversedBy: supervisorName || (currentUser ? currentUser.name : 'Supervisor')
+      });
+    }
+
     // 3. Log into Canteen Void Audit Trail
     const voidLog = {
       id: `void-${Date.now()}`,
@@ -3073,10 +3489,117 @@ export function AppProvider({ children }) {
     return newEntry;
   };
 
-  // Confirm Canteen Salary Deduction by HR (deducted to bank payroll, then charged to COOP budget)
+  // Canteen Deduction Automatic Connection Operations (Idempotent, Editable, Reversible)
+  const recordCanteenSalaryDeduction = (deductionData) => {
+    const ref = deductionData.salaryDeductionRef || deductionData.referenceId || deductionData.receiptNo || `SD-${Date.now()}`;
+    const staffId = deductionData.staffId;
+    const staffObj = staffList.find(s => s.id === staffId);
+    const employeeName = deductionData.employeeName || (staffObj ? `${staffObj.firstName} ${staffObj.lastName}` : 'Staff Member');
+
+    const res = processCanteenSalaryDeduction({
+      currentLedger: canteenDeductionsLedger,
+      currentBalances: canteenLedgerBalances,
+      deductionRecord: {
+        ...deductionData,
+        salaryDeductionRef: ref,
+        employeeName
+      },
+      action: 'apply'
+    });
+
+    if (res.success) {
+      setCanteenDeductionsLedger(res.ledger);
+      setCanteenLedgerBalances(res.balances);
+
+      const auditLog = createFinancialAuditEntry({
+        transactionId: `tx-${res.entry.id}`,
+        memberId: staffId,
+        transactionType: 'CANTEEN_SALARY_DEDUCTION',
+        amount: deductionData.amount,
+        previousBalance: res.entry.previousBalance,
+        newBalance: res.entry.newBalance,
+        referenceId: ref,
+        createdBy: deductionData.createdBy || (currentUser ? currentUser.name : 'Automatic System Sync'),
+        status: 'APPLIED',
+        remarks: `Canteen Deduction auto-recorded from Salary Deduction #${ref}: +₱${Number(deductionData.amount).toLocaleString()} for ${employeeName}.`
+      });
+      setCoopAuditTrail(prev => [auditLog, ...prev]);
+    }
+    return res;
+  };
+
+  const updateCanteenSalaryDeduction = (salaryDeductionRef, updateData) => {
+    const res = processCanteenSalaryDeduction({
+      currentLedger: canteenDeductionsLedger,
+      currentBalances: canteenLedgerBalances,
+      deductionRecord: {
+        salaryDeductionRef,
+        ...updateData,
+        updatedBy: updateData.updatedBy || (currentUser ? currentUser.name : 'HR Admin')
+      },
+      action: 'update'
+    });
+
+    if (res.success) {
+      setCanteenDeductionsLedger(res.ledger);
+      setCanteenLedgerBalances(res.balances);
+
+      const auditLog = createFinancialAuditEntry({
+        transactionId: `tx-upd-${Date.now()}`,
+        memberId: res.entry.staffId,
+        transactionType: 'CANTEEN_SALARY_DEDUCTION_UPDATED',
+        amount: res.entry.amount,
+        previousBalance: res.entry.previousBalance,
+        newBalance: res.entry.newBalance,
+        referenceId: salaryDeductionRef,
+        createdBy: updateData.updatedBy || (currentUser ? currentUser.name : 'HR Admin'),
+        status: 'UPDATED',
+        remarks: res.entry.remarks
+      });
+      setCoopAuditTrail(prev => [auditLog, ...prev]);
+      showToast(`Canteen salary deduction #${salaryDeductionRef} updated to ₱${Number(res.entry.amount).toLocaleString()}.`, 'success');
+    }
+    return res;
+  };
+
+  const reverseCanteenSalaryDeduction = (salaryDeductionRef, reversalData = {}) => {
+    const res = processCanteenSalaryDeduction({
+      currentLedger: canteenDeductionsLedger,
+      currentBalances: canteenLedgerBalances,
+      deductionRecord: {
+        salaryDeductionRef,
+        reason: reversalData.reason || 'Salary deduction cancelled/reversed',
+        reversedBy: reversalData.reversedBy || (currentUser ? currentUser.name : 'HR Admin')
+      },
+      action: 'reverse'
+    });
+
+    if (res.success) {
+      setCanteenDeductionsLedger(res.ledger);
+      setCanteenLedgerBalances(res.balances);
+
+      const auditLog = createFinancialAuditEntry({
+        transactionId: `tx-rev-${Date.now()}`,
+        memberId: res.entry.staffId,
+        transactionType: 'CANTEEN_SALARY_DEDUCTION_REVERSED',
+        amount: res.entry.amount,
+        previousBalance: res.entry.previousBalance,
+        newBalance: res.entry.newBalance,
+        referenceId: salaryDeductionRef,
+        createdBy: reversalData.reversedBy || (currentUser ? currentUser.name : 'HR Admin'),
+        status: 'REVERSED',
+        remarks: res.entry.remarks
+      });
+      setCoopAuditTrail(prev => [auditLog, ...prev]);
+      showToast(`Canteen salary deduction #${salaryDeductionRef} reversed.`, 'info');
+    }
+    return res;
+  };
+
+  // Confirm Canteen Salary Deduction by HR (connected to Canteen Deduction Ledger; NEVER reduces COOP Savings)
   const confirmCanteenSalaryDeduction = (receiptNo) => {
-    if (currentUser && !isHR) {
-      showToast('Access Denied: Only HR or Super Admin or Super Admin can confirm bank payroll deductions.', 'error');
+    if (currentUser && !isHR && !isSuperAdmin) {
+      showToast('Access Denied: Only HR or Super Admin can confirm bank payroll deductions.', 'error');
       return { success: false, message: 'Unauthorized' };
     }
 
@@ -3086,46 +3609,38 @@ export function AppProvider({ children }) {
       return { success: false, message: 'Receipt not found' };
     }
 
-    if (rct.salaryDeductionStatus === 'Confirmed by HR - Deducted to Bank & COOP') {
+    if (rct.salaryDeductionStatus === 'Confirmed by HR - Applied to Canteen Deduction' || rct.salaryDeductionStatus === 'Confirmed by HR - Deducted to Bank & COOP') {
       showToast('This salary deduction is already confirmed.', 'info');
       return { success: false };
     }
 
     const staffId = rct.staffId;
     const staffMember = staffList.find(s => s.id === staffId);
-    const todayStr = new Date().toISOString().split('T')[0];
 
-    // 1. Mark receipt as Confirmed and Deducted to COOP
+    // 1. Mark receipt as Confirmed
     setCanteenReceipts(prev => prev.map(r => r.receiptNo === receiptNo ? {
       ...r,
-      salaryDeductionStatus: 'Confirmed by HR - Deducted to Bank & COOP',
+      salaryDeductionStatus: 'Confirmed by HR - Applied to Canteen Deduction',
       isDeductedToCoop: true,
       hrConfirmedAt: new Date().toISOString(),
       hrConfirmedBy: currentUser ? `${currentUser.name} (HR)` : 'HR Management'
     } : r));
 
-    // 2. Deduct from COOP budget / balance
+    // 2. Ensure recorded in Canteen Deduction Ledger (idempotent if already auto-applied at POS)
+    // Note: Does NOT deduct from coopBalances (COOP Savings remains separate!)
     if (staffId) {
-      setCoopBalances(prev => ({
-        ...prev,
-        [staffId]: Math.max(0, (prev[staffId] || 0) - rct.total)
-      }));
-
-      // 3. Append to Coop Ledger
-      setCoopLedger(prev => [
-        {
-          id: `csl-canteen-${Date.now()}`,
-          staffId,
-          type: 'canteen_salary_deduction',
-          amount: rct.total,
-          date: todayStr,
-          note: `Canteen ${rct.orderType || 'Grocery/Meal'} Salary Deduction (Receipt #${rct.receiptNo}) confirmed deducted via bank payroll by HR - charged to COOP budget.`
-        },
-        ...prev
-      ]);
+      recordCanteenSalaryDeduction({
+        salaryDeductionRef: rct.receiptNo,
+        staffId,
+        employeeName: staffMember ? `${staffMember.firstName} ${staffMember.lastName}` : rct.customerName,
+        amount: rct.total,
+        orderType: rct.orderType,
+        createdBy: currentUser ? `${currentUser.name} (HR)` : 'HR Management',
+        remarks: `Canteen ${rct.orderType || 'Grocery/Meal'} Salary Deduction (Receipt #${rct.receiptNo}) confirmed by HR.`
+      });
     }
 
-    showToast(`Canteen salary deduction for ${staffMember?.firstName || 'Staff'} (₱${rct.total.toLocaleString()}) confirmed by HR (bank deducted) & debited from COOP budget!`, 'success');
+    showToast(`Canteen salary deduction for ${staffMember?.firstName || 'Staff'} (₱${rct.total.toLocaleString()}) confirmed and recorded in Canteen Deduction ledger!`, 'success');
     return { success: true };
   };
 
@@ -3825,6 +4340,10 @@ export function AppProvider({ children }) {
       coopWithdrawals,
       canteenDrawer,
       cashAdvances,
+      canteenDeductionsLedger,
+      canteenLedgerBalances,
+      replenishmentRequests,
+      coopAuditTrail,
       productJourneys,
       payRuns,
       manufacturingProducts,
@@ -3866,6 +4385,10 @@ export function AppProvider({ children }) {
       if (Array.isArray(backupJson.coopWithdrawals)) setCoopWithdrawals(backupJson.coopWithdrawals);
       if (backupJson.canteenDrawer) setCanteenDrawer(backupJson.canteenDrawer);
       if (Array.isArray(backupJson.cashAdvances)) setCashAdvances(backupJson.cashAdvances);
+      if (Array.isArray(backupJson.canteenDeductionsLedger)) setCanteenDeductionsLedger(backupJson.canteenDeductionsLedger);
+      if (backupJson.canteenLedgerBalances && typeof backupJson.canteenLedgerBalances === 'object') setCanteenLedgerBalances(backupJson.canteenLedgerBalances);
+      if (Array.isArray(backupJson.replenishmentRequests)) setReplenishmentRequests(backupJson.replenishmentRequests);
+      if (Array.isArray(backupJson.coopAuditTrail)) setCoopAuditTrail(backupJson.coopAuditTrail);
       if (Array.isArray(backupJson.productJourneys)) setProductJourneys(backupJson.productJourneys);
       if (Array.isArray(backupJson.payRuns)) setPayRuns(backupJson.payRuns);
       if (Array.isArray(backupJson.manufacturingProducts)) setManufacturingProducts(backupJson.manufacturingProducts);
@@ -3919,10 +4442,13 @@ export function AppProvider({ children }) {
         calculatePayRun,
         approvePayRun,
         disbursePayRun,
-        // Coop Share Capital
+        // Coop Share Capital & Business Rules
         coopBalances,
         coopLedger,
         coopWithdrawals,
+        coopLoanMultiplier,
+        updateCoopLoanMultiplier,
+        retireCoopMember,
         depositCoopShare,
         requestCoopWithdrawal,
         accountingApproveWithdrawal,
@@ -3936,7 +4462,7 @@ export function AppProvider({ children }) {
         accountingRejectLoan,
         hrAcceptCashLoan: approveCashLoan,
         hrDeclineCashLoan: rejectCashLoan,
-        // Canteen Cash Advance & Cash Drawer
+        // Canteen Cash Advance & Cash Drawer + Petty Cash API
         canteenDrawer,
         cashAdvances,
         requestCashAdvance,
@@ -3944,6 +4470,14 @@ export function AppProvider({ children }) {
         hrDeclineCashAdvance,
         claimCashAdvance,
         replenishCanteenCash,
+        replenishmentRequests,
+        pettyCashConfig,
+        updatePettyCashConfig,
+        requestDrawerReplenishment,
+        approveDrawerReplenishment,
+        releaseDrawerReplenishment,
+        rejectDrawerReplenishment,
+        cancelDrawerReplenishment,
         // Canteen Hub & Inventory
         canteenInventory,
         canteenCategories,
@@ -3977,6 +4511,13 @@ export function AppProvider({ children }) {
         // Canteen Gate Passes & Salary Deductions
         canteenGatePasses,
         confirmCanteenSalaryDeduction,
+        canteenDeductionsLedger,
+        canteenLedgerBalances,
+        recordCanteenSalaryDeduction,
+        updateCanteenSalaryDeduction,
+        reverseCanteenSalaryDeduction,
+        // Financial Audit Trail
+        coopAuditTrail,
         clearGatePass,
         productJourneys,
         advanceProductJourneyStage,

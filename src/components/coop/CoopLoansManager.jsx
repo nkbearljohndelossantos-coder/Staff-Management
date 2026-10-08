@@ -17,12 +17,21 @@ import {
   Smartphone,
   Tv,
   Wallet,
-  Building2
+  Building2,
+  Settings,
+  FileText,
+  UserMinus,
+  RotateCcw
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import { LOAN_CATEGORIES } from '../../data/mockData';
 import { formatStaffName } from '../../utils/staffUtils';
+import {
+  LOAN_TERM_OPTIONS,
+  REPLENISHMENT_STATUSES,
+  calculateMaxLoanableAmount
+} from '../../utils/coopBusinessRules';
 
 export default function CoopLoansManager() {
   const {
@@ -36,6 +45,9 @@ export default function CoopLoansManager() {
     coopBalances,
     coopLedger,
     coopWithdrawals,
+    coopLoanMultiplier,
+    updateCoopLoanMultiplier,
+    retireCoopMember,
     depositCoopShare,
     requestCoopWithdrawal,
     accountingApproveWithdrawal,
@@ -53,11 +65,25 @@ export default function CoopLoansManager() {
     hrDeclineCashAdvance,
     claimCashAdvance,
     replenishCanteenCash,
+    replenishmentRequests,
+    pettyCashConfig,
+    updatePettyCashConfig,
+    requestDrawerReplenishment,
+    approveDrawerReplenishment,
+    releaseDrawerReplenishment,
+    rejectDrawerReplenishment,
+    cancelDrawerReplenishment,
     canteenReceipts,
-    confirmCanteenSalaryDeduction
+    confirmCanteenSalaryDeduction,
+    canteenDeductionsLedger,
+    canteenLedgerBalances,
+    recordCanteenSalaryDeduction,
+    updateCanteenSalaryDeduction,
+    reverseCanteenSalaryDeduction,
+    coopAuditTrail
   } = useApp();
 
-  const [subTab, setSubTab] = useState('coop'); // 'coop', 'loans', 'canteen'
+  const [subTab, setSubTab] = useState('coop'); // 'coop', 'loans', 'canteen', 'canteen_deductions', 'audit_trail'
 
   // Modal States
   const [showDepositModal, setShowDepositModal] = useState(false);
@@ -65,8 +91,24 @@ export default function CoopLoansManager() {
   const [showNewLoanModal, setShowNewLoanModal] = useState(false);
   const [showReplenishModal, setShowReplenishModal] = useState(false);
   const [showNewAdvanceModal, setShowNewAdvanceModal] = useState(false);
+  const [retireModalData, setRetireModalData] = useState(null); // { staff, remarks }
+  const [showPettyCashConfigModal, setShowPettyCashConfigModal] = useState(false);
+  const [showNewDeductionModal, setShowNewDeductionModal] = useState(false);
 
   // Form States
+  const [multiplierInput, setMultiplierInput] = useState(coopLoanMultiplier || 3);
+  const [pettyCashForm, setPettyCashForm] = useState({
+    apiUrl: pettyCashConfig?.apiUrl || 'https://pettycash.nkbmanufacturing.com/api',
+    apiKey: pettyCashConfig?.apiKey || '',
+    apiSecret: pettyCashConfig?.apiSecret || ''
+  });
+  const [deductionForm, setDeductionForm] = useState({
+    staffId: staffList[0]?.id || '',
+    salaryDeductionRef: `SD-${Date.now().toString().slice(-6)}`,
+    amount: '',
+    orderType: 'Canteen Salary Deduction',
+    remarks: ''
+  });
   const [depositForm, setDepositForm] = useState({ staffId: staffList[0]?.id || '', amount: '', note: '' });
   const [withdrawForm, setWithdrawForm] = useState({ staffId: staffList[0]?.id || '', amount: '', reason: '' });
   const [loanForm, setLoanForm] = useState({
@@ -98,10 +140,12 @@ export default function CoopLoansManager() {
   const pendingHRLoans = cashLoans.filter(l => l.status === 'Pending HR');
   const pendingAccountingLoans = cashLoans.filter(l => l.status === 'Pending Accounting Approval');
   const pendingCanteenClaims = cashAdvances.filter(ca => ca.status === 'Pending Canteen Claim');
+  const pendingReplenishments = (replenishmentRequests || []).filter(r => r.status === 'PENDING' || r.status === 'APPROVED');
   const canteenSalaryDeductions = (canteenReceipts || []).filter(r => r.paymentMethod === 'Salary Deduction');
   const pendingCanteenSalaryDeductions = canteenSalaryDeductions.filter(
-    r => r.salaryDeductionStatus !== 'Confirmed by HR - Deducted to Bank & COOP'
+    r => r.salaryDeductionStatus !== 'Confirmed by HR - Deducted to Bank & COOP' && r.salaryDeductionStatus !== 'Confirmed by HR - Applied to Canteen Deduction'
   );
+
 
   // Helper for category icon (all monochrome)
   const getCategoryIcon = (catId) => {
@@ -255,10 +299,27 @@ export default function CoopLoansManager() {
               </span>
             )}
           </button>
+
+          <button
+            onClick={() => setSubTab('audit_trail')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 ${
+              subTab === 'audit_trail'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <FileText className={`h-4 w-4 ${subTab === 'audit_trail' ? 'text-white' : 'text-slate-600'}`} />
+            <span>Financial Audit Trail</span>
+            {(coopAuditTrail || []).length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-800 text-[10px] font-black">
+                {coopAuditTrail.length}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Quick Action Buttons */}
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
           {subTab === 'coop' && isHR && (
             <>
               <button
@@ -289,14 +350,21 @@ export default function CoopLoansManager() {
           )}
 
           {subTab === 'canteen' && (
-            isHR ? (
+            (isHR || isCanteen || isSuperAdmin) ? (
               <>
+                <button
+                  onClick={() => setShowPettyCashConfigModal(true)}
+                  className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+                >
+                  <Settings className="h-3.5 w-3.5 text-slate-600" />
+                  Petty Cash API Config
+                </button>
                 <button
                   onClick={() => setShowReplenishModal(true)}
                   className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
                 >
                   <Plus className="h-3.5 w-3.5 text-slate-600" />
-                  Replenish Drawer
+                  Request Drawer Replenishment
                 </button>
                 <button
                   onClick={() => setShowNewAdvanceModal(true)}
@@ -308,9 +376,28 @@ export default function CoopLoansManager() {
               </>
             ) : (
               <span className="text-[11px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl">
-                Canteen Drawer: Managed under HR Authority
+                Canteen Drawer: Managed under HR &amp; Petty Cash API
               </span>
             )
+          )}
+
+          {subTab === 'canteen_deductions' && (isHR || isSuperAdmin) && (
+            <button
+              onClick={() => {
+                setDeductionForm({
+                  staffId: staffList[0]?.id || '',
+                  salaryDeductionRef: `SD-${Date.now().toString().slice(-6)}`,
+                  amount: '',
+                  orderType: 'Canteen Salary Deduction',
+                  remarks: ''
+                });
+                setShowNewDeductionModal(true);
+              }}
+              className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+            >
+              <Plus className="h-3.5 w-3.5 text-white" />
+              Record Salary Deduction (Auto-Connect)
+            </button>
           )}
         </div>
       </div>
@@ -486,19 +573,42 @@ export default function CoopLoansManager() {
 
           {/* Member Coop Share Balances Table */}
           <div className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Landmark className="h-4 w-4 text-slate-600" />
-                  Employee Cooperative Share Capital Ledger
+                  Employee Cooperative Share Capital &amp; Loan Eligibility Ledger
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Individual equity accounts maintained under HR supervision
+                  COOP Savings is NOT reduced when taking a loan. Maximum Loanable Amount = COOP Savings × {coopLoanMultiplier}
                 </p>
               </div>
-              <span className="text-xs font-mono text-slate-900 font-bold">
-                Total Fund: {formatCurrency(totalCoopCapital)}
-              </span>
+              <div className="flex items-center gap-3">
+                {(isHR || isSuperAdmin) && (
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-xl text-xs">
+                    <span className="font-bold text-slate-600">Loan Multiplier:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      step="0.5"
+                      value={multiplierInput}
+                      onChange={(e) => setMultiplierInput(e.target.value)}
+                      className="w-14 px-1.5 py-0.5 rounded bg-white border border-slate-300 font-mono text-xs text-slate-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => updateCoopLoanMultiplier(multiplierInput)}
+                      className="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold hover:bg-slate-800 cursor-pointer"
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
+                <span className="text-xs font-mono text-slate-900 font-bold">
+                  Total Fund: {formatCurrency(totalCoopCapital)}
+                </span>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -507,14 +617,17 @@ export default function CoopLoansManager() {
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
                     <th className="py-3 px-4">Staff Member</th>
                     <th className="py-3 px-4">Employee ID</th>
-                    <th className="py-3 px-4">Department</th>
-                    <th className="py-3 px-4 text-right">Share Capital Balance</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">COOP Savings Balance</th>
+                    <th className="py-3 px-4 text-right">Max Loanable ({coopLoanMultiplier}×)</th>
                     <th className="py-3 px-4 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-sans text-slate-700">
                   {staffList.map((staff) => {
                     const balance = coopBalances[staff.id] || 0;
+                    const maxLoanable = calculateMaxLoanableAmount(balance, coopLoanMultiplier);
+                    const isRetired = staff.isRetired || staff.status === 'retired' || staff.status === 'Retired';
                     const dept = departments.find(d => d.id === staff.departmentId);
                     return (
                       <tr key={staff.id} className="hover:bg-slate-50/80 transition">
@@ -529,42 +642,72 @@ export default function CoopLoansManager() {
                               <div className="font-bold text-slate-900">
                                 {formatStaffName(staff)}
                               </div>
-                              <div className="text-[11px] text-slate-500">{staff.email}</div>
+                              <div className="text-[11px] text-slate-500">{dept?.name || staff.email}</div>
                             </div>
                           </div>
                         </td>
                         <td className="py-3 px-4 font-mono font-bold text-slate-900">
                           {staff.employeeId}
                         </td>
-                        <td className="py-3 px-4 text-slate-600">
-                          {dept?.name || 'Department'}
+                        <td className="py-3 px-4">
+                          {isRetired ? (
+                            <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold uppercase border border-slate-300">
+                              Retired (Settled)
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-bold uppercase border border-slate-200">
+                              Active Member
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-right">
                           <span className="font-mono font-bold text-sm text-slate-900">
                             {formatCurrency(balance)}
                           </span>
                         </td>
+                        <td className="py-3 px-4 text-right">
+                          <span className="font-mono font-bold text-xs text-slate-700 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">
+                            {isRetired ? '₱0.00 (Ineligible)' : formatCurrency(maxLoanable)}
+                          </span>
+                        </td>
                         <td className="py-3 px-4 text-center">
-                          {isHR ? (
-                            <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                onClick={() => {
-                                  setDepositForm({ staffId: staff.id, amount: '', note: '' });
-                                  setShowDepositModal(true);
-                                }}
-                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-[11px] font-bold cursor-pointer transition shadow-sm"
-                              >
-                                Deposit
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setWithdrawForm({ staffId: staff.id, amount: '', reason: '' });
-                                  setShowWithdrawModal(true);
-                                }}
-                                className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[11px] font-bold cursor-pointer transition shadow-sm"
-                              >
-                                Withdraw Req.
-                              </button>
+                          {(isHR || isSuperAdmin) ? (
+                            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                              {!isRetired && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setDepositForm({ staffId: staff.id, amount: '', note: '' });
+                                      setShowDepositModal(true);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-[11px] font-bold cursor-pointer transition shadow-sm"
+                                  >
+                                    Deposit
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setWithdrawForm({ staffId: staff.id, amount: '', reason: '' });
+                                      setShowWithdrawModal(true);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[11px] font-bold cursor-pointer transition shadow-sm"
+                                  >
+                                    Withdraw Req.
+                                  </button>
+                                  <button
+                                    onClick={() => setRetireModalData({ staff, remarks: '' })}
+                                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold cursor-pointer transition shadow-sm flex items-center gap-1"
+                                    title="Mark member as retired and settle COOP savings"
+                                  >
+                                    <UserMinus className="h-3 w-3 text-white" />
+                                    Retire &amp; Settle
+                                  </button>
+                                </>
+                              )}
+                              {isRetired && (
+                                <span className="text-[10px] font-bold text-slate-500">
+                                  Savings Settled · Loans Blocked
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <span className="px-2.5 py-1 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 text-[10px] font-bold inline-block">
@@ -881,6 +1024,117 @@ export default function CoopLoansManager() {
             </div>
           </div>
 
+          {/* Petty Cash -> Drawer Replenishment API Requests (State Machine) */}
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-5 space-y-4 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <Landmark className="h-4 w-4 text-slate-600" />
+                  Petty Cash → Drawer Replenishment API Requests
+                </h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Drawer balance increases ONLY when Petty Cash confirms status = <strong>RELEASED</strong>. Workflow: Request → Approval → Release Confirmation → Update Drawer.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600">
+                  API: {pettyCashConfig?.apiUrl || 'https://pettycash.nkbmanufacturing.com/api'}
+                </span>
+                <button
+                  onClick={() => setShowReplenishModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                >
+                  + New Replenishment Request
+                </button>
+              </div>
+            </div>
+
+            {(replenishmentRequests || []).length === 0 ? (
+              <div className="text-center py-6 text-xs text-slate-400">
+                No Petty Cash replenishment requests submitted yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase text-slate-500">
+                    <tr>
+                      <th className="py-2.5 px-3">Request ID</th>
+                      <th className="py-2.5 px-3">Drawer ID</th>
+                      <th className="py-2.5 px-3">Requested By</th>
+                      <th className="py-2.5 px-3">Reason</th>
+                      <th className="py-2.5 px-3 text-right">Amount</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3 text-center">Petty Cash / COOP Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {replenishmentRequests.map(req => {
+                      const isPending = req.status === 'PENDING' || req.status === 'DRAFT';
+                      const isApproved = req.status === 'APPROVED';
+                      const isReleased = req.status === 'RELEASED';
+                      return (
+                        <tr key={req.request_id} className="hover:bg-slate-50/80">
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{req.request_id}</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-600">{req.drawer_id}</td>
+                          <td className="py-2.5 px-3">{req.requested_by}</td>
+                          <td className="py-2.5 px-3 text-slate-600">{req.reason}</td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                            {formatCurrency(req.amount)}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
+                              isReleased
+                                ? 'bg-slate-900 text-white border-slate-900'
+                                : isApproved
+                                ? 'bg-slate-200 text-slate-900 border-slate-300'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}>
+                              {req.status}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {isPending && (
+                                <button
+                                  onClick={() => approveDrawerReplenishment(req.request_id)}
+                                  className="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 text-[10px] font-bold cursor-pointer"
+                                >
+                                  1. Approve (Petty Cash)
+                                </button>
+                              )}
+                              {(isPending || isApproved) && (
+                                <>
+                                  <button
+                                    onClick={() => releaseDrawerReplenishment(req.request_id, 'Confirmed released by Petty Cash API')}
+                                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold cursor-pointer"
+                                  >
+                                    2. Confirm Release &amp; Credit Drawer
+                                  </button>
+                                  <button
+                                    onClick={() => rejectDrawerReplenishment(req.request_id, 'Rejected in Petty Cash review')}
+                                    className="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 text-[10px] font-bold cursor-pointer"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+                              {isReleased && (
+                                <span className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-slate-700" />
+                                  Credited to Drawer
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           {/* Canteen Drawer Activity Log Snippet */}
           <div className="rounded-2xl border border-slate-200/90 bg-white p-4 space-y-3 shadow-sm">
             <div className="flex items-center justify-between">
@@ -888,22 +1142,14 @@ export default function CoopLoansManager() {
                 <Wallet className="h-4 w-4 text-slate-600" />
                 Canteen Cash Drawer Audit Trail
               </h4>
-              {isHR && (
-                <button
-                  onClick={() => setShowReplenishModal(true)}
-                  className="text-xs text-slate-700 hover:text-slate-900 font-bold cursor-pointer"
-                >
-                  + Replenish Cash
-                </button>
-              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
               {canteenDrawer.transactions.slice(0, 3).map(tx => (
                 <div key={tx.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900">{tx.type === 'replenish' ? '💵 Replenishment' : '📤 Advance Disbursed'}</span>
+                    <span className="font-bold text-slate-900">{(tx.type === 'replenish' || tx.type === 'petty_cash_replenish') ? '💵 Petty Cash Release' : '📤 Advance Disbursed'}</span>
                     <span className="font-mono font-bold text-slate-900">
-                      {tx.type === 'replenish' ? '+' : '-'}{formatCurrency(tx.amount)}
+                      {(tx.type === 'replenish' || tx.type === 'petty_cash_replenish') ? '+' : '-'}{formatCurrency(tx.amount)}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500">{tx.note}</p>
@@ -929,7 +1175,6 @@ export default function CoopLoansManager() {
               {cashAdvances.map(advance => {
                 const staff = staffList.find(s => s.id === advance.staffId);
                 const isClaimPending = advance.status === 'Pending Canteen Claim';
-                const isActive = advance.status === 'Active';
 
                 return (
                   <div
@@ -1024,24 +1269,117 @@ export default function CoopLoansManager() {
       )}
 
       {/* ========================================================================= */}
-      {/* SUBTAB 4: CANTEEN SALARY DEDUCTIONS & COOP BUDGET RECONCILIATION */}
+      {/* SUBTAB 4: AUTOMATED CANTEEN DEDUCTIONS LEDGER & SALARY DEDUCTION SYNC     */}
       {/* ========================================================================= */}
       {subTab === 'canteen_deductions' && (
         <div className="space-y-6">
+          {/* Automated Canteen Deduction Ledger */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-slate-600" />
-                  Canteen Salary Deductions &amp; COOP Budget Reconciliation
+                  Automated Canteen Deduction Account / Ledger
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Confirm that canteen meal &amp; grocery charges were deducted to the bank payroll disbursement before debiting to the employee's COOP budget.
+                  Automatically connected to Salary Deductions. Prevents duplicate encoding, preserves source reference, and keeps COOP Savings strictly separate.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                {(canteenDeductionsLedger || []).length} Ledger Entries
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Reference ID</th>
+                    <th className="px-4 py-3">Date &amp; Time</th>
+                    <th className="px-4 py-3">Employee</th>
+                    <th className="px-4 py-3">Deduction Type</th>
+                    <th className="px-4 py-3 text-right">Amount</th>
+                    <th className="px-4 py-3 text-right">Member Canteen Balance</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(canteenDeductionsLedger || []).length === 0 ? (
+                    <tr>
+                      <td colSpan="8" className="px-4 py-8 text-center text-slate-400 text-xs">
+                        No automated canteen deduction entries recorded yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    canteenDeductionsLedger.map(entry => {
+                      const isReversed = entry.status === 'Reversed';
+                      return (
+                        <tr key={entry.id} className="hover:bg-slate-50/80 transition">
+                          <td className="px-4 py-3 font-mono font-bold text-slate-900">
+                            {entry.salaryDeductionRef}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {new Date(entry.date).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 font-bold text-slate-900">
+                            {entry.employeeName}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold">
+                              {entry.deductionType} ({entry.orderType})
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
+                            {entry.amount >= 0 ? `+${formatCurrency(entry.amount)}` : formatCurrency(entry.amount)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-slate-700">
+                            {formatCurrency(entry.newBalance)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              isReversed ? 'bg-slate-200 text-slate-600' : 'bg-slate-900 text-white'
+                            }`}>
+                              {entry.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {!isReversed && (isHR || isSuperAdmin) ? (
+                              <button
+                                onClick={() => reverseCanteenSalaryDeduction(entry.salaryDeductionRef, { reason: 'Reversed by HR Admin' })}
+                                className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-[10px] font-bold cursor-pointer inline-flex items-center gap-1"
+                              >
+                                <RotateCcw className="h-3 w-3" />
+                                Reverse
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-slate-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* POS Canteen Salary Deduction Receipts Table */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <Utensils className="h-4 w-4 text-slate-600" />
+                  POS Canteen Salary Deduction Receipts
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Every POS salary deduction receipt is automatically synced to the Canteen Deduction Ledger above.
                 </p>
               </div>
 
               <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
-                {pendingCanteenSalaryDeductions.length} Pending Bank Confirmation
+                {pendingCanteenSalaryDeductions.length} Pending HR Verification
               </span>
             </div>
 
@@ -1055,7 +1393,7 @@ export default function CoopLoansManager() {
                     <th className="px-4 py-3">Department</th>
                     <th className="px-4 py-3">Order Nature</th>
                     <th className="px-4 py-3 text-right">Amount</th>
-                    <th className="px-4 py-3">COOP Reconciliation Status</th>
+                    <th className="px-4 py-3">Deduction Status</th>
                     <th className="px-4 py-3 text-center">HR Confirmation</th>
                   </tr>
                 </thead>
@@ -1063,12 +1401,12 @@ export default function CoopLoansManager() {
                   {canteenSalaryDeductions.length === 0 ? (
                     <tr>
                       <td colSpan="8" className="px-4 py-8 text-center text-slate-400 text-xs">
-                        No transactions recorded on Salary Deduction.
+                        No POS transactions recorded on Salary Deduction.
                       </td>
                     </tr>
                   ) : (
                     canteenSalaryDeductions.map(r => {
-                      const isConfirmed = r.salaryDeductionStatus === 'Confirmed by HR - Deducted to Bank & COOP';
+                      const isConfirmed = r.salaryDeductionStatus === 'Confirmed by HR - Deducted to Bank & COOP' || r.salaryDeductionStatus === 'Confirmed by HR - Applied to Canteen Deduction';
                       const st = staffList.find(s => s.id === r.staffId);
                       const d = departments.find(dept => dept.id === st?.departmentId);
                       return (
@@ -1098,13 +1436,8 @@ export default function CoopLoansManager() {
                             <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                               isConfirmed ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-800'
                             }`}>
-                              {r.salaryDeductionStatus || 'Pending HR Bank Confirmation'}
+                              {r.salaryDeductionStatus || 'Auto-Synced to Canteen Ledger'}
                             </span>
-                            {isConfirmed && r.hrConfirmedAt && (
-                              <span className="block text-[10px] text-slate-500 mt-0.5">
-                                Confirmed: {new Date(r.hrConfirmedAt).toLocaleDateString()}
-                              </span>
-                            )}
                           </td>
                           <td className="px-4 py-3 text-center">
                             {!isConfirmed ? (
@@ -1114,7 +1447,7 @@ export default function CoopLoansManager() {
                                   onClick={() => confirmCanteenSalaryDeduction(r.receiptNo)}
                                   className="px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-900 text-white text-[11px] font-bold transition cursor-pointer shadow-sm"
                                 >
-                                  Confirm Bank Deduction &amp; Deduct to COOP
+                                  Confirm Payroll Deduction
                                 </button>
                               ) : (
                                 <span className="text-[11px] text-slate-400 font-medium">
@@ -1124,7 +1457,7 @@ export default function CoopLoansManager() {
                             ) : (
                               <span className="text-[11px] text-slate-600 font-medium flex items-center justify-center gap-1">
                                 <CheckCircle2 className="h-3.5 w-3.5 text-slate-600" />
-                                Debited to COOP Budget
+                                Applied to Canteen Ledger
                               </span>
                             )}
                           </td>
@@ -1135,6 +1468,75 @@ export default function CoopLoansManager() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SUBTAB 5: UNIFIED FINANCIAL AUDIT & TRANSACTION HISTORY                   */}
+      {/* ========================================================================= */}
+      {subTab === 'audit_trail' && (
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-slate-600" />
+                Immutable Financial Audit &amp; Transaction History
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Every COOP, Loan, Canteen Deduction, Retirement Settlement, and Petty Cash Drawer transaction is logged with before/after balances.
+              </p>
+            </div>
+            <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-xl border border-slate-200">
+              {(coopAuditTrail || []).length} Audit Records
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-700">
+              <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-3 py-2.5">Tx ID</th>
+                  <th className="px-3 py-2.5">Date / Time</th>
+                  <th className="px-3 py-2.5">Type</th>
+                  <th className="px-3 py-2.5">Reference ID</th>
+                  <th className="px-3 py-2.5 text-right">Amount</th>
+                  <th className="px-3 py-2.5 text-right">Prev Balance</th>
+                  <th className="px-3 py-2.5 text-right">New Balance</th>
+                  <th className="px-3 py-2.5">Created By</th>
+                  <th className="px-3 py-2.5">Status</th>
+                  <th className="px-3 py-2.5">Remarks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(coopAuditTrail || []).length === 0 ? (
+                  <tr>
+                    <td colSpan="10" className="px-4 py-8 text-center text-slate-400">
+                      No financial audit transactions recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  coopAuditTrail.map(log => (
+                    <tr key={log.transactionId} className="hover:bg-slate-50/80">
+                      <td className="px-3 py-2.5 font-mono font-bold text-slate-900">{log.transactionId}</td>
+                      <td className="px-3 py-2.5 text-slate-500">{new Date(log.createdDateTime).toLocaleString()}</td>
+                      <td className="px-3 py-2.5 font-bold text-slate-800">{log.transactionType}</td>
+                      <td className="px-3 py-2.5 font-mono text-slate-600">{log.referenceId}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900">{formatCurrency(log.amount)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-slate-600">{formatCurrency(log.previousBalance)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900">{formatCurrency(log.newBalance)}</td>
+                      <td className="px-3 py-2.5 text-slate-700">{log.createdBy}</td>
+                      <td className="px-3 py-2.5">
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-bold border border-slate-200">
+                          {log.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-600 max-w-xs truncate" title={log.remarks}>{log.remarks}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -1308,7 +1710,7 @@ export default function CoopLoansManager() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Coins className="h-4 w-4 text-slate-600" />
-                Encode Cash Loan Application
+                Encode Cash Loan Application (Max 36 Months)
               </h3>
               <button onClick={() => setShowNewLoanModal(false)} className="text-slate-400 hover:text-slate-700">
                 ✕
@@ -1323,13 +1725,40 @@ export default function CoopLoansManager() {
                   onChange={(e) => setLoanForm({ ...loanForm, staffId: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                 >
-                  {staffList.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.firstName} {s.lastName} ({s.employeeId})
-                    </option>
-                  ))}
+                  {staffList.map(s => {
+                    const sav = coopBalances[s.id] || 0;
+                    const maxL = calculateMaxLoanableAmount(sav, coopLoanMultiplier);
+                    const isRet = s.isRetired || s.status === 'retired';
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.firstName} {s.lastName} ({s.employeeId}) — Savings: {formatCurrency(sav)} | Max Loan: {isRet ? 'RETIRED' : formatCurrency(maxL)}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
+
+              {/* Borrower Eligibility Banner */}
+              {(() => {
+                const selStaff = staffList.find(s => s.id === loanForm.staffId);
+                const sav = coopBalances[loanForm.staffId] || 0;
+                const maxL = calculateMaxLoanableAmount(sav, coopLoanMultiplier);
+                const isRet = selStaff?.isRetired || selStaff?.status === 'retired';
+                return (
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-slate-500 block">COOP Savings (Remains Intact)</span>
+                      <span className="font-mono font-bold text-slate-900">{formatCurrency(sav)}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold uppercase text-slate-500 block">Max Loanable ({coopLoanMultiplier}× Savings)</span>
+                      <span className="font-mono font-bold text-slate-900">
+                        {isRet ? 'Ineligible (Retired)' : formatCurrency(maxL)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div>
                 <label className="text-slate-700 font-bold block mb-1">Loan Category &amp; Mandatory Rate</label>
@@ -1369,18 +1798,17 @@ export default function CoopLoansManager() {
                   />
                 </div>
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Repayment Term</label>
+                  <label className="text-slate-700 font-bold block mb-1">Repayment Term (Max 36 Mos)</label>
                   <select
                     value={loanForm.termMonths}
                     onChange={(e) => setLoanForm({ ...loanForm, termMonths: Number(e.target.value) })}
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                   >
-                    <option value={1}>1 Month (2 cutoffs)</option>
-                    <option value={2}>2 Months (4 cutoffs)</option>
-                    <option value={3}>3 Months (6 cutoffs)</option>
-                    <option value={4}>4 Months (8 cutoffs)</option>
-                    <option value={6}>6 Months (12 cutoffs)</option>
-                    <option value={12}>12 Months (24 cutoffs)</option>
+                    {LOAN_TERM_OPTIONS.map(opt => (
+                      <option key={opt.months} value={opt.months}>
+                        {opt.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -1393,9 +1821,19 @@ export default function CoopLoansManager() {
                 const r = catObj.monthlyRate;
                 const int = Math.round(p * (r / 100) * t);
                 const tot = p + int;
+                const monthly = Math.round(tot / t);
                 const cut = Math.round(tot / (t * 2));
+                const sav = coopBalances[loanForm.staffId] || 0;
+                const maxL = calculateMaxLoanableAmount(sav, coopLoanMultiplier);
+                const exceedsMax = p > maxL;
+
                 return (
                   <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] space-y-1 font-mono">
+                    {exceedsMax && (
+                      <div className="p-2 mb-1 rounded-lg bg-slate-900 text-white font-sans text-[11px] font-bold">
+                        ⚠️ Principal ({formatCurrency(p)}) exceeds Maximum Loanable Amount ({formatCurrency(maxL)}).
+                      </div>
+                    )}
                     <div className="flex justify-between text-slate-600">
                       <span>Rate Applied:</span>
                       <span className="font-bold text-slate-900">{r}% per month</span>
@@ -1405,8 +1843,12 @@ export default function CoopLoansManager() {
                       <span className="font-bold text-slate-900">{formatCurrency(int)}</span>
                     </div>
                     <div className="flex justify-between text-slate-600">
-                      <span>Total Repayable:</span>
+                      <span>Total Payable:</span>
                       <span className="font-bold text-slate-900">{formatCurrency(tot)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Monthly Amortization:</span>
+                      <span className="font-bold text-slate-900">{formatCurrency(monthly)} / mo</span>
                     </div>
                     <div className="flex justify-between text-slate-900 font-bold pt-1 border-t border-slate-200">
                       <span>Per-Paycheck Deduction:</span>
@@ -1438,8 +1880,8 @@ export default function CoopLoansManager() {
               <button
                 onClick={() => {
                   if (!loanForm.principal) return;
-                  requestCashLoan(loanForm);
-                  setShowNewLoanModal(false);
+                  const res = requestCashLoan(loanForm);
+                  if (res?.success) setShowNewLoanModal(false);
                 }}
                 className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm"
               >
@@ -1451,7 +1893,7 @@ export default function CoopLoansManager() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 4: REPLENISH CANTEEN CASH DRAWER */}
+      {/* MODAL 4: REQUEST CANTEEN DRAWER REPLENISHMENT VIA PETTY CASH API          */}
       {/* ========================================================================= */}
       {showReplenishModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
@@ -1459,23 +1901,28 @@ export default function CoopLoansManager() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Utensils className="h-4 w-4 text-slate-600" />
-                Replenish Canteen Physical Cash Drawer
+                Request Drawer Replenishment (Petty Cash API)
               </h3>
               <button onClick={() => setShowReplenishModal(false)} className="text-slate-400 hover:text-slate-700">
                 ✕
               </button>
             </div>
 
-            <p className="text-xs text-slate-600">
-              Current Cash on Hand in Drawer: <strong className="font-mono text-slate-900">{formatCurrency(canteenDrawer.balance)}</strong>
-            </p>
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
+              <div>
+                Current Cash on Hand in Drawer: <strong className="font-mono text-slate-900">{formatCurrency(canteenDrawer.balance)}</strong>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                ⚠️ Submitting a request sends <code>POST /api/petty-cash/replenishment-request</code> with status <strong>PENDING</strong>. Drawer balance will ONLY increase after Petty Cash confirms fund release (<strong>RELEASED</strong>).
+              </p>
+            </div>
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Replenishment Amount (PHP)</label>
+                <label className="text-slate-700 font-bold block mb-1">Requested Replenishment Amount (PHP)</label>
                 <input
                   type="number"
-                  placeholder="e.g. 25000"
+                  placeholder="e.g. 10000"
                   value={replenishAmount}
                   onChange={(e) => setReplenishAmount(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-slate-900"
@@ -1483,10 +1930,10 @@ export default function CoopLoansManager() {
               </div>
 
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Source / Memo Note</label>
+                <label className="text-slate-700 font-bold block mb-1">Reason / Memo Note</label>
                 <input
                   type="text"
-                  placeholder="e.g. Weekly Petty Cash Replenishment from Main Vault"
+                  placeholder="e.g. Drawer replenishment for employee cash advances"
                   value={replenishNote}
                   onChange={(e) => setReplenishNote(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
@@ -1504,14 +1951,18 @@ export default function CoopLoansManager() {
               <button
                 onClick={() => {
                   if (!replenishAmount) return;
-                  replenishCanteenCash(replenishAmount, replenishNote);
+                  requestDrawerReplenishment({
+                    drawerId: 'DRAWER-001',
+                    amount: replenishAmount,
+                    reason: replenishNote || 'Drawer replenishment'
+                  });
                   setShowReplenishModal(false);
                   setReplenishAmount('');
                   setReplenishNote('');
                 }}
                 className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm"
               >
-                Confirm Replenish
+                Send Request to Petty Cash API
               </button>
             </div>
           </div>
@@ -1630,6 +2081,226 @@ export default function CoopLoansManager() {
         </div>
       )}
 
+      {/* ========================================================================= */}
+      {/* MODAL 6: MEMBER RETIREMENT & COOP SAVINGS SETTLEMENT                      */}
+      {/* ========================================================================= */}
+      {retireModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <UserMinus className="h-4 w-4 text-slate-600" />
+                Process Member Retirement &amp; COOP Settlement
+              </h3>
+              <button onClick={() => setRetireModalData(null)} className="text-slate-400 hover:text-slate-700">
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1.5">
+              <div className="font-bold text-slate-900">
+                {retireModalData.staff.firstName} {retireModalData.staff.lastName} ({retireModalData.staff.employeeId})
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Accumulated COOP Savings for Settlement:</span>
+                <span className="font-mono font-bold text-slate-900">
+                  {formatCurrency(coopBalances[retireModalData.staff.id] || 0)}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-200">
+                Confirming retirement will mark this member as retired, settle and record the full withdrawal of their COOP savings, prevent any future loan applications, and preserve all historical records for auditing.
+              </p>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <label className="text-slate-700 font-bold block">Retirement Settlement Remarks</label>
+              <textarea
+                rows={2}
+                placeholder="e.g. Mandatory retirement settlement approved by HR & Accounting"
+                value={retireModalData.remarks}
+                onChange={(e) => setRetireModalData({ ...retireModalData, remarks: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                onClick={() => setRetireModalData(null)}
+                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  retireCoopMember({
+                    staffId: retireModalData.staff.id,
+                    remarks: retireModalData.remarks
+                  });
+                  setRetireModalData(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm"
+              >
+                Confirm Retirement &amp; Settle Savings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 7: PETTY CASH API CONFIGURATION                                     */}
+      {/* ========================================================================= */}
+      {showPettyCashConfigModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Settings className="h-4 w-4 text-slate-600" />
+                Petty Cash API Integration Settings
+              </h3>
+              <button onClick={() => setShowPettyCashConfigModal(false)} className="text-slate-400 hover:text-slate-700">
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">PETTY_CASH_API_URL</label>
+                <input
+                  type="text"
+                  value={pettyCashForm.apiUrl}
+                  onChange={(e) => setPettyCashForm({ ...pettyCashForm, apiUrl: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 font-mono text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">PETTY_CASH_API_KEY</label>
+                <input
+                  type="password"
+                  placeholder="API Key"
+                  value={pettyCashForm.apiKey}
+                  onChange={(e) => setPettyCashForm({ ...pettyCashForm, apiKey: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 font-mono text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">PETTY_CASH_API_SECRET</label>
+                <input
+                  type="password"
+                  placeholder="API Secret"
+                  value={pettyCashForm.apiSecret}
+                  onChange={(e) => setPettyCashForm({ ...pettyCashForm, apiSecret: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 font-mono text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                onClick={() => setShowPettyCashConfigModal(false)}
+                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  updatePettyCashConfig(pettyCashForm);
+                  setShowPettyCashConfigModal(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm"
+              >
+                Save API Credentials
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 8: RECORD CANTEEN SALARY DEDUCTION (AUTO-CONNECT)                   */}
+      {/* ========================================================================= */}
+      {showNewDeductionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-slate-600" />
+                Record Canteen Salary Deduction
+              </h3>
+              <button onClick={() => setShowNewDeductionModal(false)} className="text-slate-400 hover:text-slate-700">
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Employee</label>
+                <select
+                  value={deductionForm.staffId}
+                  onChange={(e) => setDeductionForm({ ...deductionForm, staffId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900"
+                >
+                  {staffList.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.firstName} {s.lastName} ({s.employeeId})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Salary Deduction Reference ID</label>
+                <input
+                  type="text"
+                  value={deductionForm.salaryDeductionRef}
+                  onChange={(e) => setDeductionForm({ ...deductionForm, salaryDeductionRef: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 font-mono text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Deduction Amount (PHP)</label>
+                <input
+                  type="number"
+                  placeholder="e.g. 750"
+                  value={deductionForm.amount}
+                  onChange={(e) => setDeductionForm({ ...deductionForm, amount: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 font-mono text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Remarks</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Payroll Canteen Deduction"
+                  value={deductionForm.remarks}
+                  onChange={(e) => setDeductionForm({ ...deductionForm, remarks: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                onClick={() => setShowNewDeductionModal(false)}
+                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!deductionForm.amount) return;
+                  recordCanteenSalaryDeduction(deductionForm);
+                  setShowNewDeductionModal(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm"
+              >
+                Apply to Canteen Deduction Ledger
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
+

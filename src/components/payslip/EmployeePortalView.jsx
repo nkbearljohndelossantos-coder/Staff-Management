@@ -40,6 +40,7 @@ import PayslipDocument from './PayslipDocument';
 import GatePassModal from '../canteen/GatePassModal';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 import { formatStaffName } from '../../utils/staffUtils';
+import { LOAN_TERM_OPTIONS, calculateMaxLoanableAmount } from '../../utils/coopBusinessRules';
 
 export default function EmployeePortalView() {
   const {
@@ -51,6 +52,7 @@ export default function EmployeePortalView() {
     attendanceLogs,
     updateStaff,
     coopBalances,
+    coopLoanMultiplier = 3,
     coopWithdrawals,
     cashLoans,
     cashAdvances,
@@ -513,8 +515,12 @@ export default function EmployeePortalView() {
               <Landmark className="h-4 w-4 text-slate-600" />
               My Coop Share Capital
             </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
-              Active Equity
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+              currentStaff.status === 'Retired' || currentStaff.coopStatus === 'Retired'
+                ? 'bg-slate-200 text-slate-600 border-slate-300'
+                : 'bg-slate-100 text-slate-700 border-slate-200'
+            }`}>
+              {currentStaff.status === 'Retired' || currentStaff.coopStatus === 'Retired' ? 'Retired / Settled' : 'Active Equity'}
             </span>
           </div>
           <div>
@@ -522,7 +528,7 @@ export default function EmployeePortalView() {
               {formatCurrency(myCoopBalance)}
             </span>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Cooperative capital ownership &amp; savings equity
+              Max Loanable ({coopLoanMultiplier}&times;): <strong className="text-slate-800 font-mono">{formatCurrency(calculateMaxLoanableAmount(myCoopBalance, coopLoanMultiplier))}</strong>
             </p>
           </div>
 
@@ -555,7 +561,7 @@ export default function EmployeePortalView() {
               Cash Loans (HR Managed)
             </span>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
-              Rates: 2%, 3%, 5%
+              Up to 36 Mos
             </span>
           </div>
           <div>
@@ -563,21 +569,22 @@ export default function EmployeePortalView() {
               {formatCurrency(myLoans.reduce((sum, l) => sum + (l.status === 'Approved' ? l.balanceRemaining : 0), 0))}
             </span>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Deducted semi-monthly from salary &amp; funded via Coop
+              Does not reduce COOP Savings &bull; Limit: {formatCurrency(calculateMaxLoanableAmount(myCoopBalance, coopLoanMultiplier))}
             </p>
           </div>
 
           <div className="pt-2 border-t border-slate-100">
             <button
               type="button"
+              disabled={currentStaff.status === 'Retired' || currentStaff.coopStatus === 'Retired'}
               onClick={() => {
                 setLoanForm({ category: 'cash', principal: '', termMonths: 3, purpose: '' });
                 setShowLoanModal(true);
               }}
-              className="w-full py-1.5 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-sm cursor-pointer transition"
+              className="w-full py-1.5 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-sm cursor-pointer disabled:cursor-not-allowed transition"
             >
               <Plus className="h-3.5 w-3.5 text-white" />
-              Apply for Cash Loan
+              {currentStaff.status === 'Retired' || currentStaff.coopStatus === 'Retired' ? 'Loans Disabled (Retired)' : 'Apply for Cash Loan'}
             </button>
           </div>
         </div>
@@ -1523,8 +1530,7 @@ export default function EmployeePortalView() {
             </div>
 
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs leading-relaxed">
-              💡 <strong>2-Stage Approval Process:</strong> Once endorsed by HR, your loan is forwarded to the <strong>Accounting Department</strong> for approval and withdrawal from the <strong>Coop Share Capital pool</strong> before salary deductions take effect.
-              Interest rates: <strong>Cash = 2%/mo</strong>, <strong>Education &amp; Motor = 2.5%/mo</strong>, <strong>Medical, Application &amp; Gadget = 3%/mo</strong>. Canteen Cash Advance = <strong>1.5% per cut-off / 15-day salary</strong>.
+              💡 <strong>Loan Eligibility &amp; 2-Stage Approval:</strong> You can borrow up to <strong>{coopLoanMultiplier}&times; your COOP Savings</strong> ({formatCurrency(myCoopBalance)} &times; {coopLoanMultiplier} = <strong className="font-mono text-slate-900">{formatCurrency(calculateMaxLoanableAmount(myCoopBalance, coopLoanMultiplier))}</strong>). Taking a loan <strong>does not decrease</strong> your COOP Savings. Maximum repayment term is <strong>36 months</strong>.
             </div>
 
             <div className="space-y-3 text-xs">
@@ -1566,18 +1572,15 @@ export default function EmployeePortalView() {
                   />
                 </div>
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Repayment Term</label>
+                  <label className="text-slate-700 font-bold block mb-1">Repayment Term (Max 36 Months)</label>
                   <select
                     value={loanForm.termMonths}
                     onChange={(e) => setLoanForm({ ...loanForm, termMonths: Number(e.target.value) })}
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                   >
-                    <option value={1}>1 Month (2 cutoffs)</option>
-                    <option value={2}>2 Months (4 cutoffs)</option>
-                    <option value={3}>3 Months (6 cutoffs)</option>
-                    <option value={4}>4 Months (8 cutoffs)</option>
-                    <option value={6}>6 Months (12 cutoffs)</option>
-                    <option value={12}>12 Months (24 cutoffs)</option>
+                    {LOAN_TERM_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -1586,13 +1589,25 @@ export default function EmployeePortalView() {
               {Number(loanForm.principal) > 0 && (() => {
                 const p = Number(loanForm.principal);
                 const t = Number(loanForm.termMonths);
+                const maxAllowed = calculateMaxLoanableAmount(myCoopBalance, coopLoanMultiplier);
+                const exceedsMax = p > maxAllowed;
                 const catObj = LOAN_CATEGORIES.find(c => c.id === loanForm.category) || { monthlyRate: 2 };
                 const r = catObj.monthlyRate;
                 const int = Math.round(p * (r / 100) * t);
                 const tot = p + int;
+                const monthly = Math.round(tot / t);
                 const cut = Math.round(tot / (t * 2));
                 return (
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] space-y-1 font-mono">
+                  <div className={`p-3 rounded-xl border text-[11px] space-y-1 font-mono ${exceedsMax ? 'bg-slate-100 border-slate-400' : 'bg-slate-50 border-slate-200'}`}>
+                    <div className="flex justify-between text-slate-600">
+                      <span>COOP Savings &bull; Max Loanable ({coopLoanMultiplier}&times;):</span>
+                      <span className="font-bold text-slate-900">{formatCurrency(myCoopBalance)} &bull; {formatCurrency(maxAllowed)}</span>
+                    </div>
+                    {exceedsMax && (
+                      <div className="text-slate-900 font-bold bg-white px-2 py-1 rounded border border-slate-300">
+                        ⚠️ Requested amount ({formatCurrency(p)}) exceeds your maximum loanable amount ({formatCurrency(maxAllowed)}).
+                      </div>
+                    )}
                     <div className="flex justify-between text-slate-600">
                       <span>Monthly Interest Rate:</span>
                       <span className="font-bold text-slate-900">{r}% / month</span>
@@ -1602,8 +1617,12 @@ export default function EmployeePortalView() {
                       <span className="font-bold text-slate-900">{formatCurrency(int)}</span>
                     </div>
                     <div className="flex justify-between text-slate-600">
-                      <span>Total to Repay:</span>
+                      <span>Total Payable:</span>
                       <span className="font-bold text-slate-900">{formatCurrency(tot)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Monthly Amortization:</span>
+                      <span className="font-bold text-slate-900">{formatCurrency(monthly)} / month</span>
                     </div>
                     <div className="flex justify-between text-slate-900 font-bold pt-1 border-t border-slate-200">
                       <span>Semi-Monthly Cutoff Deduction:</span>
@@ -1635,8 +1654,10 @@ export default function EmployeePortalView() {
               <button
                 onClick={() => {
                   if (!loanForm.principal) return;
-                  requestCashLoan({ ...loanForm, staffId: currentStaff.id });
-                  setShowLoanModal(false);
+                  const res = requestCashLoan({ ...loanForm, staffId: currentStaff.id });
+                  if (res?.success) {
+                    setShowLoanModal(false);
+                  }
                 }}
                 className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm"
               >
