@@ -857,6 +857,239 @@ export function AppProvider({ children }) {
     showToast(`Misconduct report #${reportId} updated to ${status}.`);
   };
 
+  // --- RESIGNED WORKERS ARCHIVE & EXIT FILING ---
+  const [resignedRecords, setResignedRecords] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nkb_hr_resigned_records');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
+
+  const fileStaffResignation = (staffId, resignationData = {}) => {
+    if (currentUser && !isHR) {
+      showToast('Access Denied: Only HR Management can file worker resignations.', 'error');
+      return { success: false, message: 'Access Denied' };
+    }
+    const staff = staffList.find(s => s.id === staffId);
+    if (!staff) {
+      showToast('Staff member not found.', 'error');
+      return { success: false, message: 'Staff member not found' };
+    }
+
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const randSuffix = Math.floor(1000 + Math.random() * 9000);
+    const filingId = `RESIGN-${dateStr}-${randSuffix}`;
+
+    const dept = departments.find(d => d.id === staff.departmentId);
+    const pos = positions.find(p => p.id === staff.positionId);
+
+    const coopSavingsBalance = Number(coopBalances[staffId]) || 0;
+    const outstandingLoanBalance = cashLoans
+      .filter(l => l.staffId === staffId && l.status === 'Approved')
+      .reduce((sum, l) => sum + (Number(l.balanceRemaining) || 0), 0);
+    const canteenDeductionBalance = Number(canteenLedgerBalances[staffId]) || 0;
+    const staffMisconducts = misconductReports.filter(r => r.staffId === staffId);
+
+    // Optional uploaded resignation letter / clearance document
+    let updatedDocuments = [...(staff.documents || [])];
+    if (resignationData.attachment && resignationData.attachment.dataUrl) {
+      const exitDoc = {
+        id: `doc-resign-${Date.now()}`,
+        name: resignationData.attachment.name || 'Resignation_Letter.pdf',
+        size: resignationData.attachment.size || 0,
+        type: resignationData.attachment.type || 'application/pdf',
+        category: 'resignation_clearance',
+        categoryLabel: 'Resignation & Exit Clearance',
+        notes: `Filed with Resignation Record #${filingId}`,
+        uploadedBy: currentUser?.name || 'HR Management',
+        uploadedAt: now.toISOString(),
+        dataUrl: resignationData.attachment.dataUrl
+      };
+      updatedDocuments = [exitDoc, ...updatedDocuments];
+    }
+
+    const record = {
+      id: filingId,
+      staffId: staff.id,
+      employeeId: staff.employeeId,
+      username: getStaffUsername(staff),
+      fullName: formatStaffName(staff),
+      firstName: staff.firstName,
+      lastName: staff.lastName,
+      email: staff.email,
+      phone: staff.phone,
+      avatar: staff.avatar,
+      departmentId: staff.departmentId,
+      departmentName: dept?.name || staff.departmentName || 'General',
+      positionId: staff.positionId,
+      positionTitle: pos?.title || staff.positionTitle || 'Staff Specialist',
+      employmentType: staff.employmentType || 'regular',
+      dateHired: staff.dateHired || staff.hireDate || '2026-05-01',
+      resignationDate: resignationData.resignationDate || now.toISOString().split('T')[0],
+      effectiveLastDay: resignationData.effectiveLastDay || now.toISOString().split('T')[0],
+      separationType: resignationData.separationType || 'Voluntary Resignation',
+      reason: resignationData.reason || 'Personal / Career advancement',
+      clearanceStatus: resignationData.clearanceStatus || 'Pending Clearance',
+      finalPayStatus: resignationData.finalPayStatus || 'Pending Computation',
+      rehireEligibility: resignationData.rehireEligibility || 'Eligible for Rehire',
+      exitInterviewNotes: resignationData.exitInterviewNotes || '',
+      attachment: resignationData.attachment || null,
+      financialSnapshot: {
+        salaryRate: Number(staff.salaryRate) || Number(staff.baseSalary) || 0,
+        salaryRateType: staff.salaryRateType || 'monthly',
+        filedSalary: Number(staff.filedSalary) || 0,
+        coopSavingsBalance,
+        outstandingLoanBalance,
+        canteenDeductionBalance,
+        misconductCount: staffMisconducts.length,
+        documentsCount: updatedDocuments.length
+      },
+      filedBy: currentUser?.name || 'HR Management',
+      filedAt: now.toISOString(),
+      updatedAt: now.toISOString()
+    };
+
+    // Update staff record to resigned status and attach resignationRecord
+    setStaffList(prev => prev.map(s => {
+      if (s.id === staffId) {
+        return {
+          ...s,
+          status: 'resigned',
+          isResigned: true,
+          resignedAt: record.effectiveLastDay,
+          resignationRecord: record,
+          documents: updatedDocuments
+        };
+      }
+      return s;
+    }));
+
+    // Save into resignedRecords archive
+    setResignedRecords(prev => {
+      const filtered = prev.filter(r => r.staffId !== staffId);
+      const next = [record, ...filtered];
+      try {
+        localStorage.setItem('nkb_hr_resigned_records', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    logSystemEvent({
+      category: 'HR_MANAGEMENT',
+      action: 'FILE_STAFF_RESIGNATION',
+      details: `Filed resignation record #${filingId} for ${record.fullName} (${record.employeeId}). Type: ${record.separationType}, Effective Last Day: ${record.effectiveLastDay}.`,
+      targetId: staffId
+    });
+
+    showToast(`Resignation record #${filingId} filed for ${record.fullName}. Moved to Resigned Workers tab.`);
+    return { success: true, record };
+  };
+
+  const updateResignationRecord = (staffId, updates = {}) => {
+    if (currentUser && !isHR) {
+      showToast('Access Denied: Only HR Management can update resigned worker records.', 'error');
+      return { success: false };
+    }
+    const nowIso = new Date().toISOString();
+
+    setResignedRecords(prev => {
+      const next = prev.map(r => {
+        if (r.staffId === staffId || r.id === staffId) {
+          return {
+            ...r,
+            ...updates,
+            updatedAt: nowIso,
+            updatedBy: currentUser?.name || 'HR Management'
+          };
+        }
+        return r;
+      });
+      try {
+        localStorage.setItem('nkb_hr_resigned_records', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    setStaffList(prev => prev.map(s => {
+      if (s.id === staffId || s.resignationRecord?.id === staffId) {
+        const updatedRec = {
+          ...(s.resignationRecord || {}),
+          ...updates,
+          updatedAt: nowIso,
+          updatedBy: currentUser?.name || 'HR Management'
+        };
+        return {
+          ...s,
+          resignationRecord: updatedRec
+        };
+      }
+      return s;
+    }));
+
+    logSystemEvent({
+      category: 'HR_MANAGEMENT',
+      action: 'UPDATE_RESIGNATION_RECORD',
+      details: `Updated resigned worker dossier for ${staffId}: ${JSON.stringify(updates)}`,
+      targetId: staffId
+    });
+
+    showToast('Resigned worker record updated.');
+    return { success: true };
+  };
+
+  const reinstateResignedStaff = (staffId, remarks = '') => {
+    if (currentUser && !isHR) {
+      showToast('Access Denied: Only HR Management can reinstate staff.', 'error');
+      return { success: false };
+    }
+    const staff = staffList.find(s => s.id === staffId);
+    if (!staff) return { success: false };
+
+    const nowIso = new Date().toISOString();
+    setStaffList(prev => prev.map(s => {
+      if (s.id === staffId) {
+        const pastHistory = Array.isArray(s.pastResignations) ? [...s.pastResignations] : [];
+        if (s.resignationRecord) {
+          pastHistory.unshift({
+            ...s.resignationRecord,
+            reinstatedAt: nowIso,
+            reinstatedBy: currentUser?.name || 'HR Management',
+            reinstatementRemarks: remarks
+          });
+        }
+        return {
+          ...s,
+          status: 'active',
+          isResigned: false,
+          resignedAt: null,
+          resignationRecord: null,
+          pastResignations: pastHistory
+        };
+      }
+      return s;
+    }));
+
+    setResignedRecords(prev => {
+      const next = prev.filter(r => r.staffId !== staffId);
+      try {
+        localStorage.setItem('nkb_hr_resigned_records', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    logSystemEvent({
+      category: 'HR_MANAGEMENT',
+      action: 'REINSTATE_RESIGNED_STAFF',
+      details: `Reinstated ${formatStaffName(staff)} (${staff.employeeId}) to Active Workforce. Remarks: ${remarks || 'Rehired / Reinstated by HR'}`,
+      targetId: staffId
+    });
+
+    showToast(`${formatStaffName(staff)} has been reinstated to the Active Workforce.`);
+    return { success: true };
+  };
+
   const getSectionPermission = (sectionId, targetUser = currentUser) => {
     return getEffectiveSectionPermission(sectionId, targetUser, sectionAuthorizations, userAuthorizationOverrides);
   };
@@ -4621,6 +4854,11 @@ export function AppProvider({ children }) {
         acknowledgeMisconductNotice,
         submitStaffExplanation,
         resolveMisconductReport,
+        // Resigned Workers Archive & Exit Filing
+        resignedRecords,
+        fileStaffResignation,
+        updateResignationRecord,
+        reinstateResignedStaff,
         // UI
         activeTab,
         setActiveTab,
