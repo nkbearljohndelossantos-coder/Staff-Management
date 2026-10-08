@@ -99,14 +99,19 @@ export function resolveStaffFromScan(staffList = [], inputStr) {
   const up = clean.toUpperCase();
   const alnum = clean.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 
-  // 1. Direct exact matches on barcodeValue, employeeId, id
+  // 1. Direct exact matches on username, barcodeValue, employeeId, id
+  const low = clean.toLowerCase().replace(/^@+/, '');
   let staff = staffList.find(s => {
     const sBar = (s?.barcodeValue || '').trim().toUpperCase();
     const sEmp = (s?.employeeId || '').trim().toUpperCase();
     const sId = (s?.id || '').trim().toUpperCase();
     const sIdClean = sId.replace(/^EMP-/i, '');
+    const sUname = (s?.username || '').trim().toLowerCase().replace(/^@+/, '');
+    const sEmailLocal = s?.email && s.email.includes('@') ? s.email.split('@')[0].trim().toLowerCase() : '';
 
     return (
+      (sUname && sUname === low) ||
+      (sEmailLocal && sEmailLocal === low) ||
       (sBar && sBar === up) ||
       (sEmp && sEmp === up) ||
       (sId && sId === up) ||

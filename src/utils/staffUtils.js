@@ -21,6 +21,73 @@ export function formatStaffName(staff) {
 }
 
 /**
+ * Returns the canonical login username for a staff member.
+ * Example: "katherinea.bella" or custom assigned username.
+ */
+export function getStaffUsername(staff) {
+  if (!staff) return '';
+  if (staff.username && String(staff.username).trim()) {
+    return String(staff.username).trim().toLowerCase().replace(/^@+/, '');
+  }
+  if (staff.email && String(staff.email).includes('@')) {
+    return String(staff.email).split('@')[0].trim().toLowerCase();
+  }
+  const first = (staff.firstName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const last = (staff.lastName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (first && last) {
+    return `${first}.${last}`;
+  }
+  if (last || first) {
+    return last || first;
+  }
+  return (staff.employeeId || '').toLowerCase();
+}
+
+/**
+ * Finds a staff member by username (with fallback support for email, employeeId, or name).
+ */
+export function findStaffByUsername(staffList = [], rawInput = '') {
+  const clean = String(rawInput || '').trim().toLowerCase().replace(/^@+/, '');
+  if (!clean || !Array.isArray(staffList)) return null;
+
+  // 1. Exact match on username or email local-part
+  let match = staffList.find(s => {
+    const uname = getStaffUsername(s);
+    const emailLocal = s.email && s.email.includes('@') ? s.email.split('@')[0].trim().toLowerCase() : '';
+    return uname === clean || (emailLocal && emailLocal === clean);
+  });
+  if (match) return match;
+
+  // 2. Match on first.last (without middle initial), firstlast, last.first, or full name
+  const cleanNoDots = clean.replace(/[^a-z0-9]/g, '');
+  match = staffList.find(s => {
+    const unameNoDots = getStaffUsername(s).replace(/[^a-z0-9]/g, '');
+    const firstFull = (s.firstName || '').trim().toLowerCase();
+    // Strip trailing single-letter middle initial e.g. "katherine a." -> "katherine"
+    const firstNoMiddle = firstFull.replace(/\s+[a-z]\.?$/i, '').replace(/[^a-z0-9]/g, '');
+    const firstAll = firstFull.replace(/[^a-z0-9]/g, '');
+    const lastAll = (s.lastName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const candidates = [
+      unameNoDots,
+      `${firstNoMiddle}.${lastAll}`,
+      `${firstNoMiddle}${lastAll}`,
+      `${firstAll}.${lastAll}`,
+      `${firstAll}${lastAll}`,
+      `${lastAll}.${firstNoMiddle}`,
+      `${lastAll}${firstNoMiddle}`,
+      (s.email || '').trim().toLowerCase(),
+      (s.employeeId || '').trim().toLowerCase(),
+      (s.rawName || '').trim().toLowerCase()
+    ];
+
+    return candidates.includes(clean) || (cleanNoDots.length >= 4 && candidates.includes(cleanNoDots));
+  });
+
+  return match || null;
+}
+
+/**
  * Calculates upcoming milestone (birthday or work anniversary)
  * Returns object with daysUntil, formattedDate, milestoneYear, isToday, isTomorrow, yearsCompleted
  */

@@ -49,12 +49,12 @@ export default function EmployeeBarcodeLogin({ onBackToStaffLogin }) {
             </div>
             <div>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Employee Self-Service</p>
-              <h2 className="text-lg font-black text-white">Scan or Enter Staff Barcode</h2>
+              <h2 className="text-lg font-black text-white">Username or Staff Barcode Login</h2>
             </div>
           </div>
 
           <p className="text-xs text-slate-300 leading-relaxed">
-            Use your physical company badge barcode or enter your assigned Employee ID number (e.g. <span className="font-mono text-white font-bold">NKB052026-0001</span>) and 8-digit security PIN.
+            Enter your assigned <span className="font-mono text-white font-bold">Username</span> (e.g. <span className="font-mono text-white font-bold">katherinea.bella</span>) or scan your physical company badge barcode and 8-digit security PIN.
           </p>
 
           <div className="grid grid-cols-3 gap-2 text-center">
@@ -95,19 +95,20 @@ export default function EmployeeBarcodeLogin({ onBackToStaffLogin }) {
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
-                  <ScanLine className="h-3.5 w-3.5 text-slate-400" />
-                  Staff Barcode / Employee ID
+                  <UserRound className="h-3.5 w-3.5 text-slate-400" />
+                  Username or Staff Barcode
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono">Code 128</span>
+                <span className="text-[10px] text-slate-500 font-mono">Username / Code 128</span>
               </label>
               <div className="relative">
                 <input
                   type="text"
                   required
+                  autoComplete="username"
                   value={barcodeInput}
-                  onChange={(e) => setBarcodeInput(e.target.value.toUpperCase())}
-                  placeholder="NKB052026-0001"
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-950/80 border border-white/20 font-mono text-sm tracking-wider text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 transition uppercase"
+                  onChange={(e) => setBarcodeInput(e.target.value)}
+                  placeholder="e.g. katherinea.bella or NKB052026-0001"
+                  className="w-full h-11 px-3.5 rounded-xl bg-slate-950/80 border border-white/20 font-mono text-sm tracking-wide text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 transition"
                 />
               </div>
             </div>

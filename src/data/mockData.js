@@ -35,8 +35,12 @@ export const INITIAL_STAFF = generatedStaffData.staff.map(s => {
   const last = (s.lastName || '').trim().toUpperCase();
   const first = (s.firstName || '').trim().toUpperCase();
   const raw = last && first && last !== first ? `${last}, ${first}` : (s.rawName || last || first).trim().toUpperCase();
+  const defaultUsername = s.username
+    ? String(s.username).trim().toLowerCase()
+    : (s.email && s.email.includes('@') ? s.email.split('@')[0].trim().toLowerCase() : `${first.toLowerCase().replace(/[^a-z0-9]/g, '')}.${last.toLowerCase().replace(/[^a-z0-9]/g, '')}`);
   return {
     ...s,
+    username: defaultUsername,
     firstName: first,
     lastName: last,
     rawName: raw,

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Search, UserPlus, Filter, Edit3, Trash2, DollarSign, Users, Building, ScanLine, QrCode, Eye, Calendar, Shield, Paperclip, Crown, AlertTriangle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
-import { formatStaffName, scanStaffMilestones } from '../../utils/staffUtils';
+import { formatStaffName, getStaffUsername, scanStaffMilestones } from '../../utils/staffUtils';
 import { canCreateMisconductReport } from '../../utils/rolePermissions';
 import StaffBadgeModal from './StaffBadgeModal';
 import StaffFormModal from './StaffFormModal';
@@ -42,9 +42,11 @@ export default function StaffDirectory() {
   // Filter staff
   const filteredStaff = staffList.filter(s => {
     const q = searchQuery.toLowerCase();
+    const uname = getStaffUsername(s);
     const matchesSearch =
       s.firstName?.toLowerCase().includes(q) ||
       s.lastName?.toLowerCase().includes(q) ||
+      uname.includes(q) ||
       s.employeeId?.toLowerCase().includes(q) ||
       s.email?.toLowerCase().includes(q) ||
       s.sssNo?.toLowerCase().includes(q) ||
@@ -339,7 +341,12 @@ export default function StaffDirectory() {
                             <div className="font-bold text-slate-900 text-xs group-hover:text-blue-600 transition">
                               {formatStaffName(staff)}
                             </div>
-                            <div className="text-[11px] text-slate-500">{staff.email}</div>
+                            <div className="text-[11px] text-slate-500 flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                                @{getStaffUsername(staff)}
+                              </span>
+                              <span>{staff.email}</span>
+                            </div>
                           </div>
                         </div>
                       </td>

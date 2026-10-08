@@ -36,6 +36,7 @@ import {
 } from '../../utils/payrollCalculations';
 import BarcodeView from '../common/BarcodeView';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
+import { getStaffUsername } from '../../utils/staffUtils';
 
 export default function StaffFormModal({ staff, onClose }) {
   const { staffList, departments, positions, addStaff, updateStaff, addDepartment, addPosition } = useApp();
@@ -54,6 +55,7 @@ export default function StaffFormModal({ staff, onClose }) {
 
   const [formData, setFormData] = useState({
     employeeId: staff?.employeeId || defaultId,
+    username: staff ? getStaffUsername(staff) : '',
     firstName: staff?.firstName || '',
     lastName: staff?.lastName || '',
     email: staff?.email || '',
@@ -550,7 +552,15 @@ export default function StaffFormModal({ staff, onClose }) {
                 type="text"
                 required
                 value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                onChange={(e) => {
+                  const first = e.target.value;
+                  setFormData(prev => {
+                    const autoUname = !isEditing && (!prev.username || prev.username === `${(prev.firstName || '').toLowerCase().replace(/[^a-z0-9]/g, '')}.${(prev.lastName || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`)
+                      ? `${first.toLowerCase().replace(/[^a-z0-9]/g, '')}${prev.lastName ? `.${prev.lastName.toLowerCase().replace(/[^a-z0-9]/g, '')}` : ''}`
+                      : prev.username;
+                    return { ...prev, firstName: first, username: autoUname };
+                  });
+                }}
                 placeholder="Juan"
                 className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none"
               />
@@ -561,14 +571,33 @@ export default function StaffFormModal({ staff, onClose }) {
                 type="text"
                 required
                 value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                onChange={(e) => {
+                  const last = e.target.value;
+                  setFormData(prev => {
+                    const autoUname = !isEditing && (!prev.username || prev.username === `${(prev.firstName || '').toLowerCase().replace(/[^a-z0-9]/g, '')}${prev.lastName ? `.${(prev.lastName || '').toLowerCase().replace(/[^a-z0-9]/g, '')}` : ''}`)
+                      ? `${(prev.firstName || '').toLowerCase().replace(/[^a-z0-9]/g, '')}${last ? `.${last.toLowerCase().replace(/[^a-z0-9]/g, '')}` : ''}`
+                      : prev.username;
+                    return { ...prev, lastName: last, username: autoUname };
+                  });
+                }}
                 placeholder="Dela Cruz"
                 className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Login Username</label>
+              <input
+                type="text"
+                required
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/\s+/g, '') })}
+                placeholder="juan.delacruz"
+                className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono focus:ring-2 focus:ring-slate-900 outline-none"
+              />
+            </div>
             <div>
               <label className="block text-slate-700 font-semibold mb-1">Work Email</label>
               <input

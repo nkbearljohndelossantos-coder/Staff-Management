@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { LogIn, UserCircle, ScanLine, ShieldCheck, KeyRound, Mail, Sparkles } from 'lucide-react';
+import { LogIn, UserCircle, ScanLine, ShieldCheck, KeyRound, UserRound } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export default function StaffLoginForm({ onSwitchToBarcode }) {
   const { loginStaff } = useApp();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -15,7 +15,7 @@ export default function StaffLoginForm({ onSwitchToBarcode }) {
     setLoading(true);
 
     setTimeout(() => {
-      const res = loginStaff(email, password);
+      const res = loginStaff(username, password);
       if (!res.success) {
         setError(res.message);
       }
@@ -49,15 +49,16 @@ export default function StaffLoginForm({ onSwitchToBarcode }) {
               <form onSubmit={handleSubmit} className="space-y-3.5">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                    <Mail className="h-3.5 w-3.5 text-slate-400" />
-                    Work Email or Employee ID
+                    <UserRound className="h-3.5 w-3.5 text-slate-400" />
+                    Username
                   </label>
                   <input
                     type="text"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="e.g. katherinea.bella@nkb.com or NKB052026-0001"
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="e.g. katherinea.bella"
                     className="w-full h-11 px-3.5 rounded-xl bg-slate-950/70 border border-white/15 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 transition"
                   />
                 </div>
@@ -70,6 +71,7 @@ export default function StaffLoginForm({ onSwitchToBarcode }) {
                   <input
                     type="password"
                     required
+                    autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter password or 8-digit PIN"
@@ -95,7 +97,7 @@ export default function StaffLoginForm({ onSwitchToBarcode }) {
 
               <div className="mt-4 pt-3 border-t border-white/10 text-xs text-slate-400">
                 <p className="text-[11px] font-medium leading-relaxed">
-                  Sign in using your registered Employee ID or company work email and assigned 8-digit security PIN.
+                  Sign in using your assigned Username (e.g. <span className="font-mono text-slate-200">katherinea.bella</span>) and 8-digit security PIN.
                 </p>
               </div>
             </div>

@@ -31,7 +31,7 @@ import { computeEmployeePayroll } from '../utils/payrollCalculations';
 import { logAuditEvent, getAuditLogs } from '../utils/auditLogger';
 import { getOfflineQueue, clearOfflineQueue, initOfflineSyncListener } from '../utils/offlineSync';
 import { scanForAnomalies, saveAnomalyEvaluation, computeExecutiveRiskSummary, getStoredEvaluations } from '../utils/anomalyDetector';
-import { formatStaffName, scanStaffMilestones } from '../utils/staffUtils';
+import { formatStaffName, getStaffUsername, findStaffByUsername, scanStaffMilestones } from '../utils/staffUtils';
 import { isBoxOrPackItem, extractPiecesFromItem, getEffectiveRetailPiecePrice } from '../utils/canteenPricing';
 import { 
   DEFAULT_ROLE_PERMISSIONS, 
@@ -97,6 +97,7 @@ export function AppProvider({ children }) {
               : (s.rawName ? s.rawName.trim().toUpperCase() : (upperLast || upperFirst || 'STAFF MEMBER'));
             return {
               ...s,
+              username: getStaffUsername({ ...s, firstName: upperFirst, lastName: upperLast }),
               firstName: upperFirst,
               lastName: upperLast,
               rawName: raw,
@@ -1550,19 +1551,16 @@ export function AppProvider({ children }) {
   const canManageMisconduct = isHR || isCCTVAdmin;
 
   // Auth Methods
-  const loginStaff = (emailOrId, password) => {
-    const clean = (emailOrId || '').trim().toLowerCase();
-    const found = staffList.find(s => 
-      (s.email && s.email.toLowerCase() === clean) ||
-      (s.employeeId && s.employeeId.toLowerCase() === clean) ||
-      (s.rawName && s.rawName.toLowerCase() === clean)
-    );
+  const loginStaff = (usernameOrId, password) => {
+    const clean = (usernameOrId || '').trim();
+    const found = findStaffByUsername(staffList, clean) || resolveStaffFromScan(staffList, clean);
     if (found) {
       if (password && found.pin && found.pin !== password) {
         return { success: false, message: 'Invalid security PIN or password.' };
       }
       const userObj = {
         staffId: found.id,
+        username: getStaffUsername(found),
         name: formatStaffName(found),
         email: found.email,
         role: found.role || 'employee',
@@ -1581,17 +1579,17 @@ export function AppProvider({ children }) {
       } else {
         setActiveTab('staff');
       }
-      showToast(`Welcome, ${userObj.name}! Logged in as ${found.positionTitle || found.role}`);
+      showToast(`Welcome, ${userObj.name} (@${userObj.username})! Logged in as ${found.positionTitle || found.role}`);
       return { success: true };
     }
-    return { success: false, message: 'Invalid credentials. Enter your registered work email or Employee ID (e.g. NKB052026-0001) and 8-digit PIN.' };
+    return { success: false, message: 'Invalid credentials. Enter your assigned Username (e.g. katherinea.bella) and 8-digit PIN.' };
   };
 
-  const loginBarcode = (barcodeOrId, pin) => {
-    const found = resolveStaffFromScan(staffList, barcodeOrId);
+  const loginBarcode = (barcodeOrUsername, pin) => {
+    const found = findStaffByUsername(staffList, barcodeOrUsername) || resolveStaffFromScan(staffList, barcodeOrUsername);
 
     if (!found) {
-      return { success: false, message: 'Barcode / Employee ID not recognized in Staff Masterlist.' };
+      return { success: false, message: 'Username / Barcode / Employee ID not recognized in Staff Masterlist.' };
     }
 
     if (pin && found.pin && found.pin !== pin) {
@@ -1601,6 +1599,7 @@ export function AppProvider({ children }) {
     const userRole = found.role || 'employee';
     const userObj = {
       staffId: found.id,
+      username: getStaffUsername(found),
       name: formatStaffName(found),
       email: found.email,
       role: userRole,
@@ -1620,7 +1619,7 @@ export function AppProvider({ children }) {
     } else {
       setActiveTab('staff');
     }
-    showToast(`Authenticated badge for ${userObj.name}`);
+    showToast(`Authenticated ${userObj.name} (@${userObj.username})`);
     return { success: true };
   };
 
@@ -1641,6 +1640,12 @@ export function AppProvider({ children }) {
     const upperFirst = (data.firstName || '').trim().toUpperCase();
     const upperLast = (data.lastName || '').trim().toUpperCase();
     const raw = upperLast && upperFirst ? `${upperLast}, ${upperFirst}` : (data.rawName || upperLast || upperFirst).toUpperCase();
+    const assignedUsername = getStaffUsername({
+      ...data,
+      firstName: upperFirst,
+      lastName: upperLast,
+      employeeId: generatedId
+    });
     
     const newStaff = {
       id: `staff-${Date.now()}`,
@@ -1651,13 +1656,14 @@ export function AppProvider({ children }) {
       avatar: data.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${upperFirst}_${upperLast}`,
       pin: data.pin || '12345678',
       ...data,
+      username: assignedUsername,
       firstName: upperFirst,
       lastName: upperLast,
       rawName: raw
     };
 
     setStaffList(prev => [newStaff, ...prev]);
-    showToast(`Added staff ${formatStaffName(newStaff)} with ID ${generatedId}`);
+    showToast(`Added staff ${formatStaffName(newStaff)} (@${assignedUsername}) with ID ${generatedId}`);
     return newStaff;
   };
 
@@ -1667,6 +1673,9 @@ export function AppProvider({ children }) {
       return;
     }
     const cleanData = { ...data };
+    if (cleanData.username !== undefined) {
+      cleanData.username = String(cleanData.username).trim().toLowerCase().replace(/^@+/, '');
+    }
     if (cleanData.firstName !== undefined) cleanData.firstName = cleanData.firstName.trim().toUpperCase();
     if (cleanData.lastName !== undefined) cleanData.lastName = cleanData.lastName.trim().toUpperCase();
     if (cleanData.firstName && cleanData.lastName) {
@@ -1675,6 +1684,9 @@ export function AppProvider({ children }) {
     setStaffList(prev => prev.map(s => {
       if (s.id === id) {
         const merged = { ...s, ...cleanData };
+        if (!merged.username) {
+          merged.username = getStaffUsername(merged);
+        }
         if (!cleanData.rawName) {
           merged.rawName = formatStaffName(merged);
         }
@@ -1687,6 +1699,7 @@ export function AppProvider({ children }) {
         return {
           ...prev,
           ...cleanData,
+          username: cleanData.username || prev.username,
           name: formatStaffName({ ...prev, ...cleanData }),
           avatar: cleanData.avatar !== undefined ? cleanData.avatar : prev.avatar
         };
