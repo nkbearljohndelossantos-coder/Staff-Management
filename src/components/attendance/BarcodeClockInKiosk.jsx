@@ -1124,8 +1124,8 @@ export default function BarcodeClockInKiosk() {
                             )}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            {req.status === 'Pending' ? (
-                              <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {req.status !== 'Approved' && (
                                 <button
                                   type="button"
                                   onClick={() => approveLeaveRequest(req.id, 'Approved for payroll entry')}
@@ -1134,6 +1134,8 @@ export default function BarcodeClockInKiosk() {
                                   <Check className="h-3.5 w-3.5" />
                                   <span>Approve</span>
                                 </button>
+                              )}
+                              {req.status !== 'Rejected' && (
                                 <button
                                   type="button"
                                   onClick={() => setRejectItem({ type: 'leave', id: req.id, staffName: req.staffName })}
@@ -1142,10 +1144,8 @@ export default function BarcodeClockInKiosk() {
                                   <X className="h-3.5 w-3.5" />
                                   <span>Reject</span>
                                 </button>
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-slate-400 font-medium">Evaluation Final</span>
-                            )}
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1166,7 +1166,7 @@ export default function BarcodeClockInKiosk() {
                     Offset Timekeeper Requests (Schedule Offset &amp; 6-Punch Adjustments)
                   </h3>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Approving automatically updates the staff member&apos;s 6-punch attendance record
+                    Approving automatically updates the staff member&apos;s 6-punch attendance record live
                   </p>
                 </div>
                 <span className="text-xs text-indigo-700 font-bold">{filteredOffsets.length} records</span>
@@ -1202,13 +1202,13 @@ export default function BarcodeClockInKiosk() {
                           </td>
                           <td className="py-3 px-3 font-mono">
                             <div className="font-bold text-slate-900">
-                              {req.sourceDate} → {req.targetOffsetDate}
+                              {req.sourceDate || req.earnedDate} → {req.targetOffsetDate || req.offsetDate}
                             </div>
                             <span className="text-[11px] text-indigo-700 font-bold">{req.hours} Hour(s) Offset</span>
                           </td>
                           <td className="py-3 px-3 font-mono text-[10px] text-slate-600">
-                            <div>In: {req.timeIn} | Out: {req.timeOut}</div>
-                            <div>Lunch: {req.lunchOut}–{req.lunchIn} | Brk: {req.breakOut}–{req.breakIn}</div>
+                            <div>In: {req.timeIn || '08:00 AM'} | Out: {req.timeOut || '05:00 PM'}</div>
+                            <div>Lunch: {req.lunchOut || '12:00 PM'}–{req.lunchIn || '01:00 PM'} | Brk: {req.breakOut || '03:00 PM'}–{req.breakIn || '03:15 PM'}</div>
                           </td>
                           <td className="py-3 px-3 max-w-xs truncate text-slate-600" title={req.reason}>
                             {req.reason}
@@ -1225,8 +1225,8 @@ export default function BarcodeClockInKiosk() {
                             </span>
                           </td>
                           <td className="py-3 px-4 text-right">
-                            {req.status === 'Pending' ? (
-                              <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {req.status !== 'Approved' && (
                                 <button
                                   type="button"
                                   onClick={() => approveOffsetRequest(req.id, 'Approved & synced to timekeeper logs')}
@@ -1235,6 +1235,8 @@ export default function BarcodeClockInKiosk() {
                                   <Check className="h-3.5 w-3.5" />
                                   <span>Approve</span>
                                 </button>
+                              )}
+                              {req.status !== 'Rejected' && (
                                 <button
                                   type="button"
                                   onClick={() => setRejectItem({ type: 'offset', id: req.id, staffName: req.staffName })}
@@ -1243,10 +1245,8 @@ export default function BarcodeClockInKiosk() {
                                   <X className="h-3.5 w-3.5" />
                                   <span>Reject</span>
                                 </button>
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-slate-400 font-medium">Evaluation Final</span>
-                            )}
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1297,10 +1297,10 @@ export default function BarcodeClockInKiosk() {
                           </td>
                           <td className="py-3 px-3 font-mono">
                             <div className="font-bold text-slate-900">{ob.date}</div>
-                            <span className="text-[11px] text-sky-700">{ob.departureTime} – {ob.returnTime}</span>
+                            <span className="text-[11px] text-sky-700">{ob.departureTime || ob.startTime} – {ob.returnTime || ob.endTime}</span>
                           </td>
                           <td className="py-3 px-3 font-bold text-slate-800">
-                            {ob.clientOrDestination}
+                            {ob.clientOrDestination || ob.destination}
                             <span className="block text-[10px] text-emerald-700 font-normal">✓ Exempt from Physical Clock-In</span>
                           </td>
                           <td className="py-3 px-3 max-w-xs">
@@ -1319,8 +1319,8 @@ export default function BarcodeClockInKiosk() {
                             </span>
                           </td>
                           <td className="py-3 px-4 text-right">
-                            {ob.status === 'Pending' ? (
-                              <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {ob.status !== 'Approved' && (
                                 <button
                                   type="button"
                                   onClick={() => approveOfficialBusinessRequest(ob.id, 'Approved Official Business — Attendance Credited')}
@@ -1329,6 +1329,8 @@ export default function BarcodeClockInKiosk() {
                                   <Check className="h-3.5 w-3.5" />
                                   <span>Approve OB</span>
                                 </button>
+                              )}
+                              {ob.status !== 'Rejected' && (
                                 <button
                                   type="button"
                                   onClick={() => setRejectItem({ type: 'ob', id: ob.id, staffName: ob.staffName })}
@@ -1337,10 +1339,8 @@ export default function BarcodeClockInKiosk() {
                                   <X className="h-3.5 w-3.5" />
                                   <span>Reject</span>
                                 </button>
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-slate-400 font-medium">Evaluation Final</span>
-                            )}
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1394,7 +1394,7 @@ export default function BarcodeClockInKiosk() {
                           </td>
                           <td className="py-3 px-3 font-mono">
                             <div className="font-bold text-rose-700">{ut.undertimeHours} hr(s) Undertime</div>
-                            <span className="text-[10px] text-slate-500">Out: {ut.requestedTimeOut} (Sched: {ut.scheduledTimeOut})</span>
+                            <span className="text-[10px] text-slate-500">Out: {ut.requestedTimeOut || ut.departureTime} (Sched: {ut.scheduledTimeOut || ut.scheduledOut})</span>
                           </td>
                           <td className="py-3 px-3 max-w-xs">
                             <div className="text-[10px] font-bold text-rose-800 uppercase">{ut.reasonCategory}</div>
@@ -1412,8 +1412,8 @@ export default function BarcodeClockInKiosk() {
                             </span>
                           </td>
                           <td className="py-3 px-4 text-right">
-                            {ut.status === 'Pending' ? (
-                              <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {ut.status !== 'Approved' && (
                                 <button
                                   type="button"
                                   onClick={() => approveUndertimeRequest(ut.id, 'Approved Undertime Departure')}
@@ -1422,6 +1422,8 @@ export default function BarcodeClockInKiosk() {
                                   <Check className="h-3.5 w-3.5" />
                                   <span>Approve UT</span>
                                 </button>
+                              )}
+                              {ut.status !== 'Rejected' && (
                                 <button
                                   type="button"
                                   onClick={() => setRejectItem({ type: 'undertime', id: ut.id, staffName: ut.staffName })}
@@ -1430,10 +1432,8 @@ export default function BarcodeClockInKiosk() {
                                   <X className="h-3.5 w-3.5" />
                                   <span>Reject</span>
                                 </button>
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-slate-400 font-medium">Evaluation Final</span>
-                            )}
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1590,8 +1590,8 @@ export default function BarcodeClockInKiosk() {
                                 )}
                               </td>
                               <td className="py-3 px-3 text-right">
-                                {req.status === 'Pending' ? (
-                                  <div className="flex items-center justify-end gap-1.5">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {req.status !== 'Approved' && (
                                     <button
                                       type="button"
                                       onClick={() => approveOvertimeRequest(req.id, 'HR Approved with verified operational reason')}
@@ -1600,6 +1600,8 @@ export default function BarcodeClockInKiosk() {
                                       <Check className="h-3.5 w-3.5" />
                                       <span>Approve (HR)</span>
                                     </button>
+                                  )}
+                                  {req.status !== 'Rejected' && (
                                     <button
                                       type="button"
                                       onClick={() => setRejectItem({ type: 'ot', id: req.id, staffName: req.staffName })}
@@ -1608,10 +1610,8 @@ export default function BarcodeClockInKiosk() {
                                       <X className="h-3.5 w-3.5" />
                                       <span>Reject</span>
                                     </button>
-                                  </div>
-                                ) : (
-                                  <span className="text-[11px] text-slate-400 font-medium">HR Evaluation Final</span>
-                                )}
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );

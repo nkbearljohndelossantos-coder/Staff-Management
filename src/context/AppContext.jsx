@@ -242,15 +242,9 @@ export function AppProvider({ children }) {
   });
 
 
-  // Canteen Inventory Supplies (Official 355 products from Canteen_Inventory.xlsx with zero initial quantity)
+  // Canteen Inventory Supplies (Official 355 products from Canteen_Inventory.xlsx, preserving all user-encoded inventory)
   const [canteenInventory, setCanteenInventory] = useState(() => {
     try {
-      const zeroedMigration = localStorage.getItem('nkb_canteen_inventory_zeroed_v1');
-      if (!zeroedMigration) {
-        localStorage.setItem('nkb_canteen_inventory_zeroed_v1', 'true');
-        localStorage.setItem('nkb_canteen_inventory', JSON.stringify(INITIAL_CANTEEN_INVENTORY));
-        return [...INITIAL_CANTEEN_INVENTORY];
-      }
       const saved = localStorage.getItem('nkb_canteen_inventory');
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -270,6 +264,7 @@ export function AppProvider({ children }) {
           });
         }
       }
+      localStorage.setItem('nkb_canteen_inventory', JSON.stringify(INITIAL_CANTEEN_INVENTORY));
     } catch (e) {
       console.error('Failed to initialize canteen inventory:', e);
     }
@@ -353,38 +348,40 @@ export function AppProvider({ children }) {
     return saved ? JSON.parse(saved) : INITIAL_PERSONAL_PURCHASE_ORDERS;
   });
 
-  // Immutable Canteen Receipts
+  // Immutable Canteen Receipts (Strictly preserve all encoded receipts)
   const [canteenReceipts, setCanteenReceipts] = useState(() => {
-    const saved = localStorage.getItem('nkb_canteen_receipts');
-    let list = saved ? JSON.parse(saved) : INITIAL_CANTEEN_RECEIPTS;
-    // Purge test record GP-2026-47210
-    return list.filter(r => r.gatePassNo !== 'GP-2026-47210' && r.receiptNo !== 'REC-20260928-47210');
+    try {
+      const saved = localStorage.getItem('nkb_canteen_receipts');
+      return saved ? JSON.parse(saved) : INITIAL_CANTEEN_RECEIPTS;
+    } catch (e) {
+      return INITIAL_CANTEEN_RECEIPTS;
+    }
   });
 
-  // Canteen Gate Passes (Half-A4 PDF security clearance for taking goods out of plant)
+  // Canteen Gate Passes (Half-A4 PDF security clearance for taking goods out of plant — strictly preserve all encoded passes)
   const [canteenGatePasses, setCanteenGatePasses] = useState(() => {
-    const saved = localStorage.getItem('nkb_canteen_gate_passes');
-    let list = saved ? JSON.parse(saved) : [...INITIAL_CANTEEN_GATE_PASSES];
-    
-    // Purge test record GP-2026-47210
-    list = list.filter(gp => gp.gatePassNo !== 'GP-2026-47210' && gp.id !== 'GP-2026-47210' && gp.receiptNo !== 'REC-20260928-47210');
-
-    return list.map(gp => {
-      const isCleared = 
-        gp.gateStatus?.toLowerCase().includes('cleared') || 
-        gp.status?.toLowerCase().includes('cleared') || 
-        Boolean(gp.clearedAt);
-      if (isCleared) {
-        return {
-          ...gp,
-          gateStatus: 'Cleared at Gate',
-          status: 'Cleared at Gate',
-          clearedAt: gp.clearedAt || new Date().toISOString(),
-          securityGuard: gp.securityGuard || 'Officer R. Mendoza (Main Gate Post 1)'
-        };
-      }
-      return gp;
-    });
+    try {
+      const saved = localStorage.getItem('nkb_canteen_gate_passes');
+      const list = saved ? JSON.parse(saved) : [...INITIAL_CANTEEN_GATE_PASSES];
+      return list.map(gp => {
+        const isCleared = 
+          gp.gateStatus?.toLowerCase().includes('cleared') || 
+          gp.status?.toLowerCase().includes('cleared') || 
+          Boolean(gp.clearedAt);
+        if (isCleared) {
+          return {
+            ...gp,
+            gateStatus: 'Cleared at Gate',
+            status: 'Cleared at Gate',
+            clearedAt: gp.clearedAt || new Date().toISOString(),
+            securityGuard: gp.securityGuard || 'Officer R. Mendoza (Main Gate Post 1)'
+          };
+        }
+        return gp;
+      });
+    } catch (e) {
+      return [...INITIAL_CANTEEN_GATE_PASSES];
+    }
   });
 
   // Canteen Void Logs (Card-based Barcode/QR/RFID audits)
@@ -405,15 +402,7 @@ export function AppProvider({ children }) {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // If old 6-stage schema, migrate to 5-stage journeys
-        const isOldSchema = parsed.some(j => 
-          j.milestones?.some(m => m.stageId === 'supplier_hub' || m.stageId === 'cold_transit' || m.stageId === 'pos_checkout' || m.stageId === 'employee_handover')
-        );
-        if (isOldSchema || parsed.length < INITIAL_PRODUCT_JOURNEYS.length) {
-          localStorage.setItem('nkb_product_journeys', JSON.stringify(INITIAL_PRODUCT_JOURNEYS));
-          return INITIAL_PRODUCT_JOURNEYS;
-        }
-        return parsed;
+        if (Array.isArray(parsed)) return parsed;
       } catch (e) {
         return INITIAL_PRODUCT_JOURNEYS;
       }
@@ -1658,18 +1647,53 @@ export function AppProvider({ children }) {
     showToast(`Batch approved ${requestIds.length} overtime request(s).`, 'success');
   };
 
+  // Live Update Handlers for Encoded Leave & Overtime Forms (Never remove encoded forms; update live in-place)
+  const updateLeaveRequest = (id, updatedFields = {}) => {
+    setLeaveRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        return {
+          ...req,
+          ...updatedFields,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return req;
+    }));
+    showToast('Leave form updated live.', 'success');
+    return { success: true };
+  };
+
+  const updateOvertimeRequest = (id, updatedFields = {}) => {
+    setOvertimeRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        const nextReason = updatedFields.reason !== undefined ? updatedFields.reason : (req.reason || req.task);
+        return {
+          ...req,
+          ...updatedFields,
+          reason: nextReason,
+          task: nextReason,
+          hours: updatedFields.hours !== undefined ? Number(updatedFields.hours) : req.hours,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return req;
+    }));
+    showToast('Overtime request form updated live.', 'success');
+    return { success: true };
+  };
+
   // ==========================================
   // 1. OFFSET TIMEKEEPER REQUEST WORKFLOW
   // ==========================================
   const fileOffsetRequest = (data) => {
+    const srcDate = data.sourceDate || data.earnedDate || new Date().toISOString().split('T')[0];
+    const tgtDate = data.targetOffsetDate || data.offsetDate || srcDate;
     const newReq = {
       id: `offset-${Date.now()}`,
       status: data.status || 'Pending',
       submittedAt: new Date().toISOString(),
-      requestType: data.requestType || 'Schedule Offset (Hours Earned vs Offset Date)', // or 'Timekeeper Log / Punch Correction'
-      earnedDate: data.earnedDate || new Date().toISOString().split('T')[0],
-      offsetDate: data.offsetDate || new Date().toISOString().split('T')[0],
-      hours: Number(data.hours) || 8,
+      requestType: data.requestType || 'Schedule Offset (Extra Hours to Offset Late/Undertime)',
+      hours: Number(data.hours) || 2,
       timeIn: data.timeIn || '08:00 AM',
       lunchOut: data.lunchOut || '12:00 PM',
       lunchIn: data.lunchIn || '01:00 PM',
@@ -1677,21 +1701,47 @@ export function AppProvider({ children }) {
       breakIn: data.breakIn || '03:15 PM',
       timeOut: data.timeOut || '05:00 PM',
       reason: (data.reason || '').trim(),
-      ...data
+      ...data,
+      sourceDate: srcDate,
+      earnedDate: srcDate,
+      targetOffsetDate: tgtDate,
+      offsetDate: tgtDate
     };
     setOffsetRequests(prev => [newReq, ...prev]);
     addInAppNotification({
       title: 'Offset Timekeeper Request Submitted',
-      message: `Your offset/timekeeper request for ${newReq.offsetDate} (${newReq.hours}h) was sent to HR Timekeeping.`,
+      message: `Your offset/timekeeper request for ${newReq.targetOffsetDate} (${newReq.hours}h) was sent to HR Timekeeping.`,
       type: 'info'
     });
     logSystemEvent({
       category: 'ATTENDANCE',
       action: 'FILE_OFFSET_TIMEKEEPER',
-      details: `Offset Timekeeper Request filed by ${newReq.staffName} (${newReq.requestType}, ${newReq.hours}h on ${newReq.offsetDate})`
+      details: `Offset Timekeeper Request filed by ${newReq.staffName} (${newReq.requestType}, ${newReq.hours}h on ${newReq.targetOffsetDate})`
     });
     showToast(`Offset Timekeeper request submitted to HR for approval.`);
     return newReq;
+  };
+
+  const updateOffsetRequest = (id, updatedFields = {}) => {
+    setOffsetRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        const srcDate = updatedFields.sourceDate || updatedFields.earnedDate || req.sourceDate || req.earnedDate;
+        const tgtDate = updatedFields.targetOffsetDate || updatedFields.offsetDate || req.targetOffsetDate || req.offsetDate;
+        return {
+          ...req,
+          ...updatedFields,
+          sourceDate: srcDate,
+          earnedDate: srcDate,
+          targetOffsetDate: tgtDate,
+          offsetDate: tgtDate,
+          hours: updatedFields.hours !== undefined ? Number(updatedFields.hours) : req.hours,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return req;
+    }));
+    showToast('Offset Timekeeper form updated live.', 'success');
+    return { success: true };
   };
 
   const approveOffsetRequest = (id, remarks = '') => {
@@ -1712,7 +1762,7 @@ export function AppProvider({ children }) {
     }));
 
     if (targetReq) {
-      const targetDate = targetReq.offsetDate || targetReq.earnedDate;
+      const targetDate = targetReq.targetOffsetDate || targetReq.offsetDate || targetReq.sourceDate || targetReq.earnedDate;
       setAttendanceLogs(prev => {
         const exists = prev.find(l => l.staffId === targetReq.staffId && l.date === targetDate);
         if (exists) {
@@ -1767,7 +1817,7 @@ export function AppProvider({ children }) {
       if (req.id === id) {
         addInAppNotification({
           title: 'Offset Timekeeper Request Disapproved',
-          message: `Your offset request on ${req.offsetDate} was disapproved: ${remarks || 'Not approved'}`,
+          message: `Your offset request on ${req.targetOffsetDate || req.offsetDate} was disapproved: ${remarks || 'Not approved'}`,
           type: 'warning'
         });
         return {
@@ -1788,34 +1838,65 @@ export function AppProvider({ children }) {
   // (Business transactions within business hours without clocking in)
   // ==========================================
   const fileOfficialBusinessRequest = (data) => {
+    const depTime = data.departureTime || data.startTime || '08:00 AM';
+    const retTime = data.returnTime || data.endTime || '05:00 PM';
+    const dest = (data.clientOrDestination || data.destination || '').trim();
     const newReq = {
       id: `ob-${Date.now()}`,
       status: data.status || 'Pending',
       submittedAt: new Date().toISOString(),
       date: data.date || new Date().toISOString().split('T')[0],
       endDate: data.endDate || data.date || new Date().toISOString().split('T')[0],
-      startTime: data.startTime || '08:00 AM',
-      endTime: data.endTime || '05:00 PM',
-      destination: (data.destination || '').trim(),
-      transactionType: data.transactionType || 'Client Meeting / Field Transaction',
+      transactionType: data.transactionType || 'Client Meeting / Delivery / Field Transaction',
       contactPerson: (data.contactPerson || '').trim(),
       purpose: (data.purpose || '').trim(),
       exemptFromClockIn: true,
-      ...data
+      noClockInRequired: true,
+      ...data,
+      departureTime: depTime,
+      startTime: depTime,
+      returnTime: retTime,
+      endTime: retTime,
+      clientOrDestination: dest,
+      destination: dest
     };
     setOfficialBusinessRequests(prev => [newReq, ...prev]);
     addInAppNotification({
       title: 'Official Business (OB) Request Submitted',
-      message: `Your OB request for ${newReq.date} (${newReq.destination}) was sent to HR. Once approved, physical kiosk clock-in is waived for those business hours.`,
+      message: `Your OB request for ${newReq.date} (${newReq.clientOrDestination}) was sent to HR. Once approved, physical kiosk clock-in is waived for those business hours.`,
       type: 'info'
     });
     logSystemEvent({
       category: 'ATTENDANCE',
       action: 'FILE_OFFICIAL_BUSINESS',
-      details: `Official Business (OB) filed by ${newReq.staffName} on ${newReq.date} (${newReq.startTime} - ${newReq.endTime}) at ${newReq.destination}`
+      details: `Official Business (OB) filed by ${newReq.staffName} on ${newReq.date} (${newReq.departureTime} - ${newReq.returnTime}) at ${newReq.clientOrDestination}`
     });
     showToast(`Official Business (OB) request submitted to HR.`);
     return newReq;
+  };
+
+  const updateOfficialBusinessRequest = (id, updatedFields = {}) => {
+    setOfficialBusinessRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        const depTime = updatedFields.departureTime || updatedFields.startTime || req.departureTime || req.startTime;
+        const retTime = updatedFields.returnTime || updatedFields.endTime || req.returnTime || req.endTime;
+        const dest = updatedFields.clientOrDestination || updatedFields.destination || req.clientOrDestination || req.destination;
+        return {
+          ...req,
+          ...updatedFields,
+          departureTime: depTime,
+          startTime: depTime,
+          returnTime: retTime,
+          endTime: retTime,
+          clientOrDestination: dest,
+          destination: dest,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return req;
+    }));
+    showToast('Official Business (OB) form updated live.', 'success');
+    return { success: true };
   };
 
   const approveOfficialBusinessRequest = (id, remarks = '') => {
@@ -1836,19 +1917,22 @@ export function AppProvider({ children }) {
     }));
 
     if (targetReq) {
+      const startStr = targetReq.departureTime || targetReq.startTime || '08:00 AM';
+      const endStr = targetReq.returnTime || targetReq.endTime || '05:00 PM';
+      const destStr = targetReq.clientOrDestination || targetReq.destination || 'Official Business';
       // Automatically credit attendance log on OB date without requiring physical clock-in
       setAttendanceLogs(prev => {
         const exists = prev.find(l => l.staffId === targetReq.staffId && l.date === targetReq.date);
         if (exists) {
           return prev.map(l => (l.id === exists.id ? {
             ...l,
-            timeIn: `${targetReq.startTime || '08:00 AM'} (OB)`,
+            timeIn: `${startStr} (OB)`,
             lunchOut: '12:00 PM',
             lunchIn: '01:00 PM',
-            timeOut: `${targetReq.endTime || '05:00 PM'} (OB)`,
+            timeOut: `${endStr} (OB)`,
             status: 'Official Business (OB)',
             isOfficialBusiness: true,
-            obDestination: targetReq.destination,
+            obDestination: destStr,
             obId: targetReq.id
           } : l));
         }
@@ -1857,17 +1941,17 @@ export function AppProvider({ children }) {
             id: `att-ob-${Date.now()}`,
             staffId: targetReq.staffId,
             date: targetReq.date,
-            timeIn: `${targetReq.startTime || '08:00 AM'} (OB)`,
+            timeIn: `${startStr} (OB)`,
             lunchOut: '12:00 PM',
             lunchIn: '01:00 PM',
             breakOut: '03:00 PM',
             breakIn: '03:15 PM',
-            timeOut: `${targetReq.endTime || '05:00 PM'} (OB)`,
+            timeOut: `${endStr} (OB)`,
             status: 'Official Business (OB)',
             otHours: 0,
             lateMinutes: 0,
             isOfficialBusiness: true,
-            obDestination: targetReq.destination,
+            obDestination: destStr,
             obId: targetReq.id
           },
           ...prev
@@ -1875,7 +1959,7 @@ export function AppProvider({ children }) {
       });
       addInAppNotification({
         title: 'Official Business (OB) Approved',
-        message: `Your OB request for ${targetReq.date} (${targetReq.destination}) has been approved. Attendance is credited without physical clock-in.`,
+        message: `Your OB request for ${targetReq.date} (${destStr}) has been approved. Attendance is credited without physical clock-in.`,
         type: 'success'
       });
       logSystemEvent({
@@ -1913,31 +1997,57 @@ export function AppProvider({ children }) {
   // 3. UNDERTIME REQUEST FORM WORKFLOW
   // ==========================================
   const fileUndertimeRequest = (data) => {
+    const schedOut = data.scheduledTimeOut || data.scheduledOut || '05:00 PM';
+    const reqOut = data.requestedTimeOut || data.departureTime || '03:00 PM';
     const newReq = {
       id: `ut-${Date.now()}`,
       status: data.status || 'Pending',
       submittedAt: new Date().toISOString(),
       date: data.date || new Date().toISOString().split('T')[0],
-      scheduledOut: data.scheduledOut || '05:00 PM',
-      departureTime: data.departureTime || '03:00 PM',
       undertimeHours: Number(data.undertimeHours) || 2,
       reasonCategory: data.reasonCategory || 'Personal / Family Emergency',
       reason: (data.reason || '').trim(),
-      ...data
+      ...data,
+      scheduledTimeOut: schedOut,
+      scheduledOut: schedOut,
+      requestedTimeOut: reqOut,
+      departureTime: reqOut
     };
     setUndertimeRequests(prev => [newReq, ...prev]);
     addInAppNotification({
       title: 'Undertime Request Submitted',
-      message: `Your undertime request on ${newReq.date} (Departure: ${newReq.departureTime}, ${newReq.undertimeHours}h undertime) was submitted to HR.`,
+      message: `Your undertime request on ${newReq.date} (Departure: ${newReq.requestedTimeOut}, ${newReq.undertimeHours}h undertime) was submitted to HR.`,
       type: 'info'
     });
     logSystemEvent({
       category: 'ATTENDANCE',
       action: 'FILE_UNDERTIME',
-      details: `Undertime filed by ${newReq.staffName} on ${newReq.date} (Leave at ${newReq.departureTime}, ${newReq.undertimeHours}h undertime)`
+      details: `Undertime filed by ${newReq.staffName} on ${newReq.date} (Leave at ${newReq.requestedTimeOut}, ${newReq.undertimeHours}h undertime)`
     });
     showToast(`Undertime request (${newReq.undertimeHours}h) submitted to HR.`);
     return newReq;
+  };
+
+  const updateUndertimeRequest = (id, updatedFields = {}) => {
+    setUndertimeRequests(prev => prev.map(req => {
+      if (req.id === id) {
+        const schedOut = updatedFields.scheduledTimeOut || updatedFields.scheduledOut || req.scheduledTimeOut || req.scheduledOut;
+        const reqOut = updatedFields.requestedTimeOut || updatedFields.departureTime || req.requestedTimeOut || req.departureTime;
+        return {
+          ...req,
+          ...updatedFields,
+          scheduledTimeOut: schedOut,
+          scheduledOut: schedOut,
+          requestedTimeOut: reqOut,
+          departureTime: reqOut,
+          undertimeHours: updatedFields.undertimeHours !== undefined ? Number(updatedFields.undertimeHours) : req.undertimeHours,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return req;
+    }));
+    showToast('Undertime form updated live.', 'success');
+    return { success: true };
   };
 
   const approveUndertimeRequest = (id, remarks = '') => {
@@ -1958,12 +2068,13 @@ export function AppProvider({ children }) {
     }));
 
     if (targetReq) {
+      const outTime = targetReq.requestedTimeOut || targetReq.departureTime || '03:00 PM';
       setAttendanceLogs(prev => {
         const exists = prev.find(l => l.staffId === targetReq.staffId && l.date === targetReq.date);
         if (exists) {
           return prev.map(l => (l.id === exists.id ? {
             ...l,
-            timeOut: targetReq.departureTime,
+            timeOut: outTime,
             undertimeHours: Number(targetReq.undertimeHours) || 0,
             status: `Undertime (${targetReq.undertimeHours}h)`,
             undertimeId: targetReq.id
@@ -1977,7 +2088,7 @@ export function AppProvider({ children }) {
             timeIn: '08:00 AM',
             lunchOut: '12:00 PM',
             lunchIn: '01:00 PM',
-            timeOut: targetReq.departureTime,
+            timeOut: outTime,
             undertimeHours: Number(targetReq.undertimeHours) || 0,
             status: `Undertime (${targetReq.undertimeHours}h)`,
             otHours: 0,
@@ -1989,7 +2100,7 @@ export function AppProvider({ children }) {
       });
       addInAppNotification({
         title: 'Undertime Request Approved',
-        message: `Your undertime request on ${targetReq.date} (Departure: ${targetReq.departureTime}) has been approved by HR.`,
+        message: `Your undertime request on ${targetReq.date} (Departure: ${outTime}) has been approved by HR.`,
         type: 'success'
       });
       logSystemEvent({
@@ -2027,7 +2138,7 @@ export function AppProvider({ children }) {
   // 4. IMPORT ANALYZED EXCEL CLOCK-IN ROWS
   // ==========================================
   const importAnalyzedAttendanceRows = (analyzedRows = []) => {
-    if (!Array.isArray(analyzedRows) || analyzedRows.length === 0) return { count: 0 };
+    if (!Array.isArray(analyzedRows) || analyzedRows.length === 0) return { success: false, importedCount: 0, count: 0 };
 
     setAttendanceLogs(prev => {
       const updated = [...prev];
@@ -2041,7 +2152,8 @@ export function AppProvider({ children }) {
           id: matchIdx >= 0 ? updated[matchIdx].id : `att-xl-${Date.now()}-${idx}`,
           staffId,
           employeeId: row.employeeId,
-          employeeName: row.employeeName,
+          employeeName: row.staffName || row.employeeName,
+          staffName: row.staffName || row.employeeName,
           department: row.department,
           date: row.date,
           timeIn: row.timeIn || '—',
@@ -2050,12 +2162,12 @@ export function AppProvider({ children }) {
           breakOut: row.breakOut || '—',
           breakIn: row.breakIn || '—',
           timeOut: row.timeOut || '—',
-          totalHours: row.totalHours ?? 0,
+          totalHours: row.totalHours ?? row.regularHours ?? 0,
           lateMinutes: row.lateMinutes ?? 0,
           lunchMinutes: row.lunchMinutes ?? 0,
           breakMinutes: row.breakMinutes ?? 0,
           undertimeHours: row.undertimeHours ?? 0,
-          otHours: row.otHours ?? 0,
+          otHours: row.otHours ?? row.overtimeHours ?? 0,
           status: row.status || 'On-time',
           agentRemarks: row.agentRemarks || 'Analyzed via Biometric Excel Agent'
         };
@@ -2075,7 +2187,7 @@ export function AppProvider({ children }) {
       details: `Imported ${analyzedRows.length} alphabetically sorted 6-punch attendance records via Timekeeping Excel Analyzer Agent`
     });
     showToast(`Successfully synced ${analyzedRows.length} analyzed 6-punch records to Attendance Logs!`, 'success');
-    return { count: analyzedRows.length };
+    return { success: true, importedCount: analyzedRows.length, count: analyzedRows.length };
   };
 
   // Staff Digital Document Management
@@ -2109,131 +2221,252 @@ export function AppProvider({ children }) {
     showToast('Document removed.');
   };
 
-  // Sync with localStorage
+  // Live Real-Time Sync Timestamp & Cross-Tab Broadcast Helper
+  const [lastLiveSyncAt, setLastLiveSyncAt] = useState(() => new Date().toISOString());
+
+  const persistAndBroadcastLive = (key, data) => {
+    try {
+      const serialized = JSON.stringify(data);
+      const current = localStorage.getItem(key);
+      if (current !== serialized) {
+        localStorage.setItem(key, serialized);
+        const nowIso = new Date().toISOString();
+        setLastLiveSyncAt(nowIso);
+        if (typeof window !== 'undefined' && window.BroadcastChannel) {
+          const bc = new BroadcastChannel('nkb_hr_live_system_sync');
+          bc.postMessage({ key, timestamp: nowIso });
+          bc.close();
+        }
+      }
+    } catch (e) {
+      console.warn('Live persistence error for key:', key, e);
+    }
+  };
+
+  // Real-time Cross-Tab & Window Live State Sync Listener
   useEffect(() => {
-    localStorage.setItem('nkb_hr_leave_requests', JSON.stringify(leaveRequests));
+    if (typeof window === 'undefined') return;
+
+    const applyExternalStorageSync = (key) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        setLastLiveSyncAt(new Date().toISOString());
+
+        switch (key) {
+          case 'nkb_hr_leave_requests':
+            if (Array.isArray(parsed)) setLeaveRequests(parsed);
+            break;
+          case 'nkb_hr_overtime_requests':
+            if (Array.isArray(parsed)) setOvertimeRequests(parsed);
+            break;
+          case 'nkb_hr_offset_requests':
+            if (Array.isArray(parsed)) setOffsetRequests(parsed);
+            break;
+          case 'nkb_hr_ob_requests':
+            if (Array.isArray(parsed)) setOfficialBusinessRequests(parsed);
+            break;
+          case 'nkb_hr_undertime_requests':
+            if (Array.isArray(parsed)) setUndertimeRequests(parsed);
+            break;
+          case 'nkb_hr_attendance':
+            if (Array.isArray(parsed)) setAttendanceLogs(parsed);
+            break;
+          case 'nkb_hr_staff':
+            if (Array.isArray(parsed)) setStaffList(parsed);
+            break;
+          case 'nkb_hr_cash_loans':
+            if (Array.isArray(parsed)) setCashLoans(parsed);
+            break;
+          case 'nkb_hr_cash_advances':
+            if (Array.isArray(parsed)) setCashAdvances(parsed);
+            break;
+          case 'nkb_hr_coop_balances':
+            if (parsed && typeof parsed === 'object') setCoopBalances(parsed);
+            break;
+          case 'nkb_hr_coop_ledger':
+            if (Array.isArray(parsed)) setCoopLedger(parsed);
+            break;
+          case 'nkb_hr_coop_withdrawals':
+            if (Array.isArray(parsed)) setCoopWithdrawals(parsed);
+            break;
+          case 'nkb_canteen_pos':
+            if (Array.isArray(parsed)) setPersonalPurchaseOrders(parsed);
+            break;
+          case 'nkb_canteen_gate_passes':
+            if (Array.isArray(parsed)) setCanteenGatePasses(parsed);
+            break;
+          case 'nkb_canteen_receipts':
+            if (Array.isArray(parsed)) setCanteenReceipts(parsed);
+            break;
+          case 'nkb_hr_payruns':
+            if (Array.isArray(parsed)) setPayRuns(parsed);
+            break;
+          case 'nkb_misconduct_reports':
+            if (Array.isArray(parsed)) setMisconductReports(parsed);
+            break;
+          case 'nkb_hr_resigned_records':
+            if (Array.isArray(parsed)) setResignedRecords(parsed);
+            break;
+          case 'nkb_notifications':
+            if (Array.isArray(parsed)) setInAppNotifications(parsed);
+            break;
+          default:
+            break;
+        }
+      } catch (err) {
+        console.warn('Live sync parse error:', err);
+      }
+    };
+
+    const handleStorageEvent = (e) => {
+      if (e.key) applyExternalStorageSync(e.key);
+    };
+
+    window.addEventListener('storage', handleStorageEvent);
+
+    let bc = null;
+    if (window.BroadcastChannel) {
+      bc = new BroadcastChannel('nkb_hr_live_system_sync');
+      bc.onmessage = (event) => {
+        if (event.data?.key) {
+          applyExternalStorageSync(event.data.key);
+        }
+      };
+    }
+
+    return () => {
+      window.removeEventListener('storage', handleStorageEvent);
+      if (bc) bc.close();
+    };
+  }, []);
+
+  // Sync with localStorage & Broadcast Live Updates
+  useEffect(() => {
+    persistAndBroadcastLive('nkb_hr_leave_requests', leaveRequests);
   }, [leaveRequests]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_overtime_requests', JSON.stringify(overtimeRequests));
+    persistAndBroadcastLive('nkb_hr_overtime_requests', overtimeRequests);
   }, [overtimeRequests]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_offset_requests', JSON.stringify(offsetRequests));
+    persistAndBroadcastLive('nkb_hr_offset_requests', offsetRequests);
   }, [offsetRequests]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_ob_requests', JSON.stringify(officialBusinessRequests));
+    persistAndBroadcastLive('nkb_hr_ob_requests', officialBusinessRequests);
   }, [officialBusinessRequests]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_undertime_requests', JSON.stringify(undertimeRequests));
+    persistAndBroadcastLive('nkb_hr_undertime_requests', undertimeRequests);
   }, [undertimeRequests]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_notifications', JSON.stringify(inAppNotifications));
+    persistAndBroadcastLive('nkb_notifications', inAppNotifications);
   }, [inAppNotifications]);
 
   // Sync with localStorage
   useEffect(() => {
-    localStorage.setItem('nkb_hr_staff', JSON.stringify(staffList));
+    persistAndBroadcastLive('nkb_hr_staff', staffList);
   }, [staffList]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_departments', JSON.stringify(departments));
+    persistAndBroadcastLive('nkb_hr_departments', departments);
   }, [departments]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_positions', JSON.stringify(positions));
+    persistAndBroadcastLive('nkb_hr_positions', positions);
   }, [positions]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_attendance', JSON.stringify(attendanceLogs));
+    persistAndBroadcastLive('nkb_hr_attendance', attendanceLogs);
   }, [attendanceLogs]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_coop_balances', JSON.stringify(coopBalances));
+    persistAndBroadcastLive('nkb_hr_coop_balances', coopBalances);
   }, [coopBalances]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_coop_ledger', JSON.stringify(coopLedger));
+    persistAndBroadcastLive('nkb_hr_coop_ledger', coopLedger);
   }, [coopLedger]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_coop_withdrawals', JSON.stringify(coopWithdrawals));
+    persistAndBroadcastLive('nkb_hr_coop_withdrawals', coopWithdrawals);
   }, [coopWithdrawals]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_cash_loans', JSON.stringify(cashLoans));
+    persistAndBroadcastLive('nkb_hr_cash_loans', cashLoans);
   }, [cashLoans]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_canteen_drawer', JSON.stringify(canteenDrawer));
+    persistAndBroadcastLive('nkb_hr_canteen_drawer', canteenDrawer);
   }, [canteenDrawer]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_cash_advances', JSON.stringify(cashAdvances));
+    persistAndBroadcastLive('nkb_hr_cash_advances', cashAdvances);
   }, [cashAdvances]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_canteen_deductions_ledger', JSON.stringify(canteenDeductionsLedger));
+    persistAndBroadcastLive('nkb_canteen_deductions_ledger', canteenDeductionsLedger);
   }, [canteenDeductionsLedger]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_canteen_ledger_balances', JSON.stringify(canteenLedgerBalances));
+    persistAndBroadcastLive('nkb_canteen_ledger_balances', canteenLedgerBalances);
   }, [canteenLedgerBalances]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_replenishment_requests', JSON.stringify(replenishmentRequests));
+    persistAndBroadcastLive('nkb_replenishment_requests', replenishmentRequests);
   }, [replenishmentRequests]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_coop_audit_trail', JSON.stringify(coopAuditTrail));
+    persistAndBroadcastLive('nkb_coop_audit_trail', coopAuditTrail);
   }, [coopAuditTrail]);
 
 
   useEffect(() => {
-    localStorage.setItem('nkb_hr_payruns', JSON.stringify(payRuns));
+    persistAndBroadcastLive('nkb_hr_payruns', payRuns);
   }, [payRuns]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_canteen_inventory', JSON.stringify(canteenInventory));
+    persistAndBroadcastLive('nkb_canteen_inventory', canteenInventory);
   }, [canteenInventory]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_canteen_categories', JSON.stringify(canteenCategories));
+    persistAndBroadcastLive('nkb_canteen_categories', canteenCategories);
   }, [canteenCategories]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_canteen_sales_invoices', JSON.stringify(canteenSalesInvoices));
+    persistAndBroadcastLive('nkb_canteen_sales_invoices', canteenSalesInvoices);
   }, [canteenSalesInvoices]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_mfg_products', JSON.stringify(manufacturingProducts));
+    persistAndBroadcastLive('nkb_mfg_products', manufacturingProducts);
   }, [manufacturingProducts]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_canteen_pos', JSON.stringify(personalPurchaseOrders));
+    persistAndBroadcastLive('nkb_canteen_pos', personalPurchaseOrders);
   }, [personalPurchaseOrders]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_canteen_receipts', JSON.stringify(canteenReceipts));
+    persistAndBroadcastLive('nkb_canteen_receipts', canteenReceipts);
   }, [canteenReceipts]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_canteen_gate_passes', JSON.stringify(canteenGatePasses));
+    persistAndBroadcastLive('nkb_canteen_gate_passes', canteenGatePasses);
   }, [canteenGatePasses]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_canteen_void_logs', JSON.stringify(canteenVoidLogs));
+    persistAndBroadcastLive('nkb_canteen_void_logs', canteenVoidLogs);
   }, [canteenVoidLogs]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_canteen_z_readings', JSON.stringify(canteenZReadings));
+    persistAndBroadcastLive('nkb_canteen_z_readings', canteenZReadings);
   }, [canteenZReadings]);
 
   useEffect(() => {
-    localStorage.setItem('nkb_product_journeys', JSON.stringify(productJourneys));
+    persistAndBroadcastLive('nkb_product_journeys', productJourneys);
   }, [productJourneys]);
 
   useEffect(() => {
@@ -5048,7 +5281,7 @@ export function AppProvider({ children }) {
     return { success: true };
   };
 
-  // 7. Full Database Backup & Restore
+  // 7. Full Database Backup & Restore (Includes ALL encoded forms & records)
   const exportFullSystemBackup = () => {
     const backupData = {
       version: 'NKB_MASTER_V1',
@@ -5063,6 +5296,13 @@ export function AppProvider({ children }) {
       canteenGatePasses,
       canteenVoidLogs,
       attendanceLogs,
+      leaveRequests,
+      overtimeRequests,
+      offsetRequests,
+      officialBusinessRequests,
+      undertimeRequests,
+      misconductReports,
+      resignedRecords,
       cashLoans,
       coopBalances,
       coopLedger,
@@ -5108,6 +5348,13 @@ export function AppProvider({ children }) {
       if (Array.isArray(backupJson.canteenGatePasses)) setCanteenGatePasses(backupJson.canteenGatePasses);
       if (Array.isArray(backupJson.canteenVoidLogs)) setCanteenVoidLogs(backupJson.canteenVoidLogs);
       if (Array.isArray(backupJson.attendanceLogs)) setAttendanceLogs(backupJson.attendanceLogs);
+      if (Array.isArray(backupJson.leaveRequests)) setLeaveRequests(backupJson.leaveRequests);
+      if (Array.isArray(backupJson.overtimeRequests)) setOvertimeRequests(backupJson.overtimeRequests);
+      if (Array.isArray(backupJson.offsetRequests)) setOffsetRequests(backupJson.offsetRequests);
+      if (Array.isArray(backupJson.officialBusinessRequests)) setOfficialBusinessRequests(backupJson.officialBusinessRequests);
+      if (Array.isArray(backupJson.undertimeRequests)) setUndertimeRequests(backupJson.undertimeRequests);
+      if (Array.isArray(backupJson.misconductReports)) setMisconductReports(backupJson.misconductReports);
+      if (Array.isArray(backupJson.resignedRecords)) setResignedRecords(backupJson.resignedRecords);
       if (Array.isArray(backupJson.cashLoans)) setCashLoans(backupJson.cashLoans);
       if (backupJson.coopBalances && typeof backupJson.coopBalances === 'object') setCoopBalances(backupJson.coopBalances);
       if (Array.isArray(backupJson.coopLedger)) setCoopLedger(backupJson.coopLedger);
@@ -5121,6 +5368,7 @@ export function AppProvider({ children }) {
       if (Array.isArray(backupJson.productJourneys)) setProductJourneys(backupJson.productJourneys);
       if (Array.isArray(backupJson.payRuns)) setPayRuns(backupJson.payRuns);
       if (Array.isArray(backupJson.manufacturingProducts)) setManufacturingProducts(backupJson.manufacturingProducts);
+      if (Array.isArray(backupJson.staffList)) setStaffList(backupJson.staffList);
       showToast('Enterprise Database restored successfully from backup!', 'success');
       return { success: true };
     } catch (err) {
@@ -5276,31 +5524,37 @@ export function AppProvider({ children }) {
         exportFullSystemBackup,
         importFullSystemBackup,
         resetTestTransactions,
-        // Leave, Overtime, Offset, Official Business & Undertime Workflows
+        // Leave, Overtime, Offset, Official Business & Undertime Workflows (with Live Updates)
         leaveRequests,
         fileLeaveRequest,
+        updateLeaveRequest,
         approveLeaveRequest,
         rejectLeaveRequest,
         overtimeRequests,
         fileOvertimeRequest,
+        updateOvertimeRequest,
         approveOvertimeRequest,
         rejectOvertimeRequest,
         batchApproveOvertimeRequests,
         offsetRequests,
         fileOffsetRequest,
+        updateOffsetRequest,
         approveOffsetRequest,
         rejectOffsetRequest,
         officialBusinessRequests,
         fileOfficialBusinessRequest,
+        updateOfficialBusinessRequest,
         approveOfficialBusinessRequest,
         rejectOfficialBusinessRequest,
         undertimeRequests,
         fileUndertimeRequest,
+        updateUndertimeRequest,
         approveUndertimeRequest,
         rejectUndertimeRequest,
         importAnalyzedAttendanceRows,
         uploadStaffDocument,
         deleteStaffDocument,
+        lastLiveSyncAt,
         // Team Leader & HR Staff Policy
         toggleTeamLeader,
         // Statutory Deductions Timing Schedule

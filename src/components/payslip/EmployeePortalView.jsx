@@ -75,14 +75,20 @@ export default function EmployeePortalView() {
     openDigitalId,
     leaveRequests = [],
     fileLeaveRequest,
+    updateLeaveRequest,
     overtimeRequests = [],
     fileOvertimeRequest,
+    updateOvertimeRequest,
     offsetRequests = [],
     fileOffsetRequest,
+    updateOffsetRequest,
     officialBusinessRequests = [],
     fileOfficialBusinessRequest,
+    updateOfficialBusinessRequest,
     undertimeRequests = [],
     fileUndertimeRequest,
+    updateUndertimeRequest,
+    lastLiveSyncAt,
     misconductReports = [],
     acknowledgeMisconductNotice,
     submitStaffExplanation
@@ -112,6 +118,7 @@ export default function EmployeePortalView() {
   const [showOffsetModal, setShowOffsetModal] = useState(false);
   const [showOBModal, setShowOBModal] = useState(false);
   const [showUndertimeModal, setShowUndertimeModal] = useState(false);
+  const [editingFormId, setEditingFormId] = useState(null);
 
   // Progressive Escape dismissal (Priority 40 - MODAL)
   useEscapeKey('ess-loan-modal', ESCAPE_PRIORITY.MODAL, showLoanModal, () => setShowLoanModal(false));
@@ -120,11 +127,11 @@ export default function EmployeePortalView() {
   useEscapeKey('ess-po-modal', ESCAPE_PRIORITY.MODAL, showPOModal, () => setShowPOModal(false));
   useEscapeKey('ess-gate-pass-modal', ESCAPE_PRIORITY.MODAL, Boolean(selectedGatePass), () => setSelectedGatePass(null));
   useEscapeKey('ess-payslip-modal', ESCAPE_PRIORITY.MODAL, Boolean(selectedPayslipData), () => setSelectedPayslipData(null));
-  useEscapeKey('ess-leave-modal', ESCAPE_PRIORITY.MODAL, showLeaveModal, () => setShowLeaveModal(false));
-  useEscapeKey('ess-ot-modal', ESCAPE_PRIORITY.MODAL, showOTModal, () => setShowOTModal(false));
-  useEscapeKey('ess-offset-modal', ESCAPE_PRIORITY.MODAL, showOffsetModal, () => setShowOffsetModal(false));
-  useEscapeKey('ess-ob-modal', ESCAPE_PRIORITY.MODAL, showOBModal, () => setShowOBModal(false));
-  useEscapeKey('ess-undertime-modal', ESCAPE_PRIORITY.MODAL, showUndertimeModal, () => setShowUndertimeModal(false));
+  useEscapeKey('ess-leave-modal', ESCAPE_PRIORITY.MODAL, showLeaveModal, () => { setShowLeaveModal(false); setEditingFormId(null); });
+  useEscapeKey('ess-ot-modal', ESCAPE_PRIORITY.MODAL, showOTModal, () => { setShowOTModal(false); setEditingFormId(null); });
+  useEscapeKey('ess-offset-modal', ESCAPE_PRIORITY.MODAL, showOffsetModal, () => { setShowOffsetModal(false); setEditingFormId(null); });
+  useEscapeKey('ess-ob-modal', ESCAPE_PRIORITY.MODAL, showOBModal, () => { setShowOBModal(false); setEditingFormId(null); });
+  useEscapeKey('ess-undertime-modal', ESCAPE_PRIORITY.MODAL, showUndertimeModal, () => { setShowUndertimeModal(false); setEditingFormId(null); });
 
   // Misconduct & HR Call-Out Notice Modal State
   const [activeNoticeReport, setActiveNoticeReport] = useState(null);
@@ -184,7 +191,7 @@ export default function EmployeePortalView() {
     reason: ''
   });
   const [activeRequestTab, setActiveRequestTab] = useState('all'); // 'all' | 'leaves' | 'offset' | 'ob' | 'undertime' | 'ot'
-  const [showIdPassCodes, setShowIdPassCodes] = useState(false);
+  const [showIdPassCodes, setShowIdPassCodes] = useState(true);
   
   // Personal PO Form State
   const [poCart, setPoCart] = useState([]);
@@ -898,7 +905,7 @@ export default function EmployeePortalView() {
         </div>
       )}
 
-      {/* Leave, Timekeeping & Official Business Self-Service Request Center (Minimal & Responsive) */}
+      {/* Leave, Timekeeping & Official Business Self-Service Request Center (All Forms Preserved & Updated Live) */}
       <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 space-y-4 shadow-2xs">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="space-y-0.5">
@@ -913,17 +920,22 @@ export default function EmployeePortalView() {
               <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-mono font-bold text-slate-700">
                 VL: {currentStaff?.vacationLeaveRemaining ?? 5}/{currentStaff?.vacationLeaveTotal ?? 5}d
               </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live Updated {lastLiveSyncAt ? `· ${new Date(lastLiveSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}
+              </span>
             </div>
             <p className="text-[11px] text-slate-500">
-              File leaves (with Medical Certificate), offset timekeeper requests, official business (no clock-in), undertime, and overtime
+              All encoded forms are permanently preserved and synchronized live across HR Timekeeping &amp; Payroll
             </p>
           </div>
 
-          {/* Action Buttons — fluid wrap for any display */}
+          {/* All 5 Form Encoding Buttons — Always Accessible */}
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={() => {
+                setEditingFormId(null);
                 setLeaveForm({
                   type: 'Sick Leave',
                   startDate: new Date().toISOString().split('T')[0],
@@ -943,6 +955,7 @@ export default function EmployeePortalView() {
             <button
               type="button"
               onClick={() => {
+                setEditingFormId(null);
                 setOffsetForm({
                   requestType: 'Schedule Offset (Extra Hours to Offset Late/Undertime)',
                   sourceDate: new Date().toISOString().split('T')[0],
@@ -967,6 +980,7 @@ export default function EmployeePortalView() {
             <button
               type="button"
               onClick={() => {
+                setEditingFormId(null);
                 setObForm({
                   date: new Date().toISOString().split('T')[0],
                   departureTime: '08:00 AM',
@@ -987,6 +1001,7 @@ export default function EmployeePortalView() {
             <button
               type="button"
               onClick={() => {
+                setEditingFormId(null);
                 setUndertimeForm({
                   date: new Date().toISOString().split('T')[0],
                   scheduledTimeOut: '05:00 PM',
@@ -1000,35 +1015,34 @@ export default function EmployeePortalView() {
               className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
             >
               <TimerOff className="h-3.5 w-3.5 text-rose-600" />
-              <span>Undertime</span>
+              <span>Undertime Form</span>
             </button>
 
-            {isTeamLeaderOrAdmin && (
-              <button
-                type="button"
-                onClick={() => {
-                  setOtForm({
-                    staffId: currentStaff?.id || '',
-                    date: new Date().toISOString().split('T')[0],
-                    hours: 2,
-                    reasonCategory: 'Urgent Client Delivery / Rush Order',
-                    reason: ''
-                  });
-                  setShowOTModal(true);
-                }}
-                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
-              >
-                <Crown className="h-3.5 w-3.5" />
-                <span>Team OT</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                setEditingFormId(null);
+                setOtForm({
+                  staffId: currentStaff?.id || '',
+                  date: new Date().toISOString().split('T')[0],
+                  hours: 2,
+                  reasonCategory: 'Urgent Client Delivery / Rush Order',
+                  reason: ''
+                });
+                setShowOTModal(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
+            >
+              <Clock className="h-3.5 w-3.5" />
+              <span>Overtime Form</span>
+            </button>
           </div>
         </div>
 
         {/* Minimal Segmented Filter Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
           {[
-            { id: 'all', label: 'All Overview' },
+            { id: 'all', label: `All Encoded Forms (${myLeaves.length + myOffsetRequests.length + myOBRequests.length + myUndertimeRequests.length + myOvertime.length})` },
             { id: 'leaves', label: `Leaves (${myLeaves.length})` },
             { id: 'offset', label: `Offset (${myOffsetRequests.length})` },
             { id: 'ob', label: `Official Business (${myOBRequests.length})` },
@@ -1050,7 +1064,7 @@ export default function EmployeePortalView() {
           ))}
         </div>
 
-        {/* Responsive Cards Grid */}
+        {/* Responsive Cards Grid — All Encoded Forms Visible & Editable Live */}
         <div className={`grid grid-cols-1 ${
           activeRequestTab === 'all' ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-1'
         } gap-3.5`}>
@@ -1069,11 +1083,11 @@ export default function EmployeePortalView() {
               {myLeaves.length === 0 ? (
                 <p className="text-xs text-slate-400 py-4 text-center">No leave applications filed.</p>
               ) : (
-                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                <div className="space-y-2">
                   {myLeaves.map(leave => (
-                    <div key={leave.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1">
+                    <div key={leave.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1.5">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold text-slate-900 flex items-center gap-1.5 truncate">
+                        <span className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
                           {leave.type}
                           {leave.medicalCertificate && (
                             <button
@@ -1086,21 +1100,47 @@ export default function EmployeePortalView() {
                             </button>
                           )}
                         </span>
-                        <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
-                          leave.status === 'Approved'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : leave.status === 'Rejected'
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {leave.status}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingFormId(leave.id);
+                              setLeaveForm({
+                                type: leave.type || 'Sick Leave',
+                                startDate: leave.startDate || new Date().toISOString().split('T')[0],
+                                endDate: leave.endDate || leave.startDate || new Date().toISOString().split('T')[0],
+                                days: leave.days || 1,
+                                reason: leave.reason || '',
+                                medicalCertificate: leave.medicalCertificate || null
+                              });
+                              setShowLeaveModal(true);
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[9px] font-bold cursor-pointer transition"
+                            title="Update this encoded leave form live"
+                          >
+                            Edit Live
+                          </button>
+                          <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            leave.status === 'Approved'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : leave.status === 'Rejected'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {leave.status}
+                          </span>
+                        </div>
                       </div>
                       <div className="text-[11px] text-slate-600 font-mono">
                         {leave.startDate} {leave.endDate && leave.endDate !== leave.startDate ? `~ ${leave.endDate}` : ''} · {leave.days}d
                       </div>
                       {leave.reason && (
-                        <p className="text-[10px] text-slate-500 truncate">{leave.reason}</p>
+                        <p className="text-[11px] text-slate-600">{leave.reason}</p>
+                      )}
+                      {leave.remarks && (
+                        <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                          HR Note: {leave.remarks} {leave.reviewedBy ? `(${leave.reviewedBy})` : ''}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1123,26 +1163,60 @@ export default function EmployeePortalView() {
               {myOffsetRequests.length === 0 ? (
                 <p className="text-xs text-slate-400 py-4 text-center">No offset timekeeper requests.</p>
               ) : (
-                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                <div className="space-y-2">
                   {myOffsetRequests.map(req => (
-                    <div key={req.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1">
+                    <div key={req.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1.5">
                       <div className="flex items-center justify-between gap-1">
                         <span className="font-bold text-slate-900 truncate">{req.requestType}</span>
-                        <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
-                          req.status === 'Approved'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : req.status === 'Rejected'
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {req.status}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingFormId(req.id);
+                              setOffsetForm({
+                                requestType: req.requestType || 'Schedule Offset (Extra Hours to Offset Late/Undertime)',
+                                sourceDate: req.sourceDate || req.earnedDate || new Date().toISOString().split('T')[0],
+                                targetOffsetDate: req.targetOffsetDate || req.offsetDate || new Date().toISOString().split('T')[0],
+                                hours: req.hours || 2,
+                                timeIn: req.timeIn || '08:00 AM',
+                                lunchOut: req.lunchOut || '12:00 PM',
+                                lunchIn: req.lunchIn || '01:00 PM',
+                                breakOut: req.breakOut || '03:00 PM',
+                                breakIn: req.breakIn || '03:15 PM',
+                                timeOut: req.timeOut || '05:00 PM',
+                                reason: req.reason || ''
+                              });
+                              setShowOffsetModal(true);
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[9px] font-bold cursor-pointer transition"
+                            title="Update this encoded offset form live"
+                          >
+                            Edit Live
+                          </button>
+                          <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            req.status === 'Approved'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : req.status === 'Rejected'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {req.status}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-[10px] text-slate-600 font-mono">
-                        {req.sourceDate} {req.targetOffsetDate && req.targetOffsetDate !== req.sourceDate ? `→ ${req.targetOffsetDate}` : ''} · {req.hours}h
+                      <div className="text-[11px] text-slate-600 font-mono">
+                        {req.sourceDate || req.earnedDate} {(req.targetOffsetDate || req.offsetDate) && (req.targetOffsetDate || req.offsetDate) !== (req.sourceDate || req.earnedDate) ? `→ ${req.targetOffsetDate || req.offsetDate}` : ''} · {req.hours}h
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-mono bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                        In {req.timeIn} | LO {req.lunchOut} | LI {req.lunchIn} | BO {req.breakOut} | BI {req.breakIn} | Out {req.timeOut}
                       </div>
                       {req.reason && (
-                        <p className="text-[10px] text-slate-500 truncate">{req.reason}</p>
+                        <p className="text-[11px] text-slate-600">{req.reason}</p>
+                      )}
+                      {req.remarks && (
+                        <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                          HR Note: {req.remarks}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1165,26 +1239,54 @@ export default function EmployeePortalView() {
               {myOBRequests.length === 0 ? (
                 <p className="text-xs text-slate-400 py-4 text-center">No official business filings.</p>
               ) : (
-                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                <div className="space-y-2">
                   {myOBRequests.map(ob => (
-                    <div key={ob.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1">
+                    <div key={ob.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1.5">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="font-bold text-slate-900 truncate">{ob.clientOrDestination}</span>
-                        <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
-                          ob.status === 'Approved'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : ob.status === 'Rejected'
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {ob.status}
-                        </span>
+                        <span className="font-bold text-slate-900 truncate">{ob.clientOrDestination || ob.destination}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingFormId(ob.id);
+                              setObForm({
+                                date: ob.date || new Date().toISOString().split('T')[0],
+                                departureTime: ob.departureTime || ob.startTime || '08:00 AM',
+                                returnTime: ob.returnTime || ob.endTime || '05:00 PM',
+                                transactionType: ob.transactionType || 'Client Meeting / Delivery / Field Transaction',
+                                clientOrDestination: ob.clientOrDestination || ob.destination || '',
+                                purpose: ob.purpose || '',
+                                noClockInRequired: true
+                              });
+                              setShowOBModal(true);
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[9px] font-bold cursor-pointer transition"
+                            title="Update this encoded Official Business form live"
+                          >
+                            Edit Live
+                          </button>
+                          <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            ob.status === 'Approved'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : ob.status === 'Rejected'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {ob.status}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-[10px] text-slate-600 font-mono">
-                        {ob.date} · {ob.departureTime} – {ob.returnTime}
+                      <div className="text-[10px] text-sky-700 font-semibold">{ob.transactionType}</div>
+                      <div className="text-[11px] text-slate-600 font-mono">
+                        {ob.date} · {ob.departureTime || ob.startTime} – {ob.returnTime || ob.endTime}
                       </div>
                       {ob.purpose && (
-                        <p className="text-[10px] text-slate-500 truncate">{ob.purpose}</p>
+                        <p className="text-[11px] text-slate-600">{ob.purpose}</p>
+                      )}
+                      {ob.remarks && (
+                        <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                          HR Note: {ob.remarks}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1207,26 +1309,55 @@ export default function EmployeePortalView() {
               {myUndertimeRequests.length === 0 ? (
                 <p className="text-xs text-slate-400 py-4 text-center">No undertime requests filed.</p>
               ) : (
-                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                <div className="space-y-2">
                   {myUndertimeRequests.map(ut => (
-                    <div key={ut.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1">
+                    <div key={ut.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1.5">
                       <div className="flex items-center justify-between gap-1">
                         <span className="font-bold text-slate-900">{ut.undertimeHours}h Undertime</span>
-                        <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${
-                          ut.status === 'Approved'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : ut.status === 'Rejected'
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {ut.status}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingFormId(ut.id);
+                              setUndertimeForm({
+                                date: ut.date || new Date().toISOString().split('T')[0],
+                                scheduledTimeOut: ut.scheduledTimeOut || ut.scheduledOut || '05:00 PM',
+                                requestedTimeOut: ut.requestedTimeOut || ut.departureTime || '03:00 PM',
+                                undertimeHours: ut.undertimeHours || 2,
+                                reasonCategory: ut.reasonCategory || 'Medical / Clinic Appointment',
+                                reason: ut.reason || ''
+                              });
+                              setShowUndertimeModal(true);
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[9px] font-bold cursor-pointer transition"
+                            title="Update this encoded Undertime form live"
+                          >
+                            Edit Live
+                          </button>
+                          <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            ut.status === 'Approved'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : ut.status === 'Rejected'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {ut.status}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-[10px] text-slate-600 font-mono">
-                        {ut.date} · Out {ut.requestedTimeOut}
+                      <div className="text-[11px] text-slate-600 font-mono">
+                        {ut.date} · Out {ut.requestedTimeOut || ut.departureTime} (Sched {ut.scheduledTimeOut || ut.scheduledOut})
                       </div>
+                      {ut.reasonCategory && (
+                        <div className="text-[10px] text-rose-700 font-semibold">{ut.reasonCategory}</div>
+                      )}
                       {ut.reason && (
-                        <p className="text-[10px] text-slate-500 truncate">{ut.reason}</p>
+                        <p className="text-[11px] text-slate-600">{ut.reason}</p>
+                      )}
+                      {ut.remarks && (
+                        <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                          HR Note: {ut.remarks}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1243,30 +1374,58 @@ export default function EmployeePortalView() {
                   <Clock className="h-3.5 w-3.5 text-amber-600" />
                   Overtime Requests ({myOvertime.length})
                 </span>
-                <span className="text-[10px] text-slate-400">TL Endorsed</span>
+                <span className="text-[10px] text-slate-400">HR Cleared</span>
               </div>
 
               {myOvertime.length === 0 ? (
                 <p className="text-xs text-slate-400 py-4 text-center">No overtime requests filed.</p>
               ) : (
-                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                <div className="space-y-2">
                   {myOvertime.map(ot => (
-                    <div key={ot.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1">
+                    <div key={ot.id} className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-slate-900">{ot.hours}h OT (@ +30%)</span>
-                        <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                          ot.status === 'Approved'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : ot.status === 'Rejected'
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {ot.status}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingFormId(ot.id);
+                              setOtForm({
+                                staffId: ot.staffId || currentStaff?.id || '',
+                                date: ot.date || new Date().toISOString().split('T')[0],
+                                hours: ot.hours || 2,
+                                reasonCategory: ot.reasonCategory || 'Urgent Client Delivery / Rush Order',
+                                reason: ot.reason || ot.task || ''
+                              });
+                              setShowOTModal(true);
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[9px] font-bold cursor-pointer transition"
+                            title="Update this encoded Overtime form live"
+                          >
+                            Edit Live
+                          </button>
+                          <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            ot.status === 'Approved'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : ot.status === 'Rejected'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {ot.status}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-[10px] text-slate-600 font-mono">{ot.date}</div>
+                      <div className="text-[11px] text-slate-600 font-mono">{ot.date}</div>
+                      {ot.reasonCategory && (
+                        <div className="text-[10px] text-amber-700 font-semibold">{ot.reasonCategory}</div>
+                      )}
                       {(ot.reason || ot.task) && (
-                        <p className="text-[10px] text-slate-500 truncate">{ot.reason || ot.task}</p>
+                        <p className="text-[11px] text-slate-600">{ot.reason || ot.task}</p>
+                      )}
+                      {ot.remarks && (
+                        <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                          HR Note: {ot.remarks}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1378,23 +1537,23 @@ export default function EmployeePortalView() {
 
       {/* Modals */}
 
-      {/* Modal: File Overtime Request */}
+      {/* Modal: File or Live Update Overtime Request */}
       {showOTModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Crown className="h-4 w-4 text-amber-600" />
-                  Request Overtime Clearance to HR
+                  <Clock className="h-4 w-4 text-amber-600" />
+                  {editingFormId ? 'Update Overtime Form (Live Sync)' : 'Request Overtime Clearance to HR'}
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Endorsed by Team Leader: <strong className="text-slate-800">{formatStaffName(currentStaff)}</strong>
+                  Filed by: <strong className="text-slate-800">{formatStaffName(currentStaff)}</strong>
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowOTModal(false)}
+                onClick={() => { setShowOTModal(false); setEditingFormId(null); }}
                 className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
               >
                 ✕
@@ -1437,6 +1596,22 @@ export default function EmployeePortalView() {
                 if (!otForm.date) return;
                 const targetStaff = staffList.find(s => s.id === (otForm.staffId || currentStaff?.id)) || currentStaff;
                 const isRetro = otForm.date < new Date().toISOString().split('T')[0];
+                if (editingFormId) {
+                  updateOvertimeRequest(editingFormId, {
+                    staffId: targetStaff.id,
+                    staffName: formatStaffName(targetStaff),
+                    employeeId: targetStaff.employeeId,
+                    date: otForm.date,
+                    hours: Number(otForm.hours) || 2,
+                    reasonCategory: otForm.reasonCategory,
+                    reason: otForm.reason,
+                    task: otForm.reason,
+                    isRetroactive: isRetro
+                  });
+                  setShowOTModal(false);
+                  setEditingFormId(null);
+                  return;
+                }
                 const res = fileOvertimeRequest({
                   staffId: targetStaff.id,
                   staffName: formatStaffName(targetStaff),
@@ -1447,20 +1622,21 @@ export default function EmployeePortalView() {
                   reason: otForm.reason,
                   task: otForm.reason,
                   shift: 'Day Shift Extension (No Night Shift)',
-                  requestedByTeamLeader: true,
+                  requestedByTeamLeader: isTeamLeaderOrAdmin,
                   teamLeaderStaffId: currentStaff?.id,
                   teamLeaderName: formatStaffName(currentStaff),
                   isRetroactive: isRetro
                 });
                 if (res) {
                   setShowOTModal(false);
+                  setEditingFormId(null);
                 }
               }}
               className="space-y-3 text-xs"
             >
               <div>
                 <label className="text-slate-700 font-bold block mb-1">
-                  Team Member (Employee for Overtime)
+                  Employee for Overtime
                 </label>
                 <select
                   value={otForm.staffId || currentStaff?.id}
@@ -1541,7 +1717,7 @@ export default function EmployeePortalView() {
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setShowOTModal(false)}
+                  onClick={() => { setShowOTModal(false); setEditingFormId(null); }}
                   className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
                 >
                   Cancel
@@ -1551,7 +1727,7 @@ export default function EmployeePortalView() {
                   className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm flex items-center gap-1.5"
                 >
                   <Clock className="h-3.5 w-3.5 text-white" />
-                  Submit Overtime Request to HR
+                  {editingFormId ? 'Save Live Overtime Update' : 'Submit Overtime Request to HR'}
                 </button>
               </div>
             </form>
@@ -2151,18 +2327,21 @@ export default function EmployeePortalView() {
         />
       )}
 
-      {/* Modal: File Leave Application (with Medical Certificate Attachment) */}
+      {/* Modal: File or Live-Update Leave Application (with Medical Certificate Attachment) */}
       {showLeaveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto">
           <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 my-6">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-slate-600" />
-                File Leave Application
+                {editingFormId ? 'Update Encoded Leave Application (Live)' : 'File Leave Application'}
               </h3>
               <button
                 type="button"
-                onClick={() => setShowLeaveModal(false)}
+                onClick={() => {
+                  setEditingFormId(null);
+                  setShowLeaveModal(false);
+                }}
                 className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
               >
                 ✕
@@ -2235,7 +2414,15 @@ export default function EmployeePortalView() {
                     type="date"
                     required
                     value={leaveForm.startDate}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, startDate: e.target.value })}
+                    onChange={(e) => {
+                      const nextStart = e.target.value;
+                      let nextDays = leaveForm.days;
+                      if (nextStart && leaveForm.endDate) {
+                        const diff = Math.round((new Date(leaveForm.endDate) - new Date(nextStart)) / (1000 * 60 * 60 * 24)) + 1;
+                        if (diff >= 1) nextDays = diff;
+                      }
+                      setLeaveForm({ ...leaveForm, startDate: nextStart, days: nextDays });
+                    }}
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
                   />
                 </div>
@@ -2245,7 +2432,15 @@ export default function EmployeePortalView() {
                     type="date"
                     required
                     value={leaveForm.endDate}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
+                    onChange={(e) => {
+                      const nextEnd = e.target.value;
+                      let nextDays = leaveForm.days;
+                      if (leaveForm.startDate && nextEnd) {
+                        const diff = Math.round((new Date(nextEnd) - new Date(leaveForm.startDate)) / (1000 * 60 * 60 * 24)) + 1;
+                        if (diff >= 1) nextDays = diff;
+                      }
+                      setLeaveForm({ ...leaveForm, endDate: nextEnd, days: nextDays });
+                    }}
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 text-xs"
                   />
                 </div>
@@ -2343,7 +2538,10 @@ export default function EmployeePortalView() {
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
               <button
                 type="button"
-                onClick={() => setShowLeaveModal(false)}
+                onClick={() => {
+                  setEditingFormId(null);
+                  setShowLeaveModal(false);
+                }}
                 className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
               >
                 Cancel
@@ -2355,22 +2553,34 @@ export default function EmployeePortalView() {
                     alert('Please enter a reason for the leave application.');
                     return;
                   }
-                  fileLeaveRequest({
-                    staffId: currentStaff.id,
-                    staffName: formatStaffName(currentStaff),
-                    employeeId: currentStaff.employeeId,
-                    type: leaveForm.type,
-                    startDate: leaveForm.startDate,
-                    endDate: leaveForm.endDate,
-                    days: Number(leaveForm.days) || 1,
-                    reason: leaveForm.reason,
-                    medicalCertificate: leaveForm.medicalCertificate || null
-                  });
+                  if (editingFormId) {
+                    updateLeaveRequest(editingFormId, {
+                      type: leaveForm.type,
+                      startDate: leaveForm.startDate,
+                      endDate: leaveForm.endDate,
+                      days: Number(leaveForm.days) || 1,
+                      reason: leaveForm.reason,
+                      medicalCertificate: leaveForm.medicalCertificate || null
+                    });
+                  } else {
+                    fileLeaveRequest({
+                      staffId: currentStaff.id,
+                      staffName: formatStaffName(currentStaff),
+                      employeeId: currentStaff.employeeId,
+                      type: leaveForm.type,
+                      startDate: leaveForm.startDate,
+                      endDate: leaveForm.endDate,
+                      days: Number(leaveForm.days) || 1,
+                      reason: leaveForm.reason,
+                      medicalCertificate: leaveForm.medicalCertificate || null
+                    });
+                  }
+                  setEditingFormId(null);
                   setShowLeaveModal(false);
                 }}
                 className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer shadow-sm"
               >
-                Submit Application to HR
+                {editingFormId ? 'Save Live Form Update' : 'Submit Application to HR'}
               </button>
             </div>
           </div>
@@ -2385,7 +2595,7 @@ export default function EmployeePortalView() {
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <RefreshCw className="h-4 w-4 text-indigo-600" />
-                  Offset Timekeeper Request Form
+                  {editingFormId ? 'Update Offset Timekeeper Form (Live)' : 'Offset Timekeeper Request Form'}
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   Request schedule hour offsetting or 6-punch timekeeper log adjustment
@@ -2393,7 +2603,10 @@ export default function EmployeePortalView() {
               </div>
               <button
                 type="button"
-                onClick={() => setShowOffsetModal(false)}
+                onClick={() => {
+                  setEditingFormId(null);
+                  setShowOffsetModal(false);
+                }}
                 className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
               >
                 ✕
@@ -2408,13 +2621,21 @@ export default function EmployeePortalView() {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!offsetForm.reason.trim()) return;
-                fileOffsetRequest({
-                  staffId: currentStaff?.id,
-                  staffName: formatStaffName(currentStaff),
-                  employeeId: currentStaff?.employeeId,
-                  ...offsetForm,
-                  hours: Number(offsetForm.hours) || 1
-                });
+                if (editingFormId) {
+                  updateOffsetRequest(editingFormId, {
+                    ...offsetForm,
+                    hours: Number(offsetForm.hours) || 1
+                  });
+                } else {
+                  fileOffsetRequest({
+                    staffId: currentStaff?.id,
+                    staffName: formatStaffName(currentStaff),
+                    employeeId: currentStaff?.employeeId,
+                    ...offsetForm,
+                    hours: Number(offsetForm.hours) || 1
+                  });
+                }
+                setEditingFormId(null);
                 setShowOffsetModal(false);
               }}
               className="space-y-3 text-xs"
@@ -2552,7 +2773,10 @@ export default function EmployeePortalView() {
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setShowOffsetModal(false)}
+                  onClick={() => {
+                    setEditingFormId(null);
+                    setShowOffsetModal(false);
+                  }}
                   className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
                 >
                   Cancel
@@ -2561,7 +2785,7 @@ export default function EmployeePortalView() {
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer shadow-sm"
                 >
-                  Submit Offset Request
+                  {editingFormId ? 'Save Live Offset Update' : 'Submit Offset Request'}
                 </button>
               </div>
             </form>
@@ -2577,7 +2801,7 @@ export default function EmployeePortalView() {
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Briefcase className="h-4 w-4 text-sky-600" />
-                  Official Business (OB) Request Form
+                  {editingFormId ? 'Update Official Business Form (Live)' : 'Official Business (OB) Request Form'}
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   For external business transactions within business hours without physical kiosk clock-in
@@ -2585,7 +2809,10 @@ export default function EmployeePortalView() {
               </div>
               <button
                 type="button"
-                onClick={() => setShowOBModal(false)}
+                onClick={() => {
+                  setEditingFormId(null);
+                  setShowOBModal(false);
+                }}
                 className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
               >
                 ✕
@@ -2600,13 +2827,21 @@ export default function EmployeePortalView() {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!obForm.clientOrDestination.trim() || !obForm.purpose.trim()) return;
-                fileOfficialBusinessRequest({
-                  staffId: currentStaff?.id,
-                  staffName: formatStaffName(currentStaff),
-                  employeeId: currentStaff?.employeeId,
-                  ...obForm,
-                  noClockInRequired: true
-                });
+                if (editingFormId) {
+                  updateOfficialBusinessRequest(editingFormId, {
+                    ...obForm,
+                    noClockInRequired: true
+                  });
+                } else {
+                  fileOfficialBusinessRequest({
+                    staffId: currentStaff?.id,
+                    staffName: formatStaffName(currentStaff),
+                    employeeId: currentStaff?.employeeId,
+                    ...obForm,
+                    noClockInRequired: true
+                  });
+                }
+                setEditingFormId(null);
                 setShowOBModal(false);
               }}
               className="space-y-3 text-xs"
@@ -2688,7 +2923,10 @@ export default function EmployeePortalView() {
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setShowOBModal(false)}
+                  onClick={() => {
+                    setEditingFormId(null);
+                    setShowOBModal(false);
+                  }}
                   className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
                 >
                   Cancel
@@ -2697,7 +2935,7 @@ export default function EmployeePortalView() {
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold cursor-pointer shadow-sm"
                 >
-                  Submit Official Business (OB)
+                  {editingFormId ? 'Save Live OB Update' : 'Submit Official Business (OB)'}
                 </button>
               </div>
             </form>
@@ -2713,7 +2951,7 @@ export default function EmployeePortalView() {
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <TimerOff className="h-4 w-4 text-rose-600" />
-                  Undertime Request Form
+                  {editingFormId ? 'Update Undertime Request Form (Live)' : 'Undertime Request Form'}
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   Request authorization for early shift departure before scheduled Time-Out
@@ -2721,7 +2959,10 @@ export default function EmployeePortalView() {
               </div>
               <button
                 type="button"
-                onClick={() => setShowUndertimeModal(false)}
+                onClick={() => {
+                  setEditingFormId(null);
+                  setShowUndertimeModal(false);
+                }}
                 className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
               >
                 ✕
@@ -2736,13 +2977,21 @@ export default function EmployeePortalView() {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!undertimeForm.reason.trim()) return;
-                fileUndertimeRequest({
-                  staffId: currentStaff?.id,
-                  staffName: formatStaffName(currentStaff),
-                  employeeId: currentStaff?.employeeId,
-                  ...undertimeForm,
-                  undertimeHours: Number(undertimeForm.undertimeHours) || 1
-                });
+                if (editingFormId) {
+                  updateUndertimeRequest(editingFormId, {
+                    ...undertimeForm,
+                    undertimeHours: Number(undertimeForm.undertimeHours) || 1
+                  });
+                } else {
+                  fileUndertimeRequest({
+                    staffId: currentStaff?.id,
+                    staffName: formatStaffName(currentStaff),
+                    employeeId: currentStaff?.employeeId,
+                    ...undertimeForm,
+                    undertimeHours: Number(undertimeForm.undertimeHours) || 1
+                  });
+                }
+                setEditingFormId(null);
                 setShowUndertimeModal(false);
               }}
               className="space-y-3 text-xs"
@@ -2827,7 +3076,10 @@ export default function EmployeePortalView() {
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setShowUndertimeModal(false)}
+                  onClick={() => {
+                    setEditingFormId(null);
+                    setShowUndertimeModal(false);
+                  }}
                   className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold cursor-pointer"
                 >
                   Cancel
@@ -2836,7 +3088,7 @@ export default function EmployeePortalView() {
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer shadow-sm"
                 >
-                  Submit Undertime Request
+                  {editingFormId ? 'Save Live Undertime Update' : 'Submit Undertime Request'}
                 </button>
               </div>
             </form>
