@@ -26,6 +26,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
 import { formatStaffName, getStaffUsername, scanStaffMilestones } from '../../utils/staffUtils';
+import { getStaffEmploymentLabel, isProjectBasedStaff, getStaffCoopLoanMultiplier } from '../../utils/coopBusinessRules';
 import { canCreateMisconductReport } from '../../utils/rolePermissions';
 import StaffBadgeModal from './StaffBadgeModal';
 import StaffFormModal from './StaffFormModal';
@@ -578,12 +579,16 @@ export default function StaffDirectory() {
                         {/* ID & Barcode */}
                         <td className="py-3 px-4">
                           <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-mono font-bold text-slate-900 text-[11px]">
                                 {staff.employeeId}
                               </span>
-                              <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-                                {staff.employmentType === 'project_based' || staff.employeeId?.startsWith('PRJ') ? 'PRJ' : staff.employeeId?.startsWith('VYU') ? 'VYU' : 'NKB'}
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border ${
+                                isProjectBasedStaff(staff)
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              }`}>
+                                {getStaffEmploymentLabel(staff, true)}
                               </span>
                             </div>
                             <div className="bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 w-fit">

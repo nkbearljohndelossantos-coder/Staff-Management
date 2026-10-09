@@ -45,7 +45,9 @@ export default function StaffFormModal({ staff, onClose }) {
 
   const isEditing = Boolean(staff);
 
-  const initialEmploymentType = (staff?.employmentType === 'project_based' || staff?.employmentType === 'contractual' || staff?.employeeId?.startsWith('PRJ'))
+  const initialEmploymentType = staff?.employmentType === 'regular'
+    ? 'regular'
+    : (staff?.employmentType === 'project_based' || staff?.employmentType === 'project' || staff?.employmentType === 'contractual' || (!staff?.employmentType && staff?.employeeId?.startsWith('PRJ')))
     ? 'project_based'
     : 'regular';
 
@@ -115,16 +117,20 @@ export default function StaffFormModal({ staff, onClose }) {
     setFormData(prev => ({
       ...prev,
       employeeId: newId,
-      employmentType: prefix === 'PRJ' ? 'project_based' : (prefix === 'NKB' ? 'regular' : prev.employmentType)
+      // VYU and NKB can be Regular (defaulting to Regular 3x COOP when selected)
+      employmentType: prefix === 'PRJ' ? 'project_based' : 'regular'
     }));
   };
 
   const handleEmploymentTypeChange = (type) => {
     let currentId = formData.employeeId || '';
-    if (type === 'project_based' && currentId.startsWith('NKB')) {
-      currentId = currentId.replace(/^NKB/, 'PRJ');
-    } else if (type === 'regular' && currentId.startsWith('PRJ')) {
-      currentId = currentId.replace(/^PRJ/, 'NKB');
+    // Preserve VYU prefix whether Regular or Project-Based!
+    if (!currentId.toUpperCase().startsWith('VYU')) {
+      if (type === 'project_based' && currentId.startsWith('NKB')) {
+        currentId = currentId.replace(/^NKB/, 'PRJ');
+      } else if (type === 'regular' && currentId.startsWith('PRJ')) {
+        currentId = currentId.replace(/^PRJ/, 'NKB');
+      }
     }
     setFormData(prev => ({
       ...prev,
@@ -390,7 +396,7 @@ export default function StaffFormModal({ staff, onClose }) {
                           ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
                           : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-300'
                       }`}
-                      title="Set VYU (Project / Affiliate) prefix"
+                      title="Set VYU (Vyuceutical Laboratories — Regular / Project) prefix"
                     >
                       VYU
                     </button>
@@ -413,12 +419,18 @@ export default function StaffFormModal({ staff, onClose }) {
                     placeholder="e.g. NKB-2026-0001 or PRJ-2026-0001 or VYU-2026-0001"
                     className="font-mono text-base font-black px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-slate-900 outline-none w-full shadow-xs tracking-wider"
                   />
-                  <span className="text-[10px] px-2.5 py-1 rounded-xl font-bold uppercase tracking-wider bg-slate-200 text-slate-800 border border-slate-300 shrink-0">
-                    {formData.employmentType === 'project_based' ? 'Project-Based (PRJ)' : 'Regular (NKB)'}
+                  <span className={`text-[10px] px-2.5 py-1 rounded-xl font-bold uppercase tracking-wider border shrink-0 ${
+                    formData.employmentType === 'project_based'
+                      ? 'bg-amber-50 text-amber-800 border-amber-300'
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                  }`}>
+                    {formData.employmentType === 'project_based'
+                      ? `Project-Based (${formData.employeeId?.startsWith('VYU') ? 'VYU' : 'PRJ'} · 2× COOP)`
+                      : `Regular (${formData.employeeId?.startsWith('VYU') ? 'VYU' : 'NKB'} · 3× COOP)`}
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-500">
-                  Customizable employee code: Supports <strong>NKB</strong>, <strong>PRJ</strong>, <strong>VYU</strong> or custom code prefixes.
+                  Customizable employee code: Supports <strong>NKB</strong>, <strong>PRJ</strong>, <strong>VYU</strong>. VYU staff can be <strong>Regular (3× COOP Loan)</strong> or <strong>Project-Based (2× COOP Loan)</strong>.
                 </p>
               </div>
 
@@ -430,7 +442,7 @@ export default function StaffFormModal({ staff, onClose }) {
             {/* Employment Type Selector (Regular vs Project-Based) */}
             <div className="pt-2.5 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <label className="text-[11px] font-bold text-slate-700">
-                Employment Classification:
+                Employment Classification (COOP Loan Basis):
               </label>
               <div className="grid grid-cols-2 gap-1.5 w-full sm:w-auto">
                 <button
@@ -438,22 +450,24 @@ export default function StaffFormModal({ staff, onClose }) {
                   onClick={() => handleEmploymentTypeChange('regular')}
                   className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1 ${
                     formData.employmentType === 'regular'
-                      ? 'bg-slate-900 text-white shadow-sm'
+                      ? 'bg-emerald-700 text-white shadow-sm'
                       : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
                   }`}
+                  title="Regular status: 3x COOP Savings basis for cash loans (NKB or VYU)"
                 >
-                  Regular (NKB)
+                  Regular (3× COOP)
                 </button>
                 <button
                   type="button"
                   onClick={() => handleEmploymentTypeChange('project_based')}
                   className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1 ${
                     formData.employmentType === 'project_based'
-                      ? 'bg-slate-900 text-white shadow-sm'
+                      ? 'bg-amber-700 text-white shadow-sm'
                       : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-300'
                   }`}
+                  title="Project-based status: 2x COOP Savings basis for cash loans"
                 >
-                  Project-Based (PRJ)
+                  Project-Based (2× COOP)
                 </button>
               </div>
             </div>

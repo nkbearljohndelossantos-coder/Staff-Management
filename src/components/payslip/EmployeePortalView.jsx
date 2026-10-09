@@ -49,7 +49,13 @@ import DocumentPreviewModal from '../staff/DocumentPreviewModal';
 import { compressDocument } from '../../utils/documentCompressor';
 import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 import { formatStaffName } from '../../utils/staffUtils';
-import { LOAN_TERM_OPTIONS, calculateMaxLoanableAmount } from '../../utils/coopBusinessRules';
+import {
+  LOAN_TERM_OPTIONS,
+  calculateMaxLoanableAmount,
+  getStaffCoopLoanMultiplier,
+  isProjectBasedStaff,
+  getStaffEmploymentLabel
+} from '../../utils/coopBusinessRules';
 
 export default function EmployeePortalView() {
   const {
@@ -209,6 +215,7 @@ export default function EmployeePortalView() {
 
   // Financial & Timekeeping calculations for this employee
   const myCoopBalance = coopBalances[currentStaff?.id] || 0;
+  const myCoopMultiplier = getStaffCoopLoanMultiplier(currentStaff, coopLoanMultiplier);
   const myLoans = cashLoans.filter(l => l.staffId === currentStaff?.id);
   const myAdvances = cashAdvances.filter(ca => ca.staffId === currentStaff?.id);
   const myPurchaseOrders = (personalPurchaseOrders || []).filter(po => po.staffId === currentStaff?.id);
@@ -523,7 +530,7 @@ export default function EmployeePortalView() {
               {formatCurrency(myCoopBalance)}
             </span>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Max Loanable ({coopLoanMultiplier}&times;): <strong className="text-slate-800 font-mono">{formatCurrency(calculateMaxLoanableAmount(myCoopBalance, coopLoanMultiplier))}</strong>
+              Max Loanable ({myCoopMultiplier}&times; &bull; {getStaffEmploymentLabel(currentStaff, false)}): <strong className="text-slate-800 font-mono">{formatCurrency(calculateMaxLoanableAmount(myCoopBalance, myCoopMultiplier, currentStaff))}</strong>
             </p>
           </div>
 
@@ -556,7 +563,7 @@ export default function EmployeePortalView() {
               Cash Loans (HR Managed)
             </span>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
-              Up to 36 Mos
+              {myCoopMultiplier}&times; Basis &bull; Up to 36 Mos
             </span>
           </div>
           <div>
@@ -564,7 +571,7 @@ export default function EmployeePortalView() {
               {formatCurrency(myLoans.reduce((sum, l) => sum + (l.status === 'Approved' ? l.balanceRemaining : 0), 0))}
             </span>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Does not reduce COOP Savings &bull; Limit: {formatCurrency(calculateMaxLoanableAmount(myCoopBalance, coopLoanMultiplier))}
+              Does not reduce COOP Savings &bull; Limit ({myCoopMultiplier}&times;): {formatCurrency(calculateMaxLoanableAmount(myCoopBalance, myCoopMultiplier, currentStaff))}
             </p>
           </div>
 
@@ -1759,7 +1766,7 @@ export default function EmployeePortalView() {
             </div>
 
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs leading-relaxed">
-              💡 <strong>Loan Eligibility &amp; 2-Stage Approval:</strong> You can borrow up to <strong>{coopLoanMultiplier}&times; your COOP Savings</strong> ({formatCurrency(myCoopBalance)} &times; {coopLoanMultiplier} = <strong className="font-mono text-slate-900">{formatCurrency(calculateMaxLoanableAmount(myCoopBalance, coopLoanMultiplier))}</strong>). Taking a loan <strong>does not decrease</strong> your COOP Savings. Maximum repayment term is <strong>36 months</strong>.
+              💡 <strong>Loan Eligibility &amp; 2-Stage Approval ({getStaffEmploymentLabel(currentStaff, true)}):</strong> As a <strong>{isProjectBasedStaff(currentStaff) ? 'Project-Based (2× Basis)' : 'Regular (3× Basis)'}</strong> employee, you can borrow up to <strong>{myCoopMultiplier}&times; your COOP Savings</strong> ({formatCurrency(myCoopBalance)} &times; {myCoopMultiplier} = <strong className="font-mono text-slate-900">{formatCurrency(calculateMaxLoanableAmount(myCoopBalance, myCoopMultiplier, currentStaff))}</strong>). Taking a loan <strong>does not decrease</strong> your COOP Savings.
             </div>
 
             <div className="space-y-3 text-xs">
@@ -1808,7 +1815,7 @@ export default function EmployeePortalView() {
                     className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
                   >
                     {LOAN_TERM_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      <option key={opt.months || opt.value} value={opt.months || opt.value}>{opt.label}</option>
                     ))}
                   </select>
                 </div>
@@ -1818,7 +1825,7 @@ export default function EmployeePortalView() {
               {Number(loanForm.principal) > 0 && (() => {
                 const p = Number(loanForm.principal);
                 const t = Number(loanForm.termMonths);
-                const maxAllowed = calculateMaxLoanableAmount(myCoopBalance, coopLoanMultiplier);
+                const maxAllowed = calculateMaxLoanableAmount(myCoopBalance, myCoopMultiplier, currentStaff);
                 const exceedsMax = p > maxAllowed;
                 const catObj = LOAN_CATEGORIES.find(c => c.id === loanForm.category) || { monthlyRate: 2 };
                 const r = catObj.monthlyRate;
@@ -1829,12 +1836,12 @@ export default function EmployeePortalView() {
                 return (
                   <div className={`p-3 rounded-xl border text-[11px] space-y-1 font-mono ${exceedsMax ? 'bg-slate-100 border-slate-400' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="flex justify-between text-slate-600">
-                      <span>COOP Savings &bull; Max Loanable ({coopLoanMultiplier}&times;):</span>
+                      <span>COOP Savings &bull; Max Loanable ({myCoopMultiplier}&times;):</span>
                       <span className="font-bold text-slate-900">{formatCurrency(myCoopBalance)} &bull; {formatCurrency(maxAllowed)}</span>
                     </div>
                     {exceedsMax && (
                       <div className="text-slate-900 font-bold bg-white px-2 py-1 rounded border border-slate-300">
-                        ⚠️ Requested amount ({formatCurrency(p)}) exceeds your maximum loanable amount ({formatCurrency(maxAllowed)}).
+                        ⚠️ Requested amount ({formatCurrency(p)}) exceeds your {myCoopMultiplier}&times; maximum loanable amount ({formatCurrency(maxAllowed)}).
                       </div>
                     )}
                     <div className="flex justify-between text-slate-600">

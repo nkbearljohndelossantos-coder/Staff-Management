@@ -44,6 +44,7 @@ import { useEscapeKey, ESCAPE_PRIORITY } from '../../utils/escapeStack';
 import { REQUIREMENT_CATEGORIES, compressDocument, extractDocument } from '../../utils/documentCompressor';
 import DocumentPreviewModal from './DocumentPreviewModal';
 import { formatStaffName } from '../../utils/staffUtils';
+import { getStaffEmploymentLabel, isProjectBasedStaff } from '../../utils/coopBusinessRules';
 
 export default function StaffDetailModal({
   staff,
@@ -170,8 +171,12 @@ export default function StaffDetailModal({
                 <h3 className="text-base font-black text-slate-900">
                   {formatStaffName(currentStaff)}
                 </h3>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-                  {currentStaff.employmentType === 'project_based' || currentStaff.employeeId?.startsWith('PRJ') ? 'Project-Based (PRJ)' : 'Regular (NKB)'}
+                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
+                  isProjectBasedStaff(currentStaff)
+                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                }`}>
+                  {getStaffEmploymentLabel(currentStaff, true)}
                 </span>
                 {currentStaff.isTeamLeader && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1">

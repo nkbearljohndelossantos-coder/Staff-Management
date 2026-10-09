@@ -16,9 +16,65 @@
 // 1. CONFIGURATION & CONSTANTS
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_COOP_LOAN_MULTIPLIER = 3;
+export const REGULAR_COOP_LOAN_MULTIPLIER = 3; // Regular (NKB / VYU): 3x COOP Savings
+export const PROJECT_COOP_LOAN_MULTIPLIER = 2; // Project-Based (PRJ / Project): 2x COOP Savings
+export const DEFAULT_COOP_LOAN_MULTIPLIER = REGULAR_COOP_LOAN_MULTIPLIER;
 export const MAX_LOAN_TERM_MONTHS = 36;
 export const VALID_LOAN_TERMS = [1, 2, 3, 6, 9, 12, 18, 24, 30, 36];
+
+/**
+ * Determines whether a staff member is Project-Based (2x COOP basis) vs Regular (3x COOP basis).
+ * Note: VYU (Vyuceutical Laboratories) staff can be Regular (3x) or Project-Based (2x), defaulting to Regular.
+ */
+export function isProjectBasedStaff(staff) {
+  if (!staff) return false;
+  const empType = String(staff.employmentType || '').toLowerCase().trim();
+  if (empType === 'regular') return false;
+  if (empType === 'project_based' || empType === 'project' || empType === 'contractual' || empType === 'part_time') {
+    return true;
+  }
+  const empId = String(staff.employeeId || '').toUpperCase().trim();
+  if (!empType && empId.startsWith('PRJ')) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Returns the applicable COOP Cash Loan Multiplier for a staff member:
+ * - Regular (NKB or VYU): 3x COOP Share Capital / Savings
+ * - Project-Based (PRJ or Project-Based VYU): 2x COOP Share Capital / Savings
+ */
+export function getStaffCoopLoanMultiplier(staff, customRegularMultiplier = null, customProjectMultiplier = null) {
+  if (isProjectBasedStaff(staff)) {
+    const projMult = Number(customProjectMultiplier);
+    return (!isNaN(projMult) && projMult > 0) ? projMult : PROJECT_COOP_LOAN_MULTIPLIER;
+  }
+  const regMult = Number(customRegularMultiplier);
+  return (!isNaN(regMult) && regMult > 0) ? regMult : REGULAR_COOP_LOAN_MULTIPLIER;
+}
+
+/**
+ * Returns a human-readable Employment Classification & COOP Multiplier label
+ * Supports Regular (NKB), Regular (VYU), Project-Based (PRJ), and Project-Based (VYU)
+ */
+export function getStaffEmploymentLabel(staff, includeMultiplier = true) {
+  const empId = String(staff?.employeeId || '').toUpperCase().trim();
+  const isVyu = empId.startsWith('VYU') || staff?.departmentId === 'dept-vyu';
+  const isProj = isProjectBasedStaff(staff);
+  const mult = getStaffCoopLoanMultiplier(staff);
+
+  if (isProj) {
+    const prefixTag = isVyu ? 'VYU' : 'PRJ';
+    return includeMultiplier
+      ? `Project-Based (${prefixTag} · ${mult}× COOP)`
+      : `Project-Based (${prefixTag})`;
+  }
+  const prefixTag = isVyu ? 'VYU' : 'NKB';
+  return includeMultiplier
+    ? `Regular (${prefixTag} · ${mult}× COOP)`
+    : `Regular (${prefixTag})`;
+}
 
 export const LOAN_TERM_OPTIONS = [
   { months: 1, label: '1 Month (2 cutoffs)' },
@@ -44,7 +100,7 @@ export const REPLENISHMENT_STATUSES = {
 };
 
 /**
- * Retrieve configurable COOP Loan Multiplier (defaults to 3x)
+ * Retrieve configurable COOP Loan Multiplier for Regular staff (defaults to 3x)
  */
 export function getCoopLoanMultiplier() {
   if (typeof window === 'undefined') return DEFAULT_COOP_LOAN_MULTIPLIER;
@@ -78,15 +134,26 @@ export function setCoopLoanMultiplier(multiplier) {
 
 /**
  * Calculates Maximum Loanable Amount = COOP Savings * Multiplier
+ * Automatically applies 3x for Regular (NKB/VYU) and 2x for Project-Based when staff is provided.
  */
-export function calculateMaxLoanableAmount(coopSavings, multiplier) {
+export function calculateMaxLoanableAmount(coopSavings, multiplierOrStaff = null, staff = null) {
   const savings = Math.max(0, Number(coopSavings) || 0);
-  const mult = Number(multiplier) || getCoopLoanMultiplier();
+  if (staff && typeof staff === 'object') {
+    const mult = getStaffCoopLoanMultiplier(staff, typeof multiplierOrStaff === 'number' ? multiplierOrStaff : null);
+    return savings * mult;
+  }
+  if (multiplierOrStaff && typeof multiplierOrStaff === 'object') {
+    const mult = getStaffCoopLoanMultiplier(multiplierOrStaff);
+    return savings * mult;
+  }
+  const mult = Number(multiplierOrStaff) || getCoopLoanMultiplier();
   return savings * mult;
 }
 
 /**
  * Validates a Cash Loan Application against all business rules
+ * - Regular (NKB / VYU): Max Loan = 3x COOP Savings
+ * - Project-Based (PRJ / Project): Max Loan = 2x COOP Savings
  */
 export function validateLoanApplication({
   member,
@@ -99,8 +166,11 @@ export function validateLoanApplication({
   const p = Number(principal);
   const t = Number(termMonths);
   const savings = Math.max(0, Number(coopSavings) || 0);
-  const mult = Number(multiplier) || getCoopLoanMultiplier();
+  const mult = member
+    ? getStaffCoopLoanMultiplier(member, multiplier)
+    : (Number(multiplier) || getCoopLoanMultiplier());
   const maxLoanable = savings * mult;
+  const isProj = isProjectBasedStaff(member);
 
   // 1. Retirement rule: Retired members cannot apply for loans
   const isRetired =
@@ -111,7 +181,8 @@ export function validateLoanApplication({
     return {
       valid: false,
       error: 'Loan application rejected: Member is retired from the company and cannot take new loans.',
-      maxLoanable
+      maxLoanable,
+      multiplier: mult
     };
   }
 
@@ -120,7 +191,8 @@ export function validateLoanApplication({
     return {
       valid: false,
       error: 'Please enter a valid loan principal amount greater than 0.',
-      maxLoanable
+      maxLoanable,
+      multiplier: mult
     };
   }
 
@@ -129,7 +201,8 @@ export function validateLoanApplication({
     return {
       valid: false,
       error: 'Please select a valid repayment term.',
-      maxLoanable
+      maxLoanable,
+      multiplier: mult
     };
   }
 
@@ -137,22 +210,25 @@ export function validateLoanApplication({
     return {
       valid: false,
       error: `Loan application rejected: Repayment term of ${t} months exceeds the maximum allowed term of ${MAX_LOAN_TERM_MONTHS} months.`,
-      maxLoanable
+      maxLoanable,
+      multiplier: mult
     };
   }
 
-  // 4. Maximum Loanable rule: Principal cannot exceed Savings * Multiplier
+  // 4. Maximum Loanable rule: Principal cannot exceed Savings * Multiplier (3x Regular, 2x Project-Based)
   if (p > maxLoanable) {
     return {
       valid: false,
-      error: `Loan application rejected: Requested loan of ₱${p.toLocaleString()} exceeds member's maximum loanable amount of ₱${maxLoanable.toLocaleString()} (${mult}x COOP Savings of ₱${savings.toLocaleString()}).`,
-      maxLoanable
+      error: `Loan application rejected: Requested loan of ₱${p.toLocaleString()} exceeds ${isProj ? 'Project-Based (2×)' : 'Regular (3×)'} member's maximum loanable amount of ₱${maxLoanable.toLocaleString()} (${mult}× COOP Savings of ₱${savings.toLocaleString()}).`,
+      maxLoanable,
+      multiplier: mult
     };
   }
 
   return {
     valid: true,
-    maxLoanable
+    maxLoanable,
+    multiplier: mult
   };
 }
 

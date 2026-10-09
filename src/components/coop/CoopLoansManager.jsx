@@ -30,7 +30,10 @@ import { formatStaffName } from '../../utils/staffUtils';
 import {
   LOAN_TERM_OPTIONS,
   REPLENISHMENT_STATUSES,
-  calculateMaxLoanableAmount
+  calculateMaxLoanableAmount,
+  getStaffCoopLoanMultiplier,
+  isProjectBasedStaff,
+  getStaffEmploymentLabel
 } from '../../utils/coopBusinessRules';
 
 export default function CoopLoansManager() {
@@ -580,32 +583,17 @@ export default function CoopLoansManager() {
                   Employee Cooperative Share Capital &amp; Loan Eligibility Ledger
                 </h3>
                 <p className="text-xs text-slate-500">
-                  COOP Savings is NOT reduced when taking a loan. Maximum Loanable Amount = COOP Savings × {coopLoanMultiplier}
+                  COOP Savings is NOT reduced when taking a loan &bull; <strong>Regular (NKB / VYU): {coopLoanMultiplier || 3}× Savings</strong> &bull; <strong>Project-Based (PRJ / VYU): 2× Savings</strong>
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                {(isHR || isSuperAdmin) && (
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-xl text-xs">
-                    <span className="font-bold text-slate-600">Loan Multiplier:</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="10"
-                      step="0.5"
-                      value={multiplierInput}
-                      onChange={(e) => setMultiplierInput(e.target.value)}
-                      className="w-14 px-1.5 py-0.5 rounded bg-white border border-slate-300 font-mono text-xs text-slate-900"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => updateCoopLoanMultiplier(multiplierInput)}
-                      className="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold hover:bg-slate-800 cursor-pointer"
-                    >
-                      Save
-                    </button>
-                  </div>
-                )}
-                <span className="text-xs font-mono text-slate-900 font-bold">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
+                  Regular (NKB / VYU): {coopLoanMultiplier || 3}× COOP Basis
+                </span>
+                <span className="px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold">
+                  Project-Based: 2× COOP Basis
+                </span>
+                <span className="text-xs font-mono text-slate-900 font-bold ml-1">
                   Total Fund: {formatCurrency(totalCoopCapital)}
                 </span>
               </div>
@@ -616,17 +604,19 @@ export default function CoopLoansManager() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
                     <th className="py-3 px-4">Staff Member</th>
-                    <th className="py-3 px-4">Employee ID</th>
+                    <th className="py-3 px-4">Employee ID &amp; Basis</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">COOP Savings Balance</th>
-                    <th className="py-3 px-4 text-right">Max Loanable ({coopLoanMultiplier}×)</th>
+                    <th className="py-3 px-4 text-right">Max Loanable (3× Reg / 2× Proj)</th>
                     <th className="py-3 px-4 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-sans text-slate-700">
                   {staffList.map((staff) => {
                     const balance = coopBalances[staff.id] || 0;
-                    const maxLoanable = calculateMaxLoanableAmount(balance, coopLoanMultiplier);
+                    const staffMult = getStaffCoopLoanMultiplier(staff, coopLoanMultiplier);
+                    const maxLoanable = calculateMaxLoanableAmount(balance, staffMult, staff);
+                    const isProj = isProjectBasedStaff(staff);
                     const isRetired = staff.isRetired || staff.status === 'retired' || staff.status === 'Retired';
                     const dept = departments.find(d => d.id === staff.departmentId);
                     return (
@@ -646,8 +636,15 @@ export default function CoopLoansManager() {
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                          {staff.employeeId}
+                        <td className="py-3 px-4">
+                          <div className="font-mono font-bold text-slate-900">{staff.employeeId}</div>
+                          <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
+                            isProj
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          }`}>
+                            {getStaffEmploymentLabel(staff, true)}
+                          </span>
                         </td>
                         <td className="py-3 px-4">
                           {isRetired ? (
@@ -667,7 +664,7 @@ export default function CoopLoansManager() {
                         </td>
                         <td className="py-3 px-4 text-right">
                           <span className="font-mono font-bold text-xs text-slate-700 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">
-                            {isRetired ? '₱0.00 (Ineligible)' : formatCurrency(maxLoanable)}
+                            {isRetired ? '₱0.00 (Ineligible)' : `${formatCurrency(maxLoanable)} (${staffMult}×)`}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -1727,11 +1724,13 @@ export default function CoopLoansManager() {
                 >
                   {staffList.map(s => {
                     const sav = coopBalances[s.id] || 0;
-                    const maxL = calculateMaxLoanableAmount(sav, coopLoanMultiplier);
+                    const sMult = getStaffCoopLoanMultiplier(s, coopLoanMultiplier);
+                    const maxL = calculateMaxLoanableAmount(sav, sMult, s);
                     const isRet = s.isRetired || s.status === 'retired';
+                    const isProj = isProjectBasedStaff(s);
                     return (
                       <option key={s.id} value={s.id}>
-                        {s.firstName} {s.lastName} ({s.employeeId}) — Savings: {formatCurrency(sav)} | Max Loan: {isRet ? 'RETIRED' : formatCurrency(maxL)}
+                        {s.firstName} {s.lastName} ({s.employeeId} · {isProj ? 'Project 2×' : 'Regular 3×'}) — Savings: {formatCurrency(sav)} | Max Loan ({sMult}×): {isRet ? 'RETIRED' : formatCurrency(maxL)}
                       </option>
                     );
                   })}
@@ -1742,16 +1741,21 @@ export default function CoopLoansManager() {
               {(() => {
                 const selStaff = staffList.find(s => s.id === loanForm.staffId);
                 const sav = coopBalances[loanForm.staffId] || 0;
-                const maxL = calculateMaxLoanableAmount(sav, coopLoanMultiplier);
+                const sMult = getStaffCoopLoanMultiplier(selStaff, coopLoanMultiplier);
+                const maxL = calculateMaxLoanableAmount(sav, sMult, selStaff);
                 const isRet = selStaff?.isRetired || selStaff?.status === 'retired';
                 return (
                   <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                     <div>
-                      <span className="text-[10px] font-bold uppercase text-slate-500 block">COOP Savings (Remains Intact)</span>
+                      <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                        COOP Savings &bull; {getStaffEmploymentLabel(selStaff, true)}
+                      </span>
                       <span className="font-mono font-bold text-slate-900">{formatCurrency(sav)}</span>
                     </div>
                     <div className="text-right">
-                      <span className="text-[10px] font-bold uppercase text-slate-500 block">Max Loanable ({coopLoanMultiplier}× Savings)</span>
+                      <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                        Max Loanable ({sMult}× COOP Basis)
+                      </span>
                       <span className="font-mono font-bold text-slate-900">
                         {isRet ? 'Ineligible (Retired)' : formatCurrency(maxL)}
                       </span>
@@ -1823,17 +1827,23 @@ export default function CoopLoansManager() {
                 const tot = p + int;
                 const monthly = Math.round(tot / t);
                 const cut = Math.round(tot / (t * 2));
+                const selStaff = staffList.find(s => s.id === loanForm.staffId);
                 const sav = coopBalances[loanForm.staffId] || 0;
-                const maxL = calculateMaxLoanableAmount(sav, coopLoanMultiplier);
+                const sMult = getStaffCoopLoanMultiplier(selStaff, coopLoanMultiplier);
+                const maxL = calculateMaxLoanableAmount(sav, sMult, selStaff);
                 const exceedsMax = p > maxL;
 
                 return (
                   <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] space-y-1 font-mono">
                     {exceedsMax && (
                       <div className="p-2 mb-1 rounded-lg bg-slate-900 text-white font-sans text-[11px] font-bold">
-                        ⚠️ Principal ({formatCurrency(p)}) exceeds Maximum Loanable Amount ({formatCurrency(maxL)}).
+                        ⚠️ Principal ({formatCurrency(p)}) exceeds {isProjectBasedStaff(selStaff) ? 'Project-Based (2×)' : 'Regular (3×)'} Maximum Loanable Amount ({formatCurrency(maxL)}).
                       </div>
                     )}
+                    <div className="flex justify-between text-slate-600">
+                      <span>COOP Basis Applied:</span>
+                      <span className="font-bold text-slate-900">{sMult}× Savings ({getStaffEmploymentLabel(selStaff, false)})</span>
+                    </div>
                     <div className="flex justify-between text-slate-600">
                       <span>Rate Applied:</span>
                       <span className="font-bold text-slate-900">{r}% per month</span>

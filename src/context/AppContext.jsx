@@ -46,6 +46,8 @@ import { generateDefaultMisconductMemo } from '../utils/misconductUtils.js';
 import {
   getCoopLoanMultiplier,
   setCoopLoanMultiplier,
+  getStaffCoopLoanMultiplier,
+  isProjectBasedStaff,
   validateLoanApplication,
   computeLoanFinancials,
   buildRetirementSettlement,
@@ -95,8 +97,14 @@ export function AppProvider({ children }) {
             const raw = upperLast && upperFirst && upperLast !== upperFirst 
               ? `${upperLast}, ${upperFirst}` 
               : (s.rawName ? s.rawName.trim().toUpperCase() : (upperLast || upperFirst || 'STAFF MEMBER'));
+            const normalizedEmpType = s.employmentType === 'regular'
+              ? 'regular'
+              : (s.employmentType === 'project_based' || s.employmentType === 'project' || s.employmentType === 'contractual' || (!s.employmentType && String(s.employeeId || '').toUpperCase().startsWith('PRJ')))
+              ? 'project_based'
+              : 'regular';
             return {
               ...s,
+              employmentType: normalizedEmpType,
               username: getStaffUsername({ ...s, firstName: upperFirst, lastName: upperLast }),
               firstName: upperFirst,
               lastName: upperLast,
@@ -2989,12 +2997,13 @@ export function AppProvider({ children }) {
     return { success: true, settlement };
   };
 
-  // Cash Loan Operations (Max 36 Months, Maximum Loan = Savings * Multiplier)
+  // Cash Loan Operations (Max 36 Months, Maximum Loan = Savings * Multiplier: Regular 3x, Project-Based 2x)
   const requestCashLoan = ({ staffId, category, principal, termMonths, purpose }) => {
     const p = Number(principal);
     const t = Number(termMonths);
     const staff = staffList.find(s => s.id === staffId);
     const savings = coopBalances[staffId] || 0;
+    const memberMultiplier = getStaffCoopLoanMultiplier(staff, coopLoanMultiplier);
 
     // Strict Backend Business Rules Validation
     const validation = validateLoanApplication({
@@ -3002,7 +3011,7 @@ export function AppProvider({ children }) {
       principal: p,
       termMonths: t,
       coopSavings: savings,
-      multiplier: coopLoanMultiplier
+      multiplier: memberMultiplier
     });
 
     if (!validation.valid) {
@@ -3027,6 +3036,8 @@ export function AppProvider({ children }) {
       categoryLabel: catObj.label,
       principal: p,
       principalAmount: p,
+      multiplierApplied: memberMultiplier,
+      employmentBasis: isProjectBasedStaff(staff) ? 'project_based' : 'regular',
       interestRate: loanCalcs.interestRate,
       interestAmount: loanCalcs.totalInterest,
       totalInterest: loanCalcs.totalInterest,
@@ -3065,11 +3076,11 @@ export function AppProvider({ children }) {
       referenceId: newLoan.id,
       createdBy: currentUser ? currentUser.name : (staff ? `${staff.firstName} ${staff.lastName}` : 'Member'),
       status: 'PENDING_APPROVAL',
-      remarks: `Loan application encoded for ₱${p.toLocaleString()} (${t} mos term, max eligibility: ₱${validation.maxLoanable.toLocaleString()}).`
+      remarks: `Loan application encoded for ₱${p.toLocaleString()} (${t} mos term, ${memberMultiplier}x COOP basis, max eligibility: ₱${validation.maxLoanable.toLocaleString()}).`
     });
     setCoopAuditTrail(prev => [auditLog, ...prev]);
 
-    showToast(`Loan application for ₱${p.toLocaleString()} submitted for HR approval.`);
+    showToast(`Loan application for ₱${p.toLocaleString()} (${memberMultiplier}x COOP basis) submitted for HR approval.`);
     return { success: true, loan: newLoan };
   };
 
