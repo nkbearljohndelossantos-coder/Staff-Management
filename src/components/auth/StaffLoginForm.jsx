@@ -9,18 +9,21 @@ export default function StaffLoginForm({ onSwitchToBarcode }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
-      const res = loginStaff(username, password);
+    try {
+      const res = await loginStaff(username, password);
       if (!res.success) {
         setError(res.message);
       }
+    } catch (err) {
+      setError(err.message || 'Login failed');
+    } finally {
       setLoading(false);
-    }, 400);
+    }
   };
 
   return (
@@ -50,7 +53,7 @@ export default function StaffLoginForm({ onSwitchToBarcode }) {
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
                     <UserRound className="h-3.5 w-3.5 text-slate-400" />
-                    Username
+                    Username or Employee ID
                   </label>
                   <input
                     type="text"
@@ -58,7 +61,7 @@ export default function StaffLoginForm({ onSwitchToBarcode }) {
                     autoComplete="username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="e.g. katherinea.bella"
+                    placeholder="e.g. earljohn.delossantos or NKB052026-0014"
                     className="w-full h-11 px-3.5 rounded-xl bg-slate-950/70 border border-white/15 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 transition"
                   />
                 </div>

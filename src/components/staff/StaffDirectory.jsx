@@ -21,7 +21,8 @@ import {
   AlertTriangle,
   FileText,
   CheckCircle2,
-  Clock
+  Clock,
+  Database
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatCurrency } from '../../utils/payrollCalculations';
@@ -49,6 +50,7 @@ export default function StaffDirectory() {
     departments, 
     positions, 
     deleteStaff, 
+    syncStaffToDocker,
     isHR, 
     openDigitalId, 
     toggleTeamLeader,
@@ -192,6 +194,15 @@ export default function StaffDirectory() {
 
         {isHR && (
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => syncStaffToDocker()}
+              className="h-9 px-3.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition shrink-0"
+              title="Save & sync all staff records to Docker PostgreSQL database"
+            >
+              <Database className="h-3.5 w-3.5 text-emerald-700" />
+              <span>Update Docker DB</span>
+            </button>
             <button
               type="button"
               onClick={() => {

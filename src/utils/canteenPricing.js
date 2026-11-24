@@ -33,7 +33,11 @@ export function isBoxOrPackItem(item) {
     Boolean(item.hasRetailPiece) || 
     Boolean(item.pieceBarcode) ||
     Number(item.retailPiecePrice) > 0 || 
+    Number(item.piece_selling_price) > 0 ||
+    Number(item.retail_piece_price) > 0 ||
     Boolean(item.isBoxOrPack) || 
+    Boolean(item.is_box_item) || 
+    Boolean(item.isBoxItem) || 
     Boolean(item.isRetailPiece)
   ) {
     return true;
@@ -57,8 +61,9 @@ export function isBoxOrPackItem(item) {
 export function extractPiecesFromItem(item) {
   if (!item) return 1;
 
-  if (Number(item.piecesPerPack) > 0) {
-    return parseInt(item.piecesPerPack, 10);
+  const explicitPieces = Number(item.piecesPerPack || item.pieces_per_box || item.pieces_per_pack);
+  if (explicitPieces > 0) {
+    return parseInt(explicitPieces, 10);
   }
 
   const n = (item.name || '').toLowerCase();
@@ -107,11 +112,12 @@ export function getEffectiveRetailPiecePrice(item) {
   if (!item) return 0;
 
   // If a retail price per piece has already been explicitly configured, honor it
-  if (Number(item.retailPiecePrice) > 0) {
-    return Number(item.retailPiecePrice);
+  const explicitPiecePrice = Number(item.retailPiecePrice || item.piece_selling_price || item.retail_piece_price);
+  if (explicitPiecePrice > 0) {
+    return explicitPiecePrice;
   }
 
-  const baseWholesale = Number(item.sellingPrice || item.unitPrice || item.wholesalePrice || 0);
+  const baseWholesale = Number(item.sellingPrice || item.selling_price || item.unitPrice || item.unit_price || item.wholesalePrice || 0);
   if (baseWholesale <= 0) return 0;
 
   // If item is not a box or pack item, base price is already its retail piece price
@@ -137,7 +143,7 @@ export function getEffectiveRetailPiecePrice(item) {
  */
 export function getEffectiveWholesalePrice(item) {
   if (!item) return 0;
-  return Number(item.wholesalePrice || item.sellingPrice || item.unitPrice || 0);
+  return Number(item.wholesalePrice || item.sellingPrice || item.selling_price || item.unitPrice || item.unit_price || item.price || 0);
 }
 
 /**
@@ -231,5 +237,47 @@ export function calculateMultiBuySubtotal(item, quantity = 1, isRetailPiece = nu
     isPromoApplied: false,
     unitPrice: baseUnitPrice,
     promoDescription: ''
+  };
+}
+
+/**
+ * Normalizes an inventory item to guarantee bidirectional field compatibility
+ * between PostgreSQL snake_case and React frontend camelCase schemas.
+ */
+export function normalizeInventoryItem(item) {
+  if (!item || typeof item !== 'object') return item;
+  const sellingPrice = Number(item.sellingPrice ?? item.selling_price ?? item.unitPrice ?? item.unit_price ?? item.wholesalePrice ?? item.price ?? 0);
+  const costPrice = Number(item.costPrice ?? item.cost_price ?? 0);
+  const qty = Number(item.quantity ?? item.current_stock ?? item.currentStock ?? 0);
+  const reorder = Number(item.reorderLevel ?? item.minimum_stock ?? item.minimumStock ?? 5);
+  const pieces = Number(item.piecesPerPack ?? item.pieces_per_box ?? item.pieces_per_pack ?? 1);
+  const retailPiece = Number(item.retailPiecePrice ?? item.piece_selling_price ?? item.retail_piece_price ?? 0);
+  const isBox = Boolean(item.is_box_item || item.isBoxItem || item.hasRetailPiece || item.pieceBarcode || retailPiece > 0);
+
+  return {
+    ...item,
+    costPrice,
+    cost_price: costPrice,
+    sellingPrice,
+    selling_price: sellingPrice,
+    unitPrice: sellingPrice,
+    unit_price: sellingPrice,
+    quantity: qty,
+    currentStock: qty,
+    current_stock: qty,
+    reorderLevel: reorder,
+    minimum_stock: reorder,
+    minimumStock: reorder,
+    piecesPerPack: pieces,
+    pieces_per_box: pieces,
+    pieces_per_pack: pieces,
+    retailPiecePrice: retailPiece,
+    piece_selling_price: retailPiece,
+    retail_piece_price: retailPiece,
+    hasRetailPiece: isBox,
+    is_box_item: isBox,
+    isBoxItem: isBox,
+    stockStatus: item.stockStatus || (qty > reorder ? 'In Stock' : (qty > 0 ? 'Low Stock' : 'Out of Stock')),
+    category: item.category || 'General'
   };
 }

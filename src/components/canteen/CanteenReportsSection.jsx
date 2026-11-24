@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CanteenZReadingModal from './CanteenZReadingModal';
+import CanteenFinancialReportsView from './reports/CanteenFinancialReportsView';
 
 export default function CanteenReportsSection({ onShowReceipt, onShowGatePass }) {
   const { 
@@ -41,6 +42,8 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass })
     canteenDrawer = { balance: 0, transactions: [] },
     canteenInventory = [],
     staffList = [],
+    cashLoans = [],
+    cashAdvances = [],
     adminVoidCanteenReceipt,
     currentUser,
     isITAdmin,
@@ -658,112 +661,141 @@ export default function CanteenReportsSection({ onShowReceipt, onShowGatePass })
             >
               📊 Z-Readings Archive ({canteenZReadings.length})
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTabFilter('FINANCIAL_REPORTS')}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                activeTabFilter === 'FINANCIAL_REPORTS'
+                  ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300'
+                  : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300'
+              }`}
+              title="Official Payroll & Canteen Financial Reports (Cash Sale Matrix & Summary Deductions)"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>📊 Financial Reports</span>
+            </button>
           </div>
 
-          {/* Search Box */}
-          <div className="relative flex-1 sm:w-72">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search ref, customer, item, cashier..."
-              className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
+          {/* Search Box - Only for POS records */}
+          {activeTabFilter !== 'FINANCIAL_REPORTS' && (
+            <div className="relative flex-1 sm:w-72">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search ref, customer, item, cashier..."
+                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-400"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
 
         </div>
 
-        {/* Row 2: Comprehensive Date Range Filter Bar (Effective Claim Date for Late-Encoded Items) */}
-        <div className="pt-3 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
-          
-          {/* Quick Presets */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
-              <CalendarRange className="h-3.5 w-3.5 text-slate-500" />
-              <span>Claim Date:</span>
-            </span>
+        {/* Row 2: Comprehensive Date Range Filter Bar (Only for POS records) */}
+        {activeTabFilter !== 'FINANCIAL_REPORTS' && (
+          <>
+            <div className="pt-3 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+              
+              {/* Quick Presets */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+                  <CalendarRange className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Claim Date:</span>
+                </span>
 
-            {[
-              { id: 'ALL', label: 'All Dates' },
-              { id: 'TODAY', label: 'Today' },
-              { id: 'YESTERDAY', label: 'Yesterday' },
-              { id: 'WEEK', label: 'Last 7 Days' },
-              { id: 'MONTH', label: 'This Month' }
-            ].map(p => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => handleApplyPreset(p.id)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  datePreset === p.id
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+                {[
+                  { id: 'ALL', label: 'All Dates' },
+                  { id: 'TODAY', label: 'Today' },
+                  { id: 'YESTERDAY', label: 'Yesterday' },
+                  { id: 'WEEK', label: 'Last 7 Days' },
+                  { id: 'MONTH', label: 'This Month' }
+                ].map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleApplyPreset(p.id)}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      datePreset === p.id
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
 
-          {/* Custom Date Pickers: From & To */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
-              <span className="text-[10px] font-extrabold uppercase text-slate-500">From</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => handleCustomStartDateChange(e.target.value)}
-                className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
-              />
+              {/* Custom Date Pickers: From & To */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-500">From</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => handleCustomStartDateChange(e.target.value)}
+                    className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-500">To</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => handleCustomEndDateChange(e.target.value)}
+                    className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
+                  />
+                </div>
+
+                {(startDate || endDate) && (
+                  <button
+                    type="button"
+                    onClick={handleClearDateRange}
+                    className="h-8 px-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                    title="Reset Date Range Filter"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    <span>Reset</span>
+                  </button>
+                )}
+              </div>
+
             </div>
 
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
-              <span className="text-[10px] font-extrabold uppercase text-slate-500">To</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => handleCustomEndDateChange(e.target.value)}
-                className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
-              />
+            {/* Rule Explanation Banner */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-[11px]">
+              <Info className="h-3.5 w-3.5 text-amber-700 shrink-0" />
+              <span>
+                <strong>Date Range Rule:</strong> Transactions are identified and filtered by the <strong>Customer Claimed Date</strong>. When transactions are late-encoded, the date the customer claimed the goods is used rather than the actual system encoding timestamp.
+              </span>
             </div>
-
-            {(startDate || endDate) && (
-              <button
-                type="button"
-                onClick={handleClearDateRange}
-                className="h-8 px-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
-                title="Reset Date Range Filter"
-              >
-                <RotateCcw className="h-3 w-3" />
-                <span>Reset</span>
-              </button>
-            )}
-          </div>
-
-        </div>
-
-        {/* Rule Explanation Banner */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-[11px]">
-          <Info className="h-3.5 w-3.5 text-amber-700 shrink-0" />
-          <span>
-            <strong>Date Range Rule:</strong> Transactions are identified and filtered by the <strong>Customer Claimed Date</strong>. When transactions are late-encoded, the date the customer claimed the goods is used rather than the actual system encoding timestamp.
-          </span>
-        </div>
+          </>
+        )}
 
       </div>
 
-      {/* Main Ledger Table or Z-Readings Archive */}
-      {activeTabFilter === 'Z_READINGS' ? (
+      {/* Main Ledger Table, Z-Readings Archive, or Financial Reports */}
+      {activeTabFilter === 'FINANCIAL_REPORTS' ? (
+        <CanteenFinancialReportsView
+          canteenReceipts={canteenReceipts}
+          canteenGatePasses={canteenGatePasses}
+          cashLoans={cashLoans}
+          cashAdvances={cashAdvances}
+          personalPurchaseOrders={personalPurchaseOrders}
+          staffList={staffList}
+        />
+      ) : activeTabFilter === 'Z_READINGS' ? (
         <div id="printable-report-table" className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
           <div className="p-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
             <div className="flex items-center gap-2">

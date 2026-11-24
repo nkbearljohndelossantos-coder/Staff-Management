@@ -28,6 +28,7 @@ export const INITIAL_POSITIONS = [
   { id: 'pos-qc', title: 'Quality Control Specialist', departmentId: 'dept-qc' },
   { id: 'pos-silk', title: 'Silkscreen Specialist', departmentId: 'dept-silk' },
   { id: 'pos-cant', title: 'Canteen Administrator & Manager', departmentId: 'dept-cant' },
+  { id: 'pos-1793078650801', title: 'Billing Officer', departmentId: 'dept-fin' },
   { id: 'pos-it', title: 'IT Systems Administrator', departmentId: 'dept-it' }
 ];
 

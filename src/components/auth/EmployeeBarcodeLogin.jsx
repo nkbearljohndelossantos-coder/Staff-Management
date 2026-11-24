@@ -10,18 +10,21 @@ export default function EmployeeBarcodeLogin({ onBackToStaffLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
-      const res = loginBarcode(barcodeInput, pin);
+    try {
+      const res = await loginBarcode(barcodeInput, pin);
       if (!res.success) {
         setError(res.message);
       }
+    } catch (err) {
+      setError(err.message || 'Badge authentication failed');
+    } finally {
       setLoading(false);
-    }, 400);
+    }
   };
 
   return (

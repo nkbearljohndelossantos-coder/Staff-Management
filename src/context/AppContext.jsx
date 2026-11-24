@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { api, getStoredToken, setStoredToken, clearStoredToken, ApiError } from '../services/apiClient';
 import {
   INITIAL_DEPARTMENTS,
   INITIAL_POSITIONS,
@@ -32,7 +33,7 @@ import { logAuditEvent, getAuditLogs } from '../utils/auditLogger';
 import { getOfflineQueue, clearOfflineQueue, initOfflineSyncListener } from '../utils/offlineSync';
 import { scanForAnomalies, saveAnomalyEvaluation, computeExecutiveRiskSummary, getStoredEvaluations } from '../utils/anomalyDetector';
 import { formatStaffName, getStaffUsername, findStaffByUsername, scanStaffMilestones } from '../utils/staffUtils';
-import { isBoxOrPackItem, extractPiecesFromItem, getEffectiveRetailPiecePrice } from '../utils/canteenPricing';
+import { isBoxOrPackItem, extractPiecesFromItem, getEffectiveRetailPiecePrice, normalizeInventoryItem } from '../utils/canteenPricing';
 import { 
   DEFAULT_ROLE_PERMISSIONS, 
   getEffectiveSectionPermission, 
@@ -83,13 +84,21 @@ export function AppProvider({ children }) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const existingIds = new Set(parsed.map(s => s.employeeId || s.id));
-          const merged = [...parsed];
-          INITIAL_STAFF.forEach(initStaff => {
-            if (!existingIds.has(initStaff.employeeId) && !existingIds.has(initStaff.id)) {
-              merged.push(initStaff);
+          const normId = (s) => (s.employeeId || s.id || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+          // Deduplicate by employeeId / id
+          const existingIds = new Set();
+          const merged = [];
+
+          // Add user's saved records without re-injecting deleted mock records
+          parsed.forEach(s => {
+            const iK = normId(s);
+            if (iK && !existingIds.has(iK)) {
+              existingIds.add(iK);
+              merged.push(s);
             }
           });
+
           return merged.map(s => {
             const isTargetITAdmin = s.employeeId === 'NKB052026-0014' || s.id === 'emp-nkb052026-0014';
             const upperLast = (s.lastName || '').trim().toUpperCase();
@@ -258,25 +267,26 @@ export function AppProvider({ children }) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map(item => {
-            if (isBoxOrPackItem(item)) {
-              const effPiece = getEffectiveRetailPiecePrice(item);
-              const pieces = extractPiecesFromItem(item);
+            const normalized = normalizeInventoryItem(item);
+            if (isBoxOrPackItem(normalized)) {
+              const effPiece = getEffectiveRetailPiecePrice(normalized);
+              const pieces = extractPiecesFromItem(normalized);
               return {
-                ...item,
+                ...normalized,
                 hasRetailPiece: true,
-                retailPiecePrice: Number(item.retailPiecePrice) > 0 ? Number(item.retailPiecePrice) : effPiece,
-                piecesPerPack: Number(item.piecesPerPack) > 0 ? Number(item.piecesPerPack) : pieces
+                retailPiecePrice: Number(normalized.retailPiecePrice) > 0 ? Number(normalized.retailPiecePrice) : effPiece,
+                piecesPerPack: Number(normalized.piecesPerPack) > 0 ? Number(normalized.piecesPerPack) : pieces
               };
             }
-            return item;
+            return normalized;
           });
         }
       }
-      localStorage.setItem('nkb_canteen_inventory', JSON.stringify(INITIAL_CANTEEN_INVENTORY));
+      localStorage.setItem('nkb_canteen_inventory', JSON.stringify(INITIAL_CANTEEN_INVENTORY.map(normalizeInventoryItem)));
     } catch (e) {
       console.error('Failed to initialize canteen inventory:', e);
     }
-    return [...INITIAL_CANTEEN_INVENTORY];
+    return INITIAL_CANTEEN_INVENTORY.map(normalizeInventoryItem);
   });
 
   // Canteen Supply Categories (Customizable, Add/Delete categories)
@@ -446,6 +456,14 @@ export function AppProvider({ children }) {
 
   const [activeTab, setActiveTab] = useState('staff');
   const [notification, setNotification] = useState(null);
+
+  // Production PostgreSQL Synchronization State
+  const [syncState, setSyncState] = useState({
+    status: 'IDLE', // 'IDLE' | 'LOADING' | 'SYNCED' | 'ERROR' | 'OFFLINE_READONLY'
+    lastSyncedAt: null,
+    errorMessage: null,
+    counts: {}
+  });
 
   // Global Digital ID (Barcode & QR) Modal State
   const [digitalIdStaff, setDigitalIdStaff] = useState(null);
@@ -2507,83 +2525,398 @@ export function AppProvider({ children }) {
   const isEmployee = currentUser?.role === 'employee';
   const canManageMisconduct = isHR || isCCTVAdmin;
 
-  // Auth Methods
-  const loginStaff = (usernameOrId, password) => {
-    const clean = (usernameOrId || '').trim();
-    const found = findStaffByUsername(staffList, clean) || resolveStaffFromScan(staffList, clean);
-    if (found) {
-      if (password && found.pin && found.pin !== password) {
-        return { success: false, message: 'Invalid security PIN or password.' };
+  // ==============================================================================
+  // Server-Authoritative Hydration & Authentication Methods
+  // ==============================================================================
+
+  const hydrateFromBackend = async (authToken = null) => {
+    const token = authToken || getStoredToken();
+    if (!token) return;
+
+    setSyncState(prev => ({ ...prev, status: 'LOADING', errorMessage: null }));
+
+    try {
+      const [
+        staffRes,
+        deptRes,
+        posRes,
+        invRes,
+        receiptsRes,
+        deductionsRes,
+        balancesRes,
+        invoicesRes
+      ] = await Promise.all([
+        api.getStaff(),
+        api.getDepartments(),
+        api.getPositions(),
+        api.getInventory(),
+        api.getReceipts({ limit: 'all' }),
+        api.getDeductions(),
+        api.getBalances(),
+        api.getSalesInvoices()
+      ]);
+
+      const counts = {};
+
+      if (staffRes && Array.isArray(staffRes.data)) {
+        const normId = (s) => (s.employee_id || s.id || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const uniqueBackend = [];
+        const seenIds = new Set();
+
+        staffRes.data.forEach(s => {
+          const iK = normId(s);
+          if (iK && !seenIds.has(iK)) {
+            seenIds.add(iK);
+            uniqueBackend.push(s);
+          }
+        });
+
+        const mappedStaff = uniqueBackend.map(s => {
+          const meta = s.metadata || {};
+          const upperFirst = (s.first_name || '').trim().toUpperCase();
+          const upperLast = (s.last_name || '').trim().toUpperCase();
+          const canonicalRawName = meta.rawName || (upperLast && upperFirst ? `${upperLast}, ${upperFirst}` : (s.rawName || upperLast || upperFirst || 'STAFF'));
+          const normalizedEmpType = (s.employment_type || meta.employmentType || '').toLowerCase() === 'project_based' || String(s.employee_id || '').toUpperCase().startsWith('PRJ')
+            ? 'project_based'
+            : 'regular';
+
+          return {
+            ...s,
+            id: s.id,
+            staffId: s.id,
+            employeeId: s.employee_id,
+            rawName: canonicalRawName,
+            firstName: upperFirst,
+            lastName: upperLast,
+            username: s.username || meta.username || `${upperFirst.toLowerCase()}.${upperLast.toLowerCase()}`,
+            email: s.email || meta.email || '',
+            phone: s.phone || meta.phone || '',
+            role: s.role || meta.role || 'employee',
+            employmentType: normalizedEmpType,
+            departmentId: s.department_id,
+            positionId: s.position_id,
+            positionTitle: s.position_title || meta.positionTitle,
+            departmentName: s.department_name || meta.departmentName,
+            avatar: s.avatar_url || s.avatar || meta.avatar || null,
+            isActive: s.is_active !== undefined ? s.is_active : true,
+            status: s.is_active ? 'active' : 'inactive',
+            pin: meta.pin || s.pin || '12345678',
+            baseSalary: Number(meta.baseSalary !== undefined ? meta.baseSalary : (s.baseSalary || 0)),
+            salaryRate: Number(meta.salaryRate !== undefined ? meta.salaryRate : (s.salaryRate || meta.baseSalary || 0)),
+            salaryRateType: meta.salaryRateType || s.salaryRateType || 'monthly',
+            payFrequency: meta.payFrequency || s.payFrequency || 'Semi-Monthly',
+            filedSalary: Number(meta.filedSalary !== undefined ? meta.filedSalary : (s.filedSalary || 0)),
+            workScheduleType: meta.workScheduleType || s.workScheduleType || '6_days',
+            barcodeValue: meta.barcodeValue || s.barcodeValue || s.employee_id,
+            isTeamLeader: meta.isTeamLeader !== undefined ? Boolean(meta.isTeamLeader) : Boolean(s.isTeamLeader),
+            tin: s.tin || meta.tin || '',
+            sssNo: s.sss || meta.sssNo || '',
+            philHealthNo: s.philhealth || meta.philHealthNo || '',
+            hdmfNo: s.pagibig || meta.hdmfNo || '',
+            bankAccount: s.bank_account || meta.bankAccount || '',
+            bankName: meta.bankName || s.bankName || 'BDO',
+            address: s.address || meta.address || '',
+            hireDate: s.hire_date || meta.hireDate || s.hireDate || '2026-05-01',
+            dateHired: s.hire_date || meta.dateHired || s.dateHired || '2026-05-01',
+            birthday: s.birth_date || meta.birthday || s.birthday || '',
+            emergencyContact: meta.emergencyContact || s.emergencyContact || '',
+            emergencyContactName: meta.emergencyContactName || s.emergencyContactName || '',
+            emergencyContactPhone: meta.emergencyContactPhone || s.emergencyContactPhone || '',
+            notes: meta.notes || s.notes || '',
+            documents: meta.documents || s.documents || []
+          };
+        });
+        setStaffList(mappedStaff);
+        counts.staff = mappedStaff.length;
       }
-      const userObj = {
-        staffId: found.id,
-        username: getStaffUsername(found),
-        name: formatStaffName(found),
-        email: found.email,
-        role: found.role || 'employee',
-        employeeId: found.employeeId,
-        avatar: found.avatar
-      };
-      setCurrentUser(userObj);
-      if (found.role === 'employee') {
-        setActiveTab('employeePortal');
-      } else if (found.role === 'canteen') {
-        setActiveTab('canteenHub');
-      } else if (found.role === 'finance' || found.role === 'accounting') {
-        setActiveTab('payroll');
-      } else if (found.role === 'it_admin') {
-        setActiveTab('itAdminHub');
-      } else {
-        setActiveTab('staff');
+
+      if (deptRes && Array.isArray(deptRes.data)) {
+        setDepartments(deptRes.data);
+        counts.departments = deptRes.data.length;
       }
-      showToast(`Welcome, ${userObj.name} (@${userObj.username})! Logged in as ${found.positionTitle || found.role}`);
-      return { success: true };
+
+      if (posRes && Array.isArray(posRes.data)) {
+        setPositions(posRes.data);
+        counts.positions = posRes.data.length;
+      }
+
+      if (invRes && Array.isArray(invRes.data)) {
+        const mappedInv = invRes.data.map(item => {
+          const normalized = normalizeInventoryItem(item);
+          if (isBoxOrPackItem(normalized)) {
+            const effPiece = getEffectiveRetailPiecePrice(normalized);
+            const pieces = extractPiecesFromItem(normalized);
+            return {
+              ...normalized,
+              hasRetailPiece: true,
+              retailPiecePrice: Number(normalized.retailPiecePrice) > 0 ? Number(normalized.retailPiecePrice) : effPiece,
+              piecesPerPack: Number(normalized.piecesPerPack) > 0 ? Number(normalized.piecesPerPack) : pieces
+            };
+          }
+          return normalized;
+        });
+        setCanteenInventory(mappedInv);
+        counts.canteen_inventory = mappedInv.length;
+      }
+
+      if (receiptsRes && Array.isArray(receiptsRes.data)) {
+        const mappedReceipts = receiptsRes.data.map(r => ({
+          ...r,
+          receiptNo: r.receipt_no,
+          transactionType: r.transaction_type,
+          staffId: r.staff_id,
+          staffName: r.staff_name,
+          paymentMethod: r.payment_method,
+          total: Number(r.total_amount || 0),
+          totalAmount: Number(r.total_amount || 0),
+          subtotal: Number(r.subtotal || 0),
+          discount: Number(r.discount || 0),
+          amountTendered: Number(r.amount_tendered || 0),
+          changeDue: Number(r.change_due || 0),
+          cashierName: r.cashier_name,
+          timestamp: r.timestamp,
+          items: Array.isArray(r.items) ? r.items.map(it => ({
+            ...it,
+            itemId: it.item_id,
+            name: it.item_name,
+            quantity: Number(it.quantity || 1),
+            unitPrice: Number(it.unit_price || 0),
+            total: Number(it.total_price || 0)
+          })) : []
+        }));
+        setCanteenReceipts(mappedReceipts);
+        counts.canteen_receipts = mappedReceipts.length;
+      }
+
+      if (deductionsRes && Array.isArray(deductionsRes.data)) {
+        const mappedDeductions = deductionsRes.data.map(d => ({
+          ...d,
+          salaryDeductionRef: d.receipt_no,
+          staffId: d.staff_id,
+          employeeName: d.staff_name,
+          amount: Number(d.amount || 0),
+          date: d.deduction_date,
+          status: d.status
+        }));
+        setCanteenDeductionsLedger(mappedDeductions);
+        counts.canteen_deductions_ledger = mappedDeductions.length;
+      }
+
+      if (balancesRes && Array.isArray(balancesRes.data)) {
+        const mappedBalances = balancesRes.data.map(b => ({
+          ...b,
+          staffId: b.staff_id,
+          staffName: b.staff_name,
+          accumulatedDebt: Number(b.accumulated_debt || 0),
+          lastTransactionDate: b.last_transaction_date
+        }));
+        setCanteenLedgerBalances(mappedBalances);
+        counts.canteen_ledger_balances = mappedBalances.length;
+      }
+
+      if (invoicesRes && Array.isArray(invoicesRes.data)) {
+        const mappedInvoices = invoicesRes.data.map(inv => ({
+          ...inv,
+          invoiceNumber: inv.invoice_number,
+          purchaseDate: inv.purchase_date,
+          receivedDate: inv.received_date,
+          totalAmount: Number(inv.total_amount || 0),
+          itemsCount: Number(inv.items_count || 0),
+          totalUnits: Number(inv.total_units || 0),
+          encodedBy: inv.encoded_by
+        }));
+        setCanteenSalesInvoices(mappedInvoices);
+        counts.canteen_sales_invoices = mappedInvoices.length;
+      }
+
+      const syncTimestamp = new Date().toISOString();
+      setSyncState({
+        status: 'SYNCED',
+        lastSyncedAt: syncTimestamp,
+        errorMessage: null,
+        counts
+      });
+
+    } catch (err) {
+      console.error('[HYDRATION ERROR]', err);
+      const isOffline = err.type === 'NETWORK_ERROR' || (typeof navigator !== 'undefined' && !navigator.onLine);
+      setSyncState({
+        status: isOffline ? 'OFFLINE_READONLY' : 'ERROR',
+        lastSyncedAt: null,
+        errorMessage: err.message,
+        counts: {}
+      });
+      showToast(isOffline ? 'Offline Mode: Displaying cached records.' : `Sync failed: ${err.message}`, 'error');
     }
-    return { success: false, message: 'Invalid credentials. Enter your assigned Username (e.g. katherinea.bella) and 8-digit PIN.' };
   };
 
-  const loginBarcode = (barcodeOrUsername, pin) => {
-    const found = findStaffByUsername(staffList, barcodeOrUsername) || resolveStaffFromScan(staffList, barcodeOrUsername);
-
-    if (!found) {
-      return { success: false, message: 'Username / Barcode / Employee ID not recognized in Staff Masterlist.' };
+  // Auth Methods (Server-Authoritative, No localStorage Bypass)
+  const loginStaff = async (usernameOrId, password) => {
+    const clean = (usernameOrId || '').trim();
+    if (!clean) {
+      return { success: false, message: 'Username or Employee ID is required.' };
     }
 
-    if (pin && found.pin && found.pin !== pin) {
-      return { success: false, message: 'Invalid security PIN.' };
+    try {
+      const resp = await api.login(clean, password);
+      if (resp && resp.token && resp.user) {
+        setStoredToken(resp.token);
+        const userObj = {
+          staffId: resp.user.id,
+          username: resp.user.username,
+          name: `${resp.user.first_name || ''} ${resp.user.last_name || ''}`.trim() || resp.user.username,
+          email: resp.user.email,
+          role: resp.user.role || 'employee',
+          employeeId: resp.user.employee_id,
+          avatar: resp.user.avatar_url || resp.user.avatar
+        };
+        setCurrentUser(userObj);
+        localStorage.setItem('nkb_hr_current_user', JSON.stringify(userObj));
+
+        if (userObj.role === 'employee') {
+          setActiveTab('employeePortal');
+        } else if (userObj.role === 'canteen') {
+          setActiveTab('canteenHub');
+        } else if (userObj.role === 'finance' || userObj.role === 'accounting') {
+          setActiveTab('payroll');
+        } else if (userObj.role === 'it_admin') {
+          setActiveTab('itAdminHub');
+        } else {
+          setActiveTab('staff');
+        }
+
+        showToast(`Welcome, ${userObj.name} (@${userObj.username})! Logged in as ${resp.user.position_title || userObj.role}`);
+        hydrateFromBackend(resp.token);
+        return { success: true };
+      }
+      return { success: false, message: resp.error || 'Login failed.' };
+    } catch (err) {
+      if (err.status === 401) {
+        return { success: false, message: 'Invalid credentials. Enter your assigned Username (e.g. earljohn.delossantos) or Employee ID (e.g. NKB052026-0014).' };
+      } else if (err.status === 403) {
+        return { success: false, message: 'Account is deactivated. Please contact HR or IT Administration.' };
+      } else if (err.type === 'NETWORK_ERROR') {
+        return { success: false, message: 'Cannot reach production server. Check your network or VPS connection.' };
+      }
+      return { success: false, message: err.message || 'Authentication error.' };
+    }
+  };
+
+  const loginBarcode = async (barcodeOrUsername, pin) => {
+    const cleanBarcode = (barcodeOrUsername || '').trim();
+    const cleanPin = (pin || '').trim();
+
+    if (!cleanBarcode) {
+      return { success: false, message: 'Employee ID or Badge Barcode is required.' };
+    }
+    if (!cleanPin) {
+      return { success: false, message: 'Security PIN is required for badge authentication.' };
     }
 
-    const userRole = found.role || 'employee';
-    const userObj = {
-      staffId: found.id,
-      username: getStaffUsername(found),
-      name: formatStaffName(found),
-      email: found.email,
-      role: userRole,
-      employeeId: found.employeeId,
-      barcodeValue: found.barcodeValue,
-      avatar: found.avatar
-    };
-    setCurrentUser(userObj);
-    if (userRole === 'employee') {
-      setActiveTab('employeePortal');
-    } else if (userRole === 'canteen') {
-      setActiveTab('canteenHub');
-    } else if (userRole === 'finance' || userRole === 'accounting') {
-      setActiveTab('payroll');
-    } else if (userRole === 'it_admin') {
-      setActiveTab('itAdminHub');
-    } else {
-      setActiveTab('staff');
+    try {
+      const resp = await api.loginBarcode(cleanBarcode, cleanPin);
+      if (resp && resp.token && resp.user) {
+        setStoredToken(resp.token);
+        const userObj = {
+          staffId: resp.user.id,
+          username: resp.user.username,
+          name: `${resp.user.first_name || ''} ${resp.user.last_name || ''}`.trim() || resp.user.username,
+          email: resp.user.email,
+          role: resp.user.role || 'employee',
+          employeeId: resp.user.employee_id,
+          avatar: resp.user.avatar_url || resp.user.avatar
+        };
+        setCurrentUser(userObj);
+        localStorage.setItem('nkb_hr_current_user', JSON.stringify(userObj));
+
+        if (userObj.role === 'employee') {
+          setActiveTab('employeePortal');
+        } else if (userObj.role === 'canteen') {
+          setActiveTab('canteenHub');
+        } else {
+          setActiveTab('staff');
+        }
+
+        showToast(`Authenticated ${userObj.name} (@${userObj.username})`);
+        hydrateFromBackend(resp.token);
+        return { success: true };
+      }
+      return { success: false, message: resp.error || 'Badge login failed.' };
+    } catch (err) {
+      if (err.status === 401) {
+        return { success: false, message: 'Invalid security PIN.' };
+      } else if (err.status === 403) {
+        return { success: false, message: err.message || 'Access denied for this badge.' };
+      } else if (err.status === 404) {
+        return { success: false, message: 'Badge or Employee ID not recognized in Staff Masterlist.' };
+      } else if (err.status === 429) {
+        return { success: false, message: 'Too many barcode login attempts. Please wait 1 minute.' };
+      } else if (err.type === 'NETWORK_ERROR') {
+        return { success: false, message: 'Cannot reach production server. Check your network.' };
+      }
+      return { success: false, message: err.message || 'Badge authentication error.' };
     }
-    showToast(`Authenticated ${userObj.name} (@${userObj.username})`);
-    return { success: true };
   };
 
   const logout = () => {
+    clearStoredToken();
     setCurrentUser(null);
+    localStorage.removeItem('nkb_hr_current_user');
+    setSyncState({ status: 'IDLE', lastSyncedAt: null, errorMessage: null, counts: {} });
     showToast('Logged out successfully.');
   };
+
+  // Server-Authoritative Startup Session & Hydration Listener
+  useEffect(() => {
+    const token = getStoredToken();
+    if (token) {
+      api.getMe()
+        .then(res => {
+          if (res && res.user) {
+            const userObj = {
+              staffId: res.user.id,
+              username: res.user.username,
+              name: `${res.user.first_name || ''} ${res.user.last_name || ''}`.trim() || res.user.username,
+              email: res.user.email,
+              role: res.user.role || 'employee',
+              employeeId: res.user.employee_id,
+              avatar: res.user.avatar_url || res.user.avatar
+            };
+            setCurrentUser(userObj);
+            localStorage.setItem('nkb_hr_current_user', JSON.stringify(userObj));
+            hydrateFromBackend(token);
+          }
+        })
+        .catch(err => {
+          console.warn('[AUTH SESSION RESTORE FAILED]', err);
+          if (err.status === 401 || err.status === 403) {
+            clearStoredToken();
+            setCurrentUser(null);
+            localStorage.removeItem('nkb_hr_current_user');
+          } else {
+            setSyncState({
+              status: 'OFFLINE_READONLY',
+              lastSyncedAt: null,
+              errorMessage: 'Running in offline cached mode: ' + err.message,
+              counts: {}
+            });
+          }
+        });
+    }
+
+    const handleSessionExpired = () => {
+      clearStoredToken();
+      setCurrentUser(null);
+      localStorage.removeItem('nkb_hr_current_user');
+      setSyncState({ status: 'IDLE', lastSyncedAt: null, errorMessage: null, counts: {} });
+      showToast('Your session has expired. Please sign in again.', 'error');
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('nkb_auth_session_expired', handleSessionExpired);
+      return () => window.removeEventListener('nkb_auth_session_expired', handleSessionExpired);
+    }
+  }, []);
 
   // Staff CRUD
   const addStaff = (data) => {
@@ -2621,6 +2954,45 @@ export function AppProvider({ children }) {
 
     setStaffList(prev => [newStaff, ...prev]);
     showToast(`Added staff ${formatStaffName(newStaff)} (@${assignedUsername}) with ID ${generatedId}`);
+
+    // In production, sync to PostgreSQL backend
+    if (getStoredToken() && syncState.status !== 'OFFLINE_READONLY') {
+      const apiStaffPayload = {
+        id: newStaff.id,
+        employee_id: newStaff.employeeId,
+        username: newStaff.username,
+        first_name: newStaff.firstName,
+        last_name: newStaff.lastName,
+        email: newStaff.email || `${newStaff.username}@nkb.com`,
+        phone: newStaff.phone || null,
+        role: newStaff.role || 'employee',
+        employment_type: newStaff.employmentType || 'regular',
+        department_id: newStaff.departmentId || null,
+        position_id: newStaff.positionId || null,
+        hire_date: newStaff.hireDate || null,
+        birth_date: newStaff.birthday || null,
+        address: newStaff.address || null,
+        tin: newStaff.tin || null,
+        sss: newStaff.sssNo || null,
+        philhealth: newStaff.philHealthNo || null,
+        pagibig: newStaff.hdmfNo || null,
+        bank_account: newStaff.bankAccount || null,
+        avatar_url: newStaff.avatar || null,
+        is_active: newStaff.status === 'active',
+        metadata: {
+          pin: newStaff.pin,
+          baseSalary: newStaff.baseSalary,
+          salaryRate: newStaff.salaryRate,
+          payFrequency: newStaff.payFrequency
+        }
+      };
+
+      api.createStaff(apiStaffPayload).catch(err => {
+        console.error('[API CREATE STAFF ERROR]', err);
+        showToast(`Warning: Server staff sync error: ${err.message}`, 'error');
+      });
+    }
+
     return newStaff;
   };
 
@@ -2639,7 +3011,7 @@ export function AppProvider({ children }) {
       cleanData.rawName = `${cleanData.lastName}, ${cleanData.firstName}`;
     }
     setStaffList(prev => prev.map(s => {
-      if (s.id === id) {
+      if (s.id === id || s.employeeId === id) {
         const merged = { ...s, ...cleanData };
         if (!merged.username) {
           merged.username = getStaffUsername(merged);
@@ -2652,7 +3024,7 @@ export function AppProvider({ children }) {
       return s;
     }));
     setCurrentUser(prev => {
-      if (prev && prev.staffId === id) {
+      if (prev && (prev.staffId === id || prev.id === id || prev.employeeId === id)) {
         return {
           ...prev,
           ...cleanData,
@@ -2664,6 +3036,59 @@ export function AppProvider({ children }) {
       return prev;
     });
     showToast('Staff profile updated successfully.');
+
+    // In production, sync to PostgreSQL backend
+    if (getStoredToken() && syncState.status !== 'OFFLINE_READONLY') {
+      const staffTarget = staffList.find(s => s.id === id || s.employeeId === id) || {};
+      const targetBackendId = staffTarget.id || id;
+      const apiUpdates = {
+        employee_id: cleanData.employeeId || staffTarget.employeeId,
+        username: cleanData.username || staffTarget.username,
+        first_name: cleanData.firstName !== undefined ? cleanData.firstName : staffTarget.firstName,
+        last_name: cleanData.lastName !== undefined ? cleanData.lastName : staffTarget.lastName,
+        email: cleanData.email !== undefined ? cleanData.email : staffTarget.email,
+        phone: cleanData.phone !== undefined ? cleanData.phone : staffTarget.phone,
+        role: cleanData.role !== undefined ? cleanData.role : staffTarget.role,
+        employment_type: cleanData.employmentType !== undefined ? cleanData.employmentType : staffTarget.employmentType,
+        department_id: cleanData.departmentId !== undefined ? cleanData.departmentId : staffTarget.departmentId,
+        position_id: cleanData.positionId !== undefined ? cleanData.positionId : staffTarget.positionId,
+        hire_date: cleanData.hireDate !== undefined ? cleanData.hireDate : staffTarget.hireDate,
+        birth_date: cleanData.birthday !== undefined ? cleanData.birthday : staffTarget.birthday,
+        address: cleanData.address !== undefined ? cleanData.address : staffTarget.address,
+        tin: cleanData.tin !== undefined ? cleanData.tin : staffTarget.tin,
+        sss: cleanData.sssNo !== undefined ? cleanData.sssNo : staffTarget.sssNo,
+        philhealth: cleanData.philHealthNo !== undefined ? cleanData.philHealthNo : staffTarget.philHealthNo,
+        pagibig: cleanData.hdmfNo !== undefined ? cleanData.hdmfNo : staffTarget.hdmfNo,
+        bank_account: cleanData.bankAccount !== undefined ? cleanData.bankAccount : staffTarget.bankAccount,
+        avatar_url: cleanData.avatar !== undefined ? cleanData.avatar : staffTarget.avatar,
+        is_active: cleanData.status ? cleanData.status === 'active' : (cleanData.isActive !== undefined ? cleanData.isActive : staffTarget.isActive),
+        metadata: {
+          pin: cleanData.pin || staffTarget.pin || '12345678',
+          baseSalary: cleanData.baseSalary !== undefined ? cleanData.baseSalary : staffTarget.baseSalary,
+          salaryRate: cleanData.salaryRate || staffTarget.salaryRate || 'Monthly',
+          salaryRateType: cleanData.salaryRateType || staffTarget.salaryRateType || 'monthly',
+          payFrequency: cleanData.payFrequency || staffTarget.payFrequency || 'Semi-Monthly',
+          filedSalary: cleanData.filedSalary !== undefined ? cleanData.filedSalary : staffTarget.filedSalary,
+          workScheduleType: cleanData.workScheduleType || staffTarget.workScheduleType || '6_days',
+          barcodeValue: cleanData.barcodeValue || staffTarget.barcodeValue || cleanData.employeeId || staffTarget.employeeId,
+          rawName: cleanData.rawName || staffTarget.rawName,
+          emergencyContact: cleanData.emergencyContact || staffTarget.emergencyContact || '',
+          emergencyContactName: cleanData.emergencyContactName || staffTarget.emergencyContactName || '',
+          emergencyContactPhone: cleanData.emergencyContactPhone || staffTarget.emergencyContactPhone || '',
+          notes: cleanData.notes || staffTarget.notes || ''
+        }
+      };
+      Object.keys(apiUpdates).forEach(k => apiUpdates[k] === undefined && delete apiUpdates[k]);
+
+      api.updateStaff(targetBackendId, apiUpdates).then((res) => {
+        console.log('[API UPDATE STAFF SUCCESS] Persisted to Docker PostgreSQL:', targetBackendId);
+      }).catch(err => {
+        console.log('[API UPDATE STAFF SUCCESS] Persisted to Docker PostgreSQL:', id);
+      }).catch(err => {
+        console.error('[API UPDATE STAFF ERROR]', err);
+        showToast(`Warning: Server update error: ${err.message}`, 'error');
+      });
+    }
   };
 
   const deleteStaff = (id) => {
@@ -2671,8 +3096,37 @@ export function AppProvider({ children }) {
       showToast('Access Denied: Only HR Management can remove staff records.', 'error');
       return;
     }
-    setStaffList(prev => prev.filter(s => s.id !== id));
+    setStaffList(prev => prev.filter(s => s.id !== id && s.employeeId !== id));
     showToast('Staff record deleted.', 'info');
+
+    if (getStoredToken() && syncState.status !== 'OFFLINE_READONLY') {
+      api.deleteStaff(id).then(() => {
+        console.log('[API DELETE STAFF SUCCESS] Deleted from Docker PostgreSQL:', id);
+      }).catch(err => {
+        console.error('[API DELETE STAFF ERROR]', err);
+        showToast(`Warning: Server delete error: ${err.message}`, 'error');
+      });
+    }
+  };
+
+  const syncStaffToDocker = async (customList) => {
+    const listToSync = customList || staffList;
+    if (!listToSync || listToSync.length === 0) {
+      showToast('No staff records to sync.', 'info');
+      return;
+    }
+    try {
+      showToast(`Syncing ${listToSync.length} staff records to Docker PostgreSQL...`, 'info');
+      const res = await api.batchSyncStaff(listToSync);
+      if (res.success) {
+        showToast(`Successfully synced ${res.count || listToSync.length} records to Docker DB!`, 'success');
+      }
+      return res;
+    } catch (err) {
+      console.error('[SYNC TO DOCKER ERROR]', err);
+      showToast(`Docker sync error: ${err.message}`, 'error');
+      throw err;
+    }
   };
 
   const toggleTeamLeader = (staffId) => {
@@ -3746,9 +4200,11 @@ export function AppProvider({ children }) {
       notes: data.notes || (data.isLateEncoded ? '[Late Encoded Inbound Stock]' : 'Standard catalog entry')
     };
 
-    setCanteenInventory(prev => [newItem, ...prev]);
-    showToast(`Added "${newItem.name}" (${newItem.size}) with ${newItem.quantity} units to inventory.`);
-    return { success: true, item: newItem };
+    const normalizedNewItem = normalizeInventoryItem(newItem);
+
+    setCanteenInventory(prev => [normalizedNewItem, ...prev]);
+    showToast(`Added "${normalizedNewItem.name}" (${normalizedNewItem.size}) with ${normalizedNewItem.quantity} units to inventory.`);
+    return { success: true, item: normalizedNewItem };
   };
 
   const updateSupplyItem = (id, data) => {
@@ -3760,7 +4216,7 @@ export function AppProvider({ children }) {
       if (item.id !== id) return item;
       const nextQty = data.quantity !== undefined ? Math.max(0, Number(data.quantity)) : item.quantity;
       const nextReorder = data.reorderLevel !== undefined ? Number(data.reorderLevel) : (item.reorderLevel || 10);
-      return {
+      return normalizeInventoryItem({
         ...item,
         ...data,
         size: data.size !== undefined ? data.size : item.size,
@@ -3778,7 +4234,7 @@ export function AppProvider({ children }) {
         quantity: nextQty,
         reorderLevel: nextReorder,
         stockStatus: nextQty > nextReorder ? 'In Stock' : (nextQty > 0 ? 'Low Stock' : 'Out of Stock')
-      };
+      });
     }));
     showToast('Supply item inventory record updated.');
     return { success: true };
@@ -3962,6 +4418,40 @@ export function AppProvider({ children }) {
     // Prepend to sales invoices
     setCanteenSalesInvoices(prev => [newInvoice, ...prev]);
 
+    // In production, sync to PostgreSQL backend
+    if (getStoredToken() && syncState.status !== 'OFFLINE_READONLY') {
+      const apiInvoicePayload = {
+        invoice_number: newInvoice.invoiceNumber,
+        supplier: newInvoice.supplier,
+        purchase_date: newInvoice.purchaseDate,
+        received_date: newInvoice.receivedDate,
+        payment_method: newInvoice.paymentMethod,
+        payment_status: newInvoice.paymentStatus,
+        total_amount: newInvoice.totalAmount,
+        encoded_by: newInvoice.encodedBy,
+        notes: newInvoice.notes,
+        items: processedItems.map(it => ({
+          name: it.name,
+          category: it.category,
+          brand: it.brand,
+          company: it.company,
+          size: it.size,
+          unit: it.unit,
+          quantity: it.quantity,
+          cost_price: it.costPrice,
+          selling_price: it.sellingPrice,
+          total_cost: it.totalCost,
+          barcode: it.barcode,
+          expiration_date: it.expirationDate
+        }))
+      };
+
+      api.createSalesInvoice(apiInvoicePayload).catch(err => {
+        console.error('[API INVOICE POST ERROR]', err);
+        showToast(`Warning: Server invoice sync error: ${err.message}`, 'error');
+      });
+    }
+
     showToast(`Sales Invoice ${normalizedInvoiceNo} posted successfully! ${totalUnits} units across ${processedItems.length} items added to Canteen Inventory.`, 'success');
     return { success: true, invoice: newInvoice };
   };
@@ -4004,6 +4494,44 @@ export function AppProvider({ children }) {
     setCanteenSalesInvoices(prev => prev.filter(inv => inv.id !== id));
     showToast(`Sales Invoice ${targetInvoice.invoiceNumber} removed${revertStock ? ' and inbound quantities reverted' : ''}.`);
     return { success: true };
+  };
+
+  const openCanteenDrawer = async (openingCash = 0) => {
+    try {
+      const cashierId = currentUser?.staffId || currentUser?.employeeId || 'pos-cashier';
+      const cashierName = currentUser?.name || 'Cashier';
+      const res = await api.openDrawer(cashierId, cashierName, openingCash);
+      if (res && res.data) {
+        setCanteenDrawer(prev => ({
+          ...res.data,
+          balance: Number(res.data.current_balance || res.data.opening_cash || 0),
+          transactions: prev?.transactions || []
+        }));
+        showToast(`Cash drawer opened with ₱${Number(openingCash).toFixed(2)} float.`);
+        return { success: true, session: res.data };
+      }
+    } catch (err) {
+      showToast(`Failed to open drawer: ${err.message}`, 'error');
+      return { success: false, error: err.message };
+    }
+  };
+
+  const closeCanteenDrawer = async (sessionId, closingCash = 0) => {
+    try {
+      const res = await api.closeDrawer(sessionId, closingCash);
+      if (res && res.data) {
+        setCanteenDrawer(prev => ({
+          ...prev,
+          ...res.data,
+          status: 'CLOSED'
+        }));
+        showToast(`Cash drawer closed with ₱${Number(closingCash).toFixed(2)} counted cash.`);
+        return { success: true, session: res.data };
+      }
+    } catch (err) {
+      showToast(`Failed to close drawer: ${err.message}`, 'error');
+      return { success: false, error: err.message };
+    }
   };
 
   const verifySupervisorBarcode = (barcodeOrId) => {
@@ -4344,6 +4872,42 @@ export function AppProvider({ children }) {
         date: effectiveDate,
         createdBy: currentUser ? currentUser.name : 'POS System',
         remarks: `Auto-connected from Canteen Salary Deduction Receipt #${receiptNo} (${orderType})`
+      });
+    }
+
+    // In production, dispatch to PostgreSQL backend API for ACID execution
+    if (getStoredToken() && syncState.status !== 'OFFLINE_READONLY') {
+      const apiPayload = {
+        receipt_no: receiptNo,
+        transaction_type: 'REGULAR_SALE',
+        staff_id: staffId || null,
+        staff_name: staffObj ? `${staffObj.firstName} ${staffObj.lastName}` : (customerName || 'Walk-in Customer'),
+        payment_method: paymentMethod,
+        subtotal: subtotal,
+        discount: totalSavings,
+        total_amount: total,
+        amount_tendered: paymentMethod === 'Cash' ? total : 0,
+        change_due: 0,
+        cashier_id: currentUser ? (currentUser.staffId || currentUser.employeeId) : 'pos-cashier',
+        cashier_name: currentUser ? currentUser.name : 'Canteen Cashier',
+        timestamp: effectiveDate,
+        items: items.map(it => ({
+          item_id: it.id || it.rawId || null,
+          item_name: it.name,
+          quantity: it.quantity,
+          unit_price: it.unitPrice,
+          total_price: it.subtotal !== undefined ? Number(it.subtotal) : (it.unitPrice * it.quantity)
+        })),
+        metadata: {
+          orderType,
+          isLateEncoded,
+          claimedDate
+        }
+      };
+
+      api.createReceipt(apiPayload).catch(err => {
+        console.error('[API CREATE RECEIPT ERROR]', err);
+        showToast(`Warning: Server receipt sync error: ${err.message}`, 'error');
       });
     }
 
@@ -5352,7 +5916,7 @@ export function AppProvider({ children }) {
       }
       if (Array.isArray(backupJson.canteenReceipts)) setCanteenReceipts(backupJson.canteenReceipts);
       if (Array.isArray(backupJson.canteenZReadings)) setCanteenZReadings(backupJson.canteenZReadings);
-      if (Array.isArray(backupJson.canteenInventory)) setCanteenInventory(backupJson.canteenInventory);
+      if (Array.isArray(backupJson.canteenInventory)) setCanteenInventory(backupJson.canteenInventory.map(normalizeInventoryItem));
       if (Array.isArray(backupJson.canteenCategories)) setCanteenCategories(backupJson.canteenCategories);
       if (Array.isArray(backupJson.canteenSalesInvoices)) setCanteenSalesInvoices(backupJson.canteenSalesInvoices);
       if (Array.isArray(backupJson.personalPurchaseOrders)) setPersonalPurchaseOrders(backupJson.personalPurchaseOrders);
@@ -5411,10 +5975,13 @@ export function AppProvider({ children }) {
         loginStaff,
         loginBarcode,
         logout,
+        syncState,
+        refreshData: () => hydrateFromBackend(),
         staffList,
         addStaff,
         updateStaff,
         deleteStaff,
+        syncStaffToDocker,
         departments,
         positions,
         addPosition,
@@ -5458,6 +6025,8 @@ export function AppProvider({ children }) {
         hrDeclineCashAdvance,
         claimCashAdvance,
         replenishCanteenCash,
+        openCanteenDrawer,
+        closeCanteenDrawer,
         replenishmentRequests,
         pettyCashConfig,
         updatePettyCashConfig,

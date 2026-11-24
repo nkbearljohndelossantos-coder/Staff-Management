@@ -1,0 +1,74 @@
+name: nkb-manufacturing
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nkb_mfg_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nkb_scanner_db
+      POSTGRES_USER: nkb_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - nkb_mfg_postgres_data:/var/lib/postgresql/data
+    networks:
+      - nkb_mfg_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nkb_user -d nkb_scanner_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nkb_mfg_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 39102
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nkb_scanner_db
+      DB_USER: nkb_user
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: "https://m.nkbmanufacturing.com,http://m.nkbmanufacturing.com"
+    ports:
+      - "127.0.0.1:39102:39102"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nkb_mfg_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:39102/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: nkb_mfg_frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:39101:80"
+    networks:
+      - nkb_mfg_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  nkb_mfg_net:
+    name: nkb_mfg_net
+    driver: bridge
+
+volumes:
+  nkb_mfg_postgres_data:
+    name: nkb_mfg_postgres_data

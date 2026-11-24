@@ -733,12 +733,12 @@ export default function CanteenHub() {
                         </td>
 
                         <td className="px-4 py-3 text-right font-mono text-slate-600">
-                          ₱{item.costPrice?.toFixed(2)}
+                          ₱{Number(item.costPrice ?? item.cost_price ?? 0).toFixed(2)}
                         </td>
 
                         <td className="px-4 py-3 text-right">
                           <div className="font-mono font-bold text-slate-900">
-                            ₱{item.sellingPrice?.toFixed(2)}
+                            ₱{Number(item.sellingPrice ?? item.selling_price ?? item.unitPrice ?? 0).toFixed(2)}
                             {isBoxOrPackItem(item) && (
                               <span className="text-[10px] text-slate-500 font-normal ml-1">
                                 /{item.unit || 'pack'}
@@ -1338,7 +1338,7 @@ export default function CanteenHub() {
                             {/* Selling Price */}
                             <td className="px-4 py-3 text-right font-mono whitespace-nowrap">
                               <div className="font-bold text-slate-900">
-                                ₱{Number(item.sellingPrice || 0).toFixed(2)}
+                                ₱{Number(item.sellingPrice ?? item.selling_price ?? item.unitPrice ?? 0).toFixed(2)}
                                 {isBoxOrPackItem(item) && (
                                   <span className="text-[10px] text-slate-400 font-normal ml-0.5">/{item.unit || 'pack'}</span>
                                 )}

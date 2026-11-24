@@ -1624,7 +1624,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                 {productSuggestions.length === 1 && barcodeQuery.trim().length >= 2 ? (
                   <span className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
                     <Check className="h-3 w-3 text-emerald-600" />
-                    Identified: {productSuggestions[0].name.slice(0, 22)}... (₱{Number(productSuggestions[0].sellingPrice).toFixed(2)})
+                    Identified: {productSuggestions[0].name.slice(0, 22)}... (₱{Number(productSuggestions[0].sellingPrice ?? productSuggestions[0].selling_price ?? productSuggestions[0].unitPrice ?? 0).toFixed(2)})
                   </span>
                 ) : (
                   <span className="text-[10px] font-mono text-slate-400 hidden sm:inline">Press ENTER to record</span>
@@ -1726,11 +1726,11 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                             </span>
                           )}
                           {item.category && <span>· {item.category}</span>}
-                          {item.quantity !== undefined && (
+                          {(item.quantity !== undefined || item.current_stock !== undefined || item.currentStock !== undefined) && (
                             <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                              item.quantity > 10 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : item.quantity > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                              (item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 10 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : (item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
                             }`}>
-                              {item.quantity > 10 ? `${item.quantity} in stock` : item.quantity > 0 ? `Low: ${item.quantity}` : 'Out of stock'}
+                              {(item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 10 ? `${item.quantity ?? item.current_stock ?? item.currentStock} in stock` : (item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 0 ? `Low: ${item.quantity ?? item.current_stock ?? item.currentStock}` : 'Out of stock'}
                             </span>
                           )}
                         </div>
@@ -1797,7 +1797,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                         <div className="flex items-center gap-3 shrink-0">
                           <div className="text-right">
                             <div className="text-sm font-black font-mono text-slate-950">
-                              ₱{Number(item.sellingPrice || 0).toFixed(2)}
+                              ₱{Number(item.sellingPrice ?? item.selling_price ?? item.unitPrice ?? item.unit_price ?? item.price ?? 0).toFixed(2)}
                             </div>
                             <div className="text-[9px] text-slate-400 uppercase font-semibold">
                               {item.size || item.unit || 'Unit'}
@@ -1857,10 +1857,10 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                     type="button"
                     onClick={() => addItemToCart(item)}
                     className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 text-[11px] font-medium transition cursor-pointer border border-slate-200/80 flex items-center gap-1.5 shadow-2xs"
-                    title={`Barcode: ${item.barcode} · ₱${Number(item.sellingPrice).toFixed(2)}`}
+                    title={`Barcode: ${item.barcode} · ₱${Number(item.sellingPrice ?? item.selling_price ?? item.unitPrice ?? 0).toFixed(2)}`}
                   >
                     <span className="font-semibold">{item.name.length > 18 ? `${item.name.slice(0, 18)}...` : item.name}</span>
-                    <span className="font-mono font-bold text-slate-900 text-[10px]">₱{Number(item.sellingPrice).toFixed(2)}</span>
+                    <span className="font-mono font-bold text-slate-900 text-[10px]">₱{Number(item.sellingPrice ?? item.selling_price ?? item.unitPrice ?? 0).toFixed(2)}</span>
                     {isBoxPack && (
                       <span className="px-1 py-0.2 rounded bg-amber-200 text-amber-900 text-[8px] font-bold">
                         {item.unit || 'Pack'}

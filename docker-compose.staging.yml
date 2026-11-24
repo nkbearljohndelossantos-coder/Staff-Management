@@ -1,0 +1,31 @@
+name: nkb-manufacturing-staging
+
+services:
+  nkb_mfg_staging_postgres:
+    image: postgres:16-alpine
+    container_name: nkb_mfg_staging_postgres
+    restart: "no"
+    environment:
+      POSTGRES_DB: nkb_scanner_db
+      POSTGRES_USER: nkb_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - nkb_mfg_staging_postgres_data:/var/lib/postgresql/data
+    networks:
+      - nkb_mfg_staging_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nkb_user -d nkb_scanner_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+networks:
+  nkb_mfg_staging_net:
+    name: nkb_mfg_staging_net
+    driver: bridge
+
+volumes:
+  nkb_mfg_staging_postgres_data:
+    name: nkb_mfg_staging_postgres_data

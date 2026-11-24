@@ -28,6 +28,7 @@ function TabLoadingFallback() {
 import MobileBottomNav from './components/layout/MobileBottomNav';
 import DigitalIdModal from './components/id/DigitalIdModal';
 import CommandPalette from './components/common/CommandPalette';
+import SyncStatusBanner from './components/common/SyncStatusBanner';
 import { isTabAuthorized, getDefaultTabForRole, TAB_PERMISSIONS } from './utils/rolePermissions';
 
 export default function App() {
@@ -41,7 +42,9 @@ export default function App() {
     digitalIdStaff,
     isDigitalIdOpen,
     openDigitalId,
-    closeDigitalId
+    closeDigitalId,
+    syncState,
+    refreshData
   } = useApp();
   const [loginMode, setLoginMode] = useState('staff'); // 'staff' or 'barcode'
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -100,6 +103,7 @@ export default function App() {
         setSidebarOpen={setSidebarOpen}
         onOpenCommandPalette={() => setCommandPaletteOpen(true)}
       />
+      <SyncStatusBanner syncState={syncState} onRetry={refreshData} />
 
       <div className="flex-1 flex min-h-[calc(100vh-52px)]">
         {/* Left Side Navigation Tabs (Dark) */}
