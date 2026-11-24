@@ -469,9 +469,9 @@ export default function SalesInvoiceModal({ isOpen, onClose }) {
                 // Real-time catalog filtering for this specific row
                 const catalogMatches = item.searchQuery && item.searchQuery.trim().length >= 2
                   ? canteenInventory.filter(p => 
-                      p.name?.toLowerCase().includes(item.searchQuery.toLowerCase()) ||
-                      p.brand?.toLowerCase().includes(item.searchQuery.toLowerCase()) ||
-                      p.barcode?.includes(item.searchQuery)
+                      (p.name || '').toLowerCase().includes(item.searchQuery.toLowerCase()) ||
+                      (p.brand || '').toLowerCase().includes(item.searchQuery.toLowerCase()) ||
+                      (p.barcode || '').includes(item.searchQuery)
                     ).slice(0, 6)
                   : [];
 

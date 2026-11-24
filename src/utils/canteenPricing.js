@@ -277,7 +277,7 @@ export function normalizeInventoryItem(item) {
     hasRetailPiece: isBox,
     is_box_item: isBox,
     isBoxItem: isBox,
-    stockStatus: item.stockStatus || (qty > reorder ? 'In Stock' : (qty > 0 ? 'Low Stock' : 'Out of Stock')),
+    stockStatus: qty > reorder ? 'In Stock' : (qty > 0 ? 'Low Stock' : 'Out of Stock'),
     category: item.category || 'General'
   };
 }

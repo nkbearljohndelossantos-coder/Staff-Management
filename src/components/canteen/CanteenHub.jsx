@@ -309,7 +309,11 @@ export default function CanteenHub() {
     e.preventDefault();
     if (!posBarcodeQuery.trim()) return;
     const clean = posBarcodeQuery.trim();
-    const item = canteenInventory.find(i => i.barcode === clean || i.id === clean || i.name.toLowerCase().includes(clean.toLowerCase()));
+    const item = canteenInventory.find(i => 
+      String(i.barcode || '') === clean || 
+      String(i.id || '') === clean || 
+      (i.name && i.name.toLowerCase().includes(clean.toLowerCase()))
+    );
     if (item) {
       handleAddToCart(item);
       setPosBarcodeQuery('');
@@ -414,17 +418,25 @@ export default function CanteenHub() {
   };
 
   const filteredInventory = canteenInventory.filter(item => {
-    const q = inventorySearch.toLowerCase();
-    const matchesSearch = (
-      item.name.toLowerCase().includes(q) ||
-      item.barcode.includes(q) ||
-      (item.pieceBarcode && item.pieceBarcode.toLowerCase().includes(q)) ||
-      (item.company && item.company.toLowerCase().includes(q)) ||
-      (item.brand && item.brand.toLowerCase().includes(q)) ||
-      (item.category && item.category.toLowerCase().includes(q))
+    if (!item) return false;
+    const q = (inventorySearch || '').toLowerCase().trim();
+    const name = (item.name || '').toLowerCase();
+    const barcode = String(item.barcode || '').toLowerCase();
+    const pieceBarcode = String(item.pieceBarcode || '').toLowerCase();
+    const company = (item.company || '').toLowerCase();
+    const brand = (item.brand || '').toLowerCase();
+    const category = (item.category || '').toLowerCase();
+
+    const matchesSearch = !q || (
+      name.includes(q) ||
+      barcode.includes(q) ||
+      pieceBarcode.includes(q) ||
+      company.includes(q) ||
+      brand.includes(q) ||
+      category.includes(q)
     );
     const matchesCategory = selectedCategoryFilter === 'ALL' || 
-      (item.category && item.category.toLowerCase() === selectedCategoryFilter.toLowerCase());
+      (category === selectedCategoryFilter.toLowerCase());
     return matchesSearch && matchesCategory;
   });
 

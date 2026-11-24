@@ -259,27 +259,31 @@ export function AppProvider({ children }) {
   });
 
 
-  // Canteen Inventory Supplies (Official 355 products from Canteen_Inventory.xlsx, preserving all user-encoded inventory)
+  // Canteen Inventory Supplies (Official products from Canteen_Inventory masterlist, preserving all user-encoded inventory)
   const [canteenInventory, setCanteenInventory] = useState(() => {
     try {
       const saved = localStorage.getItem('nkb_canteen_inventory');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map(item => {
-            const normalized = normalizeInventoryItem(item);
-            if (isBoxOrPackItem(normalized)) {
-              const effPiece = getEffectiveRetailPiecePrice(normalized);
-              const pieces = extractPiecesFromItem(normalized);
-              return {
-                ...normalized,
-                hasRetailPiece: true,
-                retailPiecePrice: Number(normalized.retailPiecePrice) > 0 ? Number(normalized.retailPiecePrice) : effPiece,
-                piecesPerPack: Number(normalized.piecesPerPack) > 0 ? Number(normalized.piecesPerPack) : pieces
-              };
-            }
-            return normalized;
-          });
+          const totalSavedStock = parsed.reduce((sum, item) => sum + (Number(item.quantity ?? item.current_stock ?? 0) || 0), 0);
+          // Only use saved if it contains valid stock or if initial inventory is unavailable
+          if (totalSavedStock > 0 || !Array.isArray(INITIAL_CANTEEN_INVENTORY) || INITIAL_CANTEEN_INVENTORY.length === 0) {
+            return parsed.map(item => {
+              const normalized = normalizeInventoryItem(item);
+              if (isBoxOrPackItem(normalized)) {
+                const effPiece = getEffectiveRetailPiecePrice(normalized);
+                const pieces = extractPiecesFromItem(normalized);
+                return {
+                  ...normalized,
+                  hasRetailPiece: true,
+                  retailPiecePrice: Number(normalized.retailPiecePrice) > 0 ? Number(normalized.retailPiecePrice) : effPiece,
+                  piecesPerPack: Number(normalized.piecesPerPack) > 0 ? Number(normalized.piecesPerPack) : pieces
+                };
+              }
+              return normalized;
+            });
+          }
         }
       }
       localStorage.setItem('nkb_canteen_inventory', JSON.stringify(INITIAL_CANTEEN_INVENTORY.map(normalizeInventoryItem)));
