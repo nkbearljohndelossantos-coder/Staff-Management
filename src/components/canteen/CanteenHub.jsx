@@ -203,13 +203,6 @@ export default function CanteenHub() {
   const [inventorySearch, setInventorySearch] = useState('');
   const [selectedVoidReceipt, setSelectedVoidReceipt] = useState(null);
 
-  // Progressive Escape dismissal (Priority 40 - MODAL)
-  useEscapeKey('canteen-edit-supply-modal', ESCAPE_PRIORITY.MODAL, Boolean(editingSupplyItem), () => setEditingSupplyItem(null));
-  useEscapeKey('canteen-category-modal', ESCAPE_PRIORITY.MODAL, showCategoryModal, () => setShowCategoryModal(false));
-  useEscapeKey('canteen-void-receipt-hub', ESCAPE_PRIORITY.MODAL, Boolean(selectedVoidReceipt), () => setSelectedVoidReceipt(null));
-  useEscapeKey('canteen-quick-reset-stock-modal', ESCAPE_PRIORITY.MODAL, Boolean(quickResetItem), () => setQuickResetItem(null));
-  useEscapeKey('canteen-bulk-reset-stock-modal', ESCAPE_PRIORITY.MODAL, showBulkResetModal, () => setShowBulkResetModal(false));
-
   // Single Item Quick Reset Stock State
   const [quickResetItem, setQuickResetItem] = useState(null);
   const [quickResetQty, setQuickResetQty] = useState(0);
@@ -218,6 +211,13 @@ export default function CanteenHub() {
   const [showBulkResetModal, setShowBulkResetModal] = useState(false);
   const [bulkResetConfirmationText, setBulkResetConfirmationText] = useState('');
   const [isBulkResetting, setIsBulkResetting] = useState(false);
+
+  // Progressive Escape dismissal (Priority 40 - MODAL)
+  useEscapeKey('canteen-edit-supply-modal', ESCAPE_PRIORITY.MODAL, Boolean(editingSupplyItem), () => setEditingSupplyItem(null));
+  useEscapeKey('canteen-category-modal', ESCAPE_PRIORITY.MODAL, showCategoryModal, () => setShowCategoryModal(false));
+  useEscapeKey('canteen-void-receipt-hub', ESCAPE_PRIORITY.MODAL, Boolean(selectedVoidReceipt), () => setSelectedVoidReceipt(null));
+  useEscapeKey('canteen-quick-reset-stock-modal', ESCAPE_PRIORITY.MODAL, Boolean(quickResetItem), () => setQuickResetItem(null));
+  useEscapeKey('canteen-bulk-reset-stock-modal', ESCAPE_PRIORITY.MODAL, showBulkResetModal, () => setShowBulkResetModal(false));
 
   // Helper to detect if a product has no valid barcode assigned
   const isMissingBarcode = (p) => {
