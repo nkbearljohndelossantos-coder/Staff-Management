@@ -266,23 +266,20 @@ export function AppProvider({ children }) {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const totalStock = parsed.reduce((sum, item) => sum + (Number(item.quantity ?? item.current_stock ?? 0) || 0), 0);
-          if (totalStock > 0 || !Array.isArray(INITIAL_CANTEEN_INVENTORY) || INITIAL_CANTEEN_INVENTORY.length === 0) {
-            return parsed.map(item => {
-              const normalized = normalizeInventoryItem(item);
-              if (isBoxOrPackItem(normalized)) {
-                const effPiece = getEffectiveRetailPiecePrice(normalized);
-                const pieces = extractPiecesFromItem(normalized);
-                return {
-                  ...normalized,
-                  hasRetailPiece: true,
-                  retailPiecePrice: Number(normalized.retailPiecePrice) > 0 ? Number(normalized.retailPiecePrice) : effPiece,
-                  piecesPerPack: Number(normalized.piecesPerPack) > 0 ? Number(normalized.piecesPerPack) : pieces
-                };
-              }
-              return normalized;
-            });
-          }
+          return parsed.map(item => {
+            const normalized = normalizeInventoryItem(item);
+            if (isBoxOrPackItem(normalized)) {
+              const effPiece = getEffectiveRetailPiecePrice(normalized);
+              const pieces = extractPiecesFromItem(normalized);
+              return {
+                ...normalized,
+                hasRetailPiece: true,
+                retailPiecePrice: Number(normalized.retailPiecePrice) > 0 ? Number(normalized.retailPiecePrice) : effPiece,
+                piecesPerPack: Number(normalized.piecesPerPack) > 0 ? Number(normalized.piecesPerPack) : pieces
+              };
+            }
+            return normalized;
+          });
         }
       }
       localStorage.setItem('nkb_canteen_inventory_v5', JSON.stringify(INITIAL_CANTEEN_INVENTORY.map(normalizeInventoryItem)));
@@ -4267,9 +4264,8 @@ export function AppProvider({ children }) {
       });
     }));
 
-    // Async sync to backend PostgreSQL if online & authenticated
-    const token = getStoredToken();
-    if (token && api.updateInventoryItem) {
+    // Async sync to backend PostgreSQL if online
+    if (api.updateInventoryItem) {
       api.updateInventoryItem(id, data).catch(err => {
         console.warn('[CANTEEN UPDATE INVENTORY BACKEND SYNC WARNING]', err);
       });
@@ -4292,8 +4288,8 @@ export function AppProvider({ children }) {
       });
     }));
 
-    const token = getStoredToken();
-    if (token && api.resetInventoryStock) {
+    // Always persist to backend database so stock never reverts on page refresh or live sync
+    if (api.resetInventoryStock) {
       api.resetInventoryStock({ id, quantity: targetQty }).catch(err => {
         console.warn('[RESET STOCK BACKEND SYNC WARNING]', err);
       });
@@ -4308,8 +4304,7 @@ export function AppProvider({ children }) {
       const restored = INITIAL_CANTEEN_INVENTORY.map(normalizeInventoryItem);
       setCanteenInventory(restored);
 
-      const token = getStoredToken();
-      if (token && api.resetInventoryStock) {
+      if (api.resetInventoryStock) {
         try {
           await api.resetInventoryStock({ 
             mode: 'masterlist', 
@@ -4330,8 +4325,7 @@ export function AppProvider({ children }) {
         stockStatus: 'Out of Stock'
       })));
 
-      const token = getStoredToken();
-      if (token && api.resetInventoryStock) {
+      if (api.resetInventoryStock) {
         try {
           await api.resetInventoryStock({ mode: 'zero' });
         } catch (err) {

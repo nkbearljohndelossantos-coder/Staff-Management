@@ -142,7 +142,7 @@ export const updateInventoryItem = async (req, res) => {
     const sql = `
       UPDATE canteen_inventory
       SET ${setClauses.join(', ')}
-      WHERE id = $1
+      WHERE id = $1 OR barcode = $1
       RETURNING *
     `;
 

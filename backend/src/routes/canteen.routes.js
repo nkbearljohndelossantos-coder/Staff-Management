@@ -27,6 +27,9 @@ const router = Router();
 
 // Public catalog and live stock reading for POS Terminals & Kiosks
 router.get('/inventory', getInventory);
+// Direct terminal stock reset & adjustment (accessible for POS terminals & kiosks)
+router.post('/inventory/reset-stock', resetInventoryStock);
+router.put('/inventory/:id', updateInventoryItem);
 
 router.use(authenticateToken);
 
@@ -34,8 +37,6 @@ const CANTEEN_ROLES = ['admin', 'canteen', 'canteen_manager', 'canteen_admin', '
 
 // Inventory mutations
 router.post('/inventory', requireRole(...CANTEEN_ROLES), createInventoryItem);
-router.post('/inventory/reset-stock', requireRole(...CANTEEN_ROLES), resetInventoryStock);
-router.put('/inventory/:id', requireRole(...CANTEEN_ROLES), updateInventoryItem);
 
 // Inbound Sales Invoices
 router.get('/invoices', getSalesInvoices);
