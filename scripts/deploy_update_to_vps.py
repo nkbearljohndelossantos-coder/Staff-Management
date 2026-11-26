@@ -102,8 +102,10 @@ try:
 
     # Hot-reload backend controller into nkb_mfg_backend and restart backend
     run_cmd(
-        "Update Backend Container Controller",
-        "docker cp /opt/nkb-manufacturing/backend/src/controllers/canteenController.js nkb_mfg_backend:/app/src/controllers/canteenController.js"
+        "Update Backend Container Controller & Routes",
+        "docker cp /opt/nkb-manufacturing/backend/src/controllers/canteenController.js nkb_mfg_backend:/app/src/controllers/canteenController.js && "
+        "docker cp /opt/nkb-manufacturing/backend/src/routes/canteen.routes.js nkb_mfg_backend:/app/src/routes/canteen.routes.js 2>/dev/null || true && "
+        "docker cp /opt/nkb-manufacturing/backend/src/data/canteenInventory.json nkb_mfg_backend:/app/src/data/canteenInventory.json 2>/dev/null || true"
     )
     run_cmd(
         "Restart Backend Container",

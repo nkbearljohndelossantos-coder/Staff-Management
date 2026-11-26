@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { query, getClient } from '../config/database.js';
 
 // ==============================================================================
@@ -154,6 +155,74 @@ export const updateInventoryItem = async (req, res) => {
   } catch (error) {
     console.error('[CANTEEN UPDATE_INVENTORY ERROR]', error);
     res.status(500).json({ success: false, error: 'Failed to update inventory item' });
+  }
+};
+
+export const resetInventoryStock = async (req, res) => {
+  try {
+    const { mode, id, quantity, items } = req.body || {};
+
+    // 1. Single item reset
+    if (id !== undefined) {
+      const qty = Math.max(0, parseInt(quantity, 10) || 0);
+      const sql = 'UPDATE canteen_inventory SET current_stock = $1, updated_at = NOW() WHERE id = $2 RETURNING *';
+      const result = await query(sql, [qty, id]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Inventory item not found' });
+      }
+      return res.json({ success: true, count: 1, data: result.rows[0] });
+    }
+
+    // 2. Reset all stock to 0
+    if (mode === 'zero') {
+      const sql = 'UPDATE canteen_inventory SET current_stock = 0, updated_at = NOW()';
+      const result = await query(sql);
+      return res.json({ success: true, count: result.rowCount, message: 'All inventory stock counts reset to 0' });
+    }
+
+    // 3. Restore masterlist default stocks
+    if (mode === 'masterlist') {
+      let targetItems = items;
+      if (!Array.isArray(targetItems) || targetItems.length === 0) {
+        try {
+          const raw = fs.readFileSync(new URL('../data/canteenInventory.json', import.meta.url), 'utf-8');
+          const parsed = JSON.parse(raw);
+          targetItems = parsed.products || parsed;
+        } catch (e) {
+          console.warn('[RESET STOCK MASTERLIST FILE READ WARNING]', e.message);
+        }
+      }
+
+      if (Array.isArray(targetItems) && targetItems.length > 0) {
+        const values = [];
+        const params = [];
+        targetItems.forEach((it) => {
+          const itId = it.id;
+          const qty = Math.max(0, parseInt(it.quantity ?? it.current_stock ?? 0, 10) || 0);
+          if (itId) {
+            params.push(itId, qty);
+            values.push(`($${params.length - 1}::varchar, $${params.length}::int)`);
+          }
+        });
+
+        if (values.length > 0) {
+          const sql = `
+            UPDATE canteen_inventory AS ci
+            SET current_stock = v.quantity, updated_at = NOW()
+            FROM (VALUES ${values.join(', ')}) AS v(id, quantity)
+            WHERE ci.id = v.id
+          `;
+          const result = await query(sql, params);
+          return res.json({ success: true, count: result.rowCount, message: 'Masterlist stock levels restored' });
+        }
+      }
+      return res.status(400).json({ success: false, error: 'No items provided for masterlist restore' });
+    }
+
+    return res.status(400).json({ success: false, error: 'Invalid reset parameters' });
+  } catch (error) {
+    console.error('[CANTEEN RESET_STOCK ERROR]', error);
+    res.status(500).json({ success: false, error: 'Failed to reset inventory stock: ' + error.message });
   }
 };
 

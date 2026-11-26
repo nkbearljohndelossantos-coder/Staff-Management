@@ -178,6 +178,16 @@ export const api = {
 
   // Canteen Inventory & Transactions
   getInventory: () => apiRequest('/api/canteen/inventory'),
+  updateInventoryItem: (id, data) =>
+    apiRequest(`/api/canteen/inventory/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+  resetInventoryStock: (payload) =>
+    apiRequest('/api/canteen/inventory/reset-stock', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
   getReceipts: (params = {}) => {
     const q = new URLSearchParams(params).toString();
     return apiRequest(`/api/canteen/receipts${q ? `?${q}` : ''}`);

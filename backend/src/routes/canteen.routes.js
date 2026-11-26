@@ -3,6 +3,7 @@ import {
   getInventory,
   createInventoryItem,
   updateInventoryItem,
+  resetInventoryStock,
   getReceipts,
   createReceipt,
   getDeductionsLedger,
@@ -26,14 +27,17 @@ const router = Router();
 
 router.use(authenticateToken);
 
+const CANTEEN_ROLES = ['admin', 'canteen', 'canteen_manager', 'canteen_admin', 'superadmin', 'hr'];
+
 // Inventory
 router.get('/inventory', getInventory);
-router.post('/inventory', requireRole('admin', 'canteen_manager', 'superadmin'), createInventoryItem);
-router.put('/inventory/:id', requireRole('admin', 'canteen_manager', 'superadmin'), updateInventoryItem);
+router.post('/inventory', requireRole(...CANTEEN_ROLES), createInventoryItem);
+router.post('/inventory/reset-stock', requireRole(...CANTEEN_ROLES), resetInventoryStock);
+router.put('/inventory/:id', requireRole(...CANTEEN_ROLES), updateInventoryItem);
 
 // Inbound Sales Invoices
 router.get('/invoices', getSalesInvoices);
-router.post('/invoices', requireRole('admin', 'canteen_manager', 'superadmin'), createSalesInvoice);
+router.post('/invoices', requireRole(...CANTEEN_ROLES), createSalesInvoice);
 
 // POS & Receipts
 router.get('/receipts', getReceipts);
