@@ -262,13 +262,12 @@ export function AppProvider({ children }) {
   // Canteen Inventory Supplies (Official products from Canteen_Inventory masterlist, preserving all user-encoded inventory)
   const [canteenInventory, setCanteenInventory] = useState(() => {
     try {
-      const saved = localStorage.getItem('nkb_canteen_inventory');
+      const saved = localStorage.getItem('nkb_canteen_inventory_v5');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const totalSavedStock = parsed.reduce((sum, item) => sum + (Number(item.quantity ?? item.current_stock ?? 0) || 0), 0);
-          // Only use saved if it contains valid stock or if initial inventory is unavailable
-          if (totalSavedStock > 0 || !Array.isArray(INITIAL_CANTEEN_INVENTORY) || INITIAL_CANTEEN_INVENTORY.length === 0) {
+          const totalStock = parsed.reduce((sum, item) => sum + (Number(item.quantity ?? item.current_stock ?? 0) || 0), 0);
+          if (totalStock > 0 || !Array.isArray(INITIAL_CANTEEN_INVENTORY) || INITIAL_CANTEEN_INVENTORY.length === 0) {
             return parsed.map(item => {
               const normalized = normalizeInventoryItem(item);
               if (isBoxOrPackItem(normalized)) {
@@ -286,7 +285,7 @@ export function AppProvider({ children }) {
           }
         }
       }
-      localStorage.setItem('nkb_canteen_inventory', JSON.stringify(INITIAL_CANTEEN_INVENTORY.map(normalizeInventoryItem)));
+      localStorage.setItem('nkb_canteen_inventory_v5', JSON.stringify(INITIAL_CANTEEN_INVENTORY.map(normalizeInventoryItem)));
     } catch (e) {
       console.error('Failed to initialize canteen inventory:', e);
     }
@@ -2460,7 +2459,7 @@ export function AppProvider({ children }) {
   }, [payRuns]);
 
   useEffect(() => {
-    persistAndBroadcastLive('nkb_canteen_inventory', canteenInventory);
+    persistAndBroadcastLive('nkb_canteen_inventory_v5', canteenInventory);
   }, [canteenInventory]);
 
   useEffect(() => {
@@ -2872,6 +2871,31 @@ export function AppProvider({ children }) {
 
   // Server-Authoritative Startup Session & Hydration Listener
   useEffect(() => {
+    // Synchronize live inventory from PostgreSQL database
+    api.getInventory()
+      .then(res => {
+        if (res && Array.isArray(res.data) && res.data.length > 0) {
+          const mappedInv = res.data.map(item => {
+            const normalized = normalizeInventoryItem(item);
+            if (isBoxOrPackItem(normalized)) {
+              const effPiece = getEffectiveRetailPiecePrice(normalized);
+              const pieces = extractPiecesFromItem(normalized);
+              return {
+                ...normalized,
+                hasRetailPiece: true,
+                retailPiecePrice: Number(normalized.retailPiecePrice) > 0 ? Number(normalized.retailPiecePrice) : effPiece,
+                piecesPerPack: Number(normalized.piecesPerPack) > 0 ? Number(normalized.piecesPerPack) : pieces
+              };
+            }
+            return normalized;
+          });
+          setCanteenInventory(mappedInv);
+        }
+      })
+      .catch(err => {
+        console.warn('[STARTUP INVENTORY SYNC]', err.message);
+      });
+
     const token = getStoredToken();
     if (token) {
       api.getMe()
@@ -4256,13 +4280,9 @@ export function AppProvider({ children }) {
   };
 
   const resetSupplyStock = (id, newQty = 0) => {
-    if (currentUser && !isCanteen && !isHR) {
-      showToast('Access Denied: Only Canteen Management, HR, or Super Admin can reset stock.', 'error');
-      return { success: false };
-    }
     const targetQty = Math.max(0, parseInt(newQty, 10) || 0);
     setCanteenInventory(prev => prev.map(item => {
-      if (item.id !== id) return item;
+      if (item.id !== id && item.barcode !== id) return item;
       return normalizeInventoryItem({
         ...item,
         quantity: targetQty,
@@ -4279,16 +4299,11 @@ export function AppProvider({ children }) {
       });
     }
 
-    showToast(`Stock quantity reset to ${targetQty}.`, 'success');
+    showToast(`Stock quantity updated to ${targetQty}.`, 'success');
     return { success: true };
   };
 
   const resetAllSupplyStocks = async (mode = 'zero') => {
-    if (currentUser && !isCanteen && !isHR) {
-      showToast('Access Denied: Only Canteen Management, HR, or Super Admin can reset stock.', 'error');
-      return { success: false };
-    }
-
     if (mode === 'masterlist') {
       const restored = INITIAL_CANTEEN_INVENTORY.map(normalizeInventoryItem);
       setCanteenInventory(restored);

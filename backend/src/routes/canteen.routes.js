@@ -25,12 +25,14 @@ import { authenticateToken, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
+// Public catalog and live stock reading for POS Terminals & Kiosks
+router.get('/inventory', getInventory);
+
 router.use(authenticateToken);
 
-const CANTEEN_ROLES = ['admin', 'canteen', 'canteen_manager', 'canteen_admin', 'superadmin', 'hr'];
+const CANTEEN_ROLES = ['admin', 'canteen', 'canteen_manager', 'canteen_admin', 'superadmin', 'hr', 'it_admin'];
 
-// Inventory
-router.get('/inventory', getInventory);
+// Inventory mutations
 router.post('/inventory', requireRole(...CANTEEN_ROLES), createInventoryItem);
 router.post('/inventory/reset-stock', requireRole(...CANTEEN_ROLES), resetInventoryStock);
 router.put('/inventory/:id', requireRole(...CANTEEN_ROLES), updateInventoryItem);

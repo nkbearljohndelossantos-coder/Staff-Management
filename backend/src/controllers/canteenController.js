@@ -165,7 +165,7 @@ export const resetInventoryStock = async (req, res) => {
     // 1. Single item reset
     if (id !== undefined) {
       const qty = Math.max(0, parseInt(quantity, 10) || 0);
-      const sql = 'UPDATE canteen_inventory SET current_stock = $1, updated_at = NOW() WHERE id = $2 RETURNING *';
+      const sql = 'UPDATE canteen_inventory SET current_stock = $1, updated_at = NOW() WHERE id = $2 OR barcode = $2 RETURNING *';
       const result = await query(sql, [qty, id]);
       if (result.rows.length === 0) {
         return res.status(404).json({ success: false, error: 'Inventory item not found' });

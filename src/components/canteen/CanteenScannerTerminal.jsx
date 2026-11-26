@@ -31,6 +31,7 @@ import {
   Package,
   Tag,
   Sparkles,
+  RotateCcw,
   Boxes
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -76,6 +77,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   const { 
     staffList, 
     canteenInventory, 
+    resetSupplyStock,
     recordCanteenSale, 
     verifySupervisorBarcode,
     voidActiveCartItemWithBarcode,
@@ -152,6 +154,10 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   const [showItemScanModal, setShowItemScanModal] = useState(false);
   const [editingCartItem, setEditingCartItem] = useState(null);
 
+  // Quick Reset Stock Modal (Terminal Dropdown)
+  const [quickResetTerminalItem, setQuickResetTerminalItem] = useState(null);
+  const [quickResetTerminalQty, setQuickResetTerminalQty] = useState(0);
+
   // Fast Checkout Keyboard Wizard State
   // null | 'ORDER_NATURE' | 'PAYMENT_METHOD' | 'CONFIRM'
   const [checkoutWizardStep, setCheckoutWizardStep] = useState(null);
@@ -214,6 +220,7 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
   useEscapeKey('canteen-customer-modal', ESCAPE_PRIORITY.MODAL, showCustomerModal, () => setShowCustomerModal(false));
   useEscapeKey('canteen-void-modal', ESCAPE_PRIORITY.MODAL, showVoidModal, () => setShowVoidModal(false));
   useEscapeKey('canteen-z-reading-modal', ESCAPE_PRIORITY.MODAL, showZReadingModal, () => setShowZReadingModal(false));
+  useEscapeKey('canteen-quick-reset-terminal-modal', ESCAPE_PRIORITY.MODAL, Boolean(quickResetTerminalItem), () => setQuickResetTerminalItem(null));
   // 3. Docked mini-tabs / floating panels: Dismiss lastScanned item banner or notice (Priority 10)
   useEscapeKey('canteen-scanned-banner', ESCAPE_PRIORITY.DOCKED_TAB, Boolean(lastScanned), () => setLastScanned(null));
   useEscapeKey('canteen-status-notice', ESCAPE_PRIORITY.DOCKED_TAB, Boolean(scanStatusNotice), () => setScanStatusNotice(null));
@@ -1727,11 +1734,29 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
                           )}
                           {item.category && <span>· {item.category}</span>}
                           {(item.quantity !== undefined || item.current_stock !== undefined || item.currentStock !== undefined) && (
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                              (item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 10 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : (item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
-                            }`}>
-                              {(item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 10 ? `${item.quantity ?? item.current_stock ?? item.currentStock} in stock` : (item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 0 ? `Low: ${item.quantity ?? item.current_stock ?? item.currentStock}` : 'Out of stock'}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setQuickResetTerminalItem(item);
+                                setQuickResetTerminalQty(Number(item.quantity ?? item.current_stock ?? item.currentStock ?? 0));
+                              }}
+                              title="Click to reset or adjust stock quantity"
+                              className={`group inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold border transition cursor-pointer hover:scale-105 active:scale-95 ${
+                                (item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 10 
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100' 
+                                  : (item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 0 
+                                  ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100' 
+                                  : 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100'
+                              }`}
+                            >
+                              <RotateCcw className="h-2.5 w-2.5 opacity-60 group-hover:opacity-100 group-hover:rotate-180 transition-transform duration-300" />
+                              {(item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 10 
+                                ? `${item.quantity ?? item.current_stock ?? item.currentStock} in stock` 
+                                : (item.quantity ?? item.current_stock ?? item.currentStock ?? 0) > 0 
+                                ? `Low: ${item.quantity ?? item.current_stock ?? item.currentStock}` 
+                                : 'Out of stock (Reset)'}
+                            </button>
                           )}
                         </div>
                       </div>
@@ -3176,6 +3201,107 @@ export default function CanteenScannerTerminal({ onShowReceipt, onShowGatePass }
       {/* Cashier End-of-Day Shift Closeout Z-Reading Modal */}
       {showZReadingModal && (
         <CanteenZReadingModal onClose={() => setShowZReadingModal(false)} />
+      )}
+
+      {/* Quick Reset Stock Modal from Scanner Dropdown */}
+      {quickResetTerminalItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="h-5 w-5 text-cyan-400" />
+                <h3 className="font-bold text-sm">Quick Reset Stock Quantity</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickResetTerminalItem(null)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                resetSupplyStock(quickResetTerminalItem.id, quickResetTerminalQty);
+                setQuickResetTerminalItem(null);
+              }}
+              className="p-5 space-y-4"
+            >
+              <div>
+                <div className="font-black text-sm text-slate-900">{quickResetTerminalItem.name}</div>
+                <div className="text-xs text-slate-500 font-mono mt-0.5">
+                  Barcode: {quickResetTerminalItem.barcode || 'N/A'} {quickResetTerminalItem.category ? `· ${quickResetTerminalItem.category}` : ''}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  New Stock Quantity
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={quickResetTerminalQty}
+                  onChange={(e) => setQuickResetTerminalQty(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  className="w-full h-11 px-3 text-lg font-mono font-bold border-2 border-slate-300 rounded-xl focus:border-cyan-500 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setQuickResetTerminalQty(0)}
+                  className="px-2.5 py-1 text-xs font-bold rounded-lg border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                >
+                  Reset: 0
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickResetTerminalQty(Number(quickResetTerminalItem.reorderLevel || 10))}
+                  className="px-2.5 py-1 text-xs font-bold rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                >
+                  Reorder Level ({quickResetTerminalItem.reorderLevel || 10})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickResetTerminalQty(prev => prev + 10)}
+                  className="px-2.5 py-1 text-xs font-bold rounded-lg border border-cyan-300 bg-cyan-50 text-cyan-700 hover:bg-cyan-100"
+                >
+                  +10
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickResetTerminalQty(prev => prev + 50)}
+                  className="px-2.5 py-1 text-xs font-bold rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                >
+                  +50
+                </button>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickResetTerminalItem(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Save Stock Quantity
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Canteen Item Scanner & Detail Entry Pop-up Modal (F2) */}
